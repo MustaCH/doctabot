@@ -39,6 +39,7 @@ REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
 ===MSG_BREAK===
 ![foto](photo_url)
 🏠 **[Título propiedad 1]**
+🏢 [office]
 💰 Precio: [currency] [precio]
 📍 Ubicación: [dirección], [localidad]
 📐 Superficie: [m2_total] m² totales ([ambientes] amb.)

@@ -1,10 +1,12 @@
-import { ExternalLink, Copy, Check } from "lucide-react";
+import { ExternalLink, Copy, Check, BadgeCheck } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface PropertyCardProps {
   photo?: string;
   title?: string;
+  office?: string;
   price?: string;
   location?: string;
   surface?: string;
@@ -33,6 +35,7 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
 
   let photo: string | undefined;
   let title: string | undefined;
+  let office: string | undefined;
   let price: string | undefined;
   let location: string | undefined;
   let surface: string | undefined;
@@ -59,6 +62,12 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
     // Price
     if (line.startsWith("💰")) {
       price = line.replace(/^💰\s*/, "").replace(/^Precio:\s*/i, "");
+      continue;
+    }
+
+    // Office
+    if (line.startsWith("🏢")) {
+      office = line.replace(/^🏢\s*/, "").replace(/^Oficina:\s*/i, "");
       continue;
     }
 
@@ -89,11 +98,12 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
   }
 
   if (!title) return null;
-  return { photo, title, price, location, surface, url, extras };
+  return { photo, title, office, price, location, surface, url, extras };
 }
 
-const PropertyCard = ({ photo, title, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
+  const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -105,13 +115,27 @@ const PropertyCard = ({ photo, title, price, location, surface, url, extras, age
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {photo && (
-        <div className="aspect-video w-full overflow-hidden bg-muted">
+        <div className="relative aspect-video w-full overflow-hidden bg-muted">
           <img
             src={photo}
             alt={title ?? "Propiedad"}
             className="h-full w-full object-cover"
             loading="lazy"
           />
+          {isDocta && (
+            <Badge className="absolute top-2 left-2 gap-1 bg-primary text-primary-foreground shadow-md text-[10px] px-2 py-0.5">
+              <BadgeCheck className="h-3 w-3" />
+              RE/MAX Docta
+            </Badge>
+          )}
+        </div>
+      )}
+      {!photo && isDocta && (
+        <div className="px-3.5 pt-3">
+          <Badge className="gap-1 bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
+            <BadgeCheck className="h-3 w-3" />
+            RE/MAX Docta
+          </Badge>
         </div>
       )}
       <div className="space-y-2 p-3.5">
