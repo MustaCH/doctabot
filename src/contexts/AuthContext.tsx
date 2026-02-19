@@ -22,12 +22,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hasProfile, setHasProfile] = useState(false);
 
   const checkProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    setHasProfile(!!data);
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      setHasProfile(!!data);
+    } catch {
+      setHasProfile(false);
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
