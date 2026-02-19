@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { feedbackSend, feedbackAttach, feedbackRemove } from "@/hooks/use-feedback";
 
@@ -16,11 +16,21 @@ interface ChatInputProps {
   onClearQuote?: () => void;
 }
 
+const TRANSCRIBE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe`;
+
 const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProps) => {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
 
   // Focus textarea when a quote is set
   useEffect(() => {
@@ -28,6 +38,13 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
       textareaRef.current?.focus();
     }
   }, [quotedText]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const handleSend = () => {
     const trimmed = text.trim();
@@ -82,6 +99,118 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
       URL.revokeObjectURL(removed.previewUrl);
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  // --- Voice recording ---
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        stream.getTracks().forEach((t) => t.stop());
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        setRecordingDuration(0);
+
+        const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+        if (audioBlob.size < 1000) {
+          toast.error("Audio demasiado corto. Intentá de nuevo.");
+          return;
+        }
+
+        // Transcribe
+        setIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          formData.append("audio", audioBlob, "recording.webm");
+
+          const resp = await fetch(TRANSCRIBE_URL, {
+            method: "POST",
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: formData,
+          });
+
+          if (!resp.ok) throw new Error("Transcription failed");
+          const data = await resp.json();
+          const transcript = data.text?.trim();
+
+          if (transcript) {
+            setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+            // Focus and trigger resize
+            setTimeout(() => {
+              textareaRef.current?.focus();
+              handleInput();
+            }, 50);
+          } else {
+            toast.error("No se pudo entender el audio. Intentá de nuevo.");
+          }
+        } catch (err) {
+          console.error("Transcription error:", err);
+          toast.error("Error al transcribir. Intentá de nuevo.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Timer
+      timerRef.current = window.setInterval(() => {
+        setRecordingDuration((d) => d + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Microphone error:", err);
+      toast.error("No se pudo acceder al micrófono. Revisá los permisos.");
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    setIsRecording(false);
+  }, []);
+
+  const cancelRecording = useCallback(() => {
+    if (mediaRecorderRef.current) {
+      // Remove onstop handler to prevent transcription
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+      };
+      if (mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsRecording(false);
+    setRecordingDuration(0);
+    chunksRef.current = [];
+  }, []);
+
+  const formatDuration = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
@@ -153,44 +282,89 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-10 w-10 shrink-0 rounded-xl"
-          disabled={disabled || attachments.length >= 4}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Paperclip className="h-4.5 w-4.5" />
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          placeholder="Escribí tu mensaje..."
-          rows={1}
-          disabled={disabled}
-          className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-        />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={!hasContent || disabled}
-          className="h-10 w-10 shrink-0 rounded-xl"
-        >
-          <SendHorizontal className="h-4.5 w-4.5" />
-        </Button>
-      </div>
+      {/* Recording UI */}
+      {isRecording ? (
+        <div className="flex items-center gap-3 py-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-10 w-10 shrink-0 rounded-xl text-destructive"
+            onClick={cancelRecording}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <div className="flex-1 flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-destructive animate-pulse" />
+            <span className="text-sm font-medium text-destructive">
+              {formatDuration(recordingDuration)}
+            </span>
+            <span className="text-xs text-muted-foreground">Grabando...</span>
+          </div>
+          <Button
+            size="icon"
+            onClick={stopRecording}
+            className="h-10 w-10 shrink-0 rounded-xl bg-primary"
+          >
+            <Square className="h-4 w-4 fill-current" />
+          </Button>
+        </div>
+      ) : isTranscribing ? (
+        <div className="flex items-center justify-center gap-2 py-3">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Transcribiendo audio...</span>
+        </div>
+      ) : (
+        <div className="flex items-end gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-10 w-10 shrink-0 rounded-xl"
+            disabled={disabled || attachments.length >= 4}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip className="h-4.5 w-4.5" />
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            placeholder="Escribí tu mensaje..."
+            rows={1}
+            disabled={disabled}
+            className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+          {hasContent ? (
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={disabled}
+              className="h-10 w-10 shrink-0 rounded-xl"
+            >
+              <SendHorizontal className="h-4.5 w-4.5" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={startRecording}
+              disabled={disabled}
+              className="h-10 w-10 shrink-0 rounded-xl"
+            >
+              <Mic className="h-4.5 w-4.5" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
