@@ -198,9 +198,16 @@ serve(async (req) => {
       }
     }
 
+    // Current date/time in Argentina (UTC-3)
+    const now = new Date();
+    const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+    const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+    const contextualPrompt = `${SYSTEM_PROMPT}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+
     // AI call with tool loop
     let currentMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: contextualPrompt },
       ...messages,
     ];
 
