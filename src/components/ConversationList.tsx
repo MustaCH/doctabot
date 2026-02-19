@@ -1,6 +1,17 @@
+import { useState } from "react";
 import { MessageSquare, Plus, LogOut, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -22,6 +33,7 @@ interface ConversationListProps {
 
 const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onClose }: ConversationListProps) => {
   const { user, signOut } = useAuth();
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
 
   return (
     <div className="flex h-full flex-col bg-card">
@@ -70,7 +82,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                  onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -98,6 +110,26 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar conversación?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará permanentemente "{deleteTarget?.title}". Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (deleteTarget) { onDelete?.(deleteTarget.id); setDeleteTarget(null); } }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
