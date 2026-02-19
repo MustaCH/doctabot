@@ -231,8 +231,14 @@ const Chat = () => {
     // Build message content with PDF text and quoted text inline
     let messageContent = text;
     if (quotedText) {
-      const truncatedQuote = quotedText.length > 300 ? quotedText.slice(0, 300) + "…" : quotedText;
-      messageContent = `> ${truncatedQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
+      // Clean the quote: strip markdown images, long URLs, and excessive formatting
+      let cleanQuote = quotedText
+        .replace(/!\[.*?\]\(.*?\)/g, "[imagen]") // markdown images → [imagen]
+        .replace(/https?:\/\/\S{60,}/g, "[enlace]") // long URLs → [enlace]
+        .replace(/\*\*/g, "") // strip bold
+        .trim();
+      if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
+      messageContent = `> ${cleanQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
       setQuotedText(null);
     }
     if (pdfTexts.length > 0) {

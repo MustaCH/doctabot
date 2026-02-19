@@ -54,9 +54,9 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
           </>
         )}
       </Avatar>
-      <div className="max-w-[80%]">
+      <div className="max-w-[80%] min-w-0 overflow-hidden">
         <div
-          className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+          className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed overflow-hidden ${
             isUser
               ? "bg-[hsl(var(--chat-user))] text-[hsl(var(--chat-user-foreground))] rounded-tr-md"
               : "bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))] rounded-tl-md"
@@ -83,7 +83,7 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
             </div>
           )}
           {isUser ? (
-            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap">{content}</p>
+            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
           ) : (
             <AssistantContent content={content} />
           )}
