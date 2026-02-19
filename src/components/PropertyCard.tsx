@@ -1,4 +1,5 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Copy, Check } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface PropertyCardProps {
@@ -93,6 +94,14 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
 
 const PropertyCard = ({ photo, title, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!finalUrl) return;
+    await navigator.clipboard.writeText(finalUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {photo && (
@@ -133,12 +142,18 @@ const PropertyCard = ({ photo, title, price, location, surface, url, extras, age
           </div>
         ))}
         {finalUrl && (
-          <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="block pt-1">
-            <Button size="sm" variant="outline" className="w-full gap-2">
-              <ExternalLink className="h-3.5 w-3.5" />
-              Ver propiedad
+          <div className="flex gap-2 pt-1">
+            <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+              <Button size="sm" variant="outline" className="w-full gap-2">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Ver propiedad
+              </Button>
+            </a>
+            <Button size="sm" variant="outline" className="gap-2" onClick={handleCopy}>
+              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copiado" : "Copiar"}
             </Button>
-          </a>
+          </div>
         )}
       </div>
     </div>
