@@ -1,64 +1,38 @@
 
-# Alan - Asistente IA para Agentes Remax Argentina 🏠
+## Botón de copiar en respuestas de Alan + Botón flotante de scroll
 
-## Visión General
-Una plataforma de chat móvil-first donde los agentes de Remax Argentina interactúan con "Alan", un asistente de IA especializado en búsqueda y gestión de propiedades inmobiliarias. La base de datos de propiedades se actualiza automáticamente cada noche mediante scraping.
+### 1. Botón "Copiar" en burbujas de Alan
 
----
+Se agrega un botón discreto debajo de cada burbuja de respuesta del asistente que copia el texto plano al portapapeles.
 
-## 1. Autenticación con Google
-- Pantalla de login minimalista con branding Remax y botón "Iniciar sesión con Google"
-- Perfil de usuario básico (nombre, avatar de Google)
-- Sesión persistente
+- Aparece al hacer hover en desktop; siempre visible en mobile
+- Usa el icono `Copy` de lucide-react, cambia a `Check` por 2 segundos tras copiar
+- Usa `navigator.clipboard.writeText(content)` para copiar solo el texto sin formato
+- Se posiciona debajo de la burbuja, alineado a la izquierda con un tamano pequeno (`text-xs`)
 
-## 2. Interfaz de Chat (100% Mobile-Optimized)
-- Diseño tipo WhatsApp/iMessage optimizado para móvil
-- Lista de conversaciones anteriores en una vista lateral o pantalla inicial
-- Chat con burbujas de mensajes diferenciadas (usuario vs Alan)
-- Input de texto con botón de envío en la parte inferior
-- Streaming de respuestas de Alan en tiempo real (token por token)
-- Alan se presenta con personalidad amigable y profesional
+**Archivo:** `src/components/ChatMessage.tsx`
+- Importar `Copy`, `Check` de lucide-react y `useState`
+- En el componente `ChatMessage`, cuando `role === "assistant"`, renderizar debajo de la burbuja un boton con el icono y el texto "Copiar"
+- Al hacer click, copiar `content` y cambiar el estado a "copiado" por 2 segundos
 
-## 3. Agente IA "Alan" - Funcionalidades
-Alan usará Lovable AI (Gemini) con tool-calling para ejecutar acciones:
+### 2. Botón flotante "Scroll to bottom"
 
-### a) Búsqueda de propiedades
-- Los agentes describen lo que buscan en lenguaje natural (ej: "Necesito un departamento de 2 ambientes en Nueva Córdoba por menos de 100mil dólares")
-- Alan busca en la base de datos y muestra tarjetas de propiedades con: foto, título, precio, ubicación, superficie, ambientes y link
+Se agrega un boton circular flotante que aparece cuando el usuario scrollea hacia arriba y hay contenido nuevo abajo.
 
-### b) Comparación de propiedades
-- El agente puede pedir comparar 2 o más propiedades
-- Alan muestra una tabla comparativa con los datos clave
+**Archivo:** `src/pages/Chat.tsx`
+- Agregar un estado `showScrollBtn` (boolean, default false)
+- Escuchar el evento `scroll` en `scrollRef.current`:
+  - Si la distancia al fondo (`scrollHeight - scrollTop - clientHeight`) es mayor a 100px, mostrar el boton
+  - Si no, ocultarlo
+- Renderizar un boton circular fijo sobre el area de mensajes (bottom-right, encima del input) con el icono `ChevronDown`
+- Al hacer click, scrollear suavemente al fondo con `scrollTo({ top: scrollHeight, behavior: "smooth" })`
+- Animacion de entrada/salida con `transition-opacity` y `scale`
 
-### c) Favoritos
-- Los agentes pueden pedirle a Alan que guarde una propiedad como favorita
-- Pueden pedir ver sus favoritos en cualquier momento
+### Resumen de cambios
 
-### d) Generación de reportes/fichas
-- Alan puede generar un resumen/ficha de una propiedad para compartir con clientes
+| Archivo | Cambio |
+|---|---|
+| `src/components/ChatMessage.tsx` | Agregar boton copiar debajo de burbujas del asistente |
+| `src/pages/Chat.tsx` | Agregar estado y logica de scroll + boton flotante |
 
-## 4. Base de Datos de Propiedades
-- Tabla de propiedades con todos los campos del scraping: external_id, title, operation, price, currency, address, locality, lat/lng, brokers, contact_person, office, dimensiones, ambientes, baños, property_type, url, photo
-- Tabla de favoritos por usuario
-- Tabla de conversaciones y mensajes
-
-## 5. Scraping Automático Nocturno
-- Edge function que se ejecuta automáticamente a las 00:30hs cada noche
-- Paso 1: Consulta el endpoint `checkMaxPages` para saber cuántas páginas hay
-- Paso 2: Recorre todas las páginas con el endpoint de scraping
-- Paso 3: Actualiza la base de datos de propiedades (inserta nuevas, actualiza existentes)
-- Proceso 100% invisible para los usuarios
-
-## 6. Historial de Conversaciones
-- Todas las conversaciones se guardan de forma persistente
-- Los agentes pueden volver a ver conversaciones anteriores
-- Cada conversación nueva inicia un nuevo hilo
-
----
-
-## Stack Técnico
-- **Frontend**: React + Tailwind, diseño mobile-first
-- **Backend**: Lovable Cloud (Supabase)
-- **Auth**: Google OAuth via Supabase Auth
-- **IA**: Lovable AI (Gemini) con streaming y tool-calling para búsqueda en DB
-- **Scraping**: Edge function + cron job programado a las 00:30hs
+No se requieren cambios de base de datos ni edge functions.
