@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Sos "Alan", un asistente de IA profesional y amigable para agentes inmobiliarios de RE/MAX Argentina, especialmente RE/MAX DOCTA de Córdoba.
+const SYSTEM_PROMPT = `Sos "Alan", un asistente de IA profesional y amigable para agentes inmobiliarios de RE/MAX Docta de Córdoba.
 
 Tu personalidad:
 - Hablás en español argentino (vos, usás, tenés, etc.)
@@ -25,9 +25,26 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 5. **remove_favorite**: Eliminar una propiedad de favoritos
 6. **generate_report**: Generar una ficha/reporte de una propiedad para compartir con clientes
 
-Cuando muestres propiedades, incluí siempre: título, precio, ubicación, zona (si aplica), superficie, ambientes y un link.
-Si el agente pide comparar propiedades, usá una tabla comparativa.
-Si no encontrás resultados, sugerí criterios alternativos.`;
+REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
+
+1. **Cantidad**: La herramienta search_properties devuelve "total_count" (total real de propiedades que coinciden) y "showing" (cuántas se muestran). SIEMPRE usá "total_count" para decir cuántas hay disponibles. Ejemplo: "Tenemos 68 propiedades en Alta Córdoba. Te muestro las primeras 5:"
+
+2. **Formato de cada propiedad**: Mostrá CADA propiedad como un bloque separado y bien formateado con este formato exacto:
+
+---
+🏠 **[Título de la propiedad]**
+💰 Precio: [currency] [precio formateado con puntos]
+📍 Ubicación: [dirección], [localidad]
+📐 Superficie: [m2_total] m² totales ([ambientes] amb.)
+🔗 [Ver propiedad]([url])
+---
+
+3. **Links**: Los links DEBEN ser markdown válido: [texto](url). La URL viene en el campo "url" de cada propiedad. NUNCA inventes URLs.
+
+4. Si no encontrás resultados, sugerí criterios alternativos.
+
+5. Si el agente pide comparar propiedades, usá una tabla comparativa.`;
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -149,22 +166,36 @@ serve(async (req) => {
     async function executeTool(name: string, args: any): Promise<string> {
       switch (name) {
         case "search_properties": {
-          let query = supabase.from("properties").select("*");
-          if (args.zone) query = query.ilike("zone", `%${args.zone}%`);
-          if (args.locality) query = query.ilike("locality", `%${args.locality}%`);
-          if (args.operation) query = query.ilike("operation", `%${args.operation}%`);
-          if (args.property_type) query = query.ilike("property_type", `%${args.property_type}%`);
-          if (args.min_price) query = query.gte("price", args.min_price);
-          if (args.max_price) query = query.lte("price", args.max_price);
-          if (args.currency) query = query.ilike("currency", `%${args.currency}%`);
-          if (args.min_ambientes) query = query.gte("ambientes", args.min_ambientes);
-          if (args.max_ambientes) query = query.lte("ambientes", args.max_ambientes);
+          // Build base filter (without limit) for counting
+          let baseQuery = supabase.from("properties").select("*", { count: "exact", head: true });
+          let dataQuery = supabase.from("properties").select("*");
+          
+          const applyFilters = (q: any) => {
+            if (args.zone) q = q.ilike("zone", `%${args.zone}%`);
+            if (args.locality) q = q.ilike("locality", `%${args.locality}%`);
+            if (args.operation) q = q.ilike("operation", `%${args.operation}%`);
+            if (args.property_type) q = q.ilike("property_type", `%${args.property_type}%`);
+            if (args.min_price) q = q.gte("price", args.min_price);
+            if (args.max_price) q = q.lte("price", args.max_price);
+            if (args.currency) q = q.ilike("currency", `%${args.currency}%`);
+            if (args.min_ambientes) q = q.gte("ambientes", args.min_ambientes);
+            if (args.max_ambientes) q = q.lte("ambientes", args.max_ambientes);
+            return q;
+          };
+          
+          baseQuery = applyFilters(baseQuery);
+          dataQuery = applyFilters(dataQuery);
+          
           const limit = args.limit ?? 5;
-          query = query.limit(limit);
-          const { data, error } = await query;
+          dataQuery = dataQuery.limit(limit);
+          
+          const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
+          const totalCount = countResult.count ?? 0;
+          const { data, error } = dataResult;
+          
           if (error) return JSON.stringify({ error: error.message });
-          if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", results: [] });
-          return JSON.stringify({ count: data.length, results: data });
+          if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
+          return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
         }
         case "compare_properties": {
           const { data, error } = await supabase.from("properties").select("*").in("id", args.property_ids);
