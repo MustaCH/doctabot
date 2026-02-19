@@ -11,7 +11,7 @@ const Login = () => {
         {/* Logo / Branding */}
         <div className="space-y-3">
           <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden">
-            <img src={alanAvatar} alt="Alan" className="h-full w-full object-cover drop-shadow-[0_8px_20px_hsl(var(--primary)/0.3)]" />
+            <img src={alanAvatar} alt="Alan" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Alan</h1>
           <p className="text-sm text-muted-foreground">
