@@ -9,6 +9,20 @@ interface PropertyCardProps {
   surface?: string;
   url?: string;
   extras?: string[];
+  agentCode?: string | null;
+}
+
+function buildPropertyUrl(url: string, agentCode?: string | null): string {
+  if (!agentCode) return url;
+  try {
+    const u = new URL(url);
+    u.searchParams.set("associate", agentCode);
+    return u.toString();
+  } catch {
+    // fallback for relative or malformed URLs
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}associate=${encodeURIComponent(agentCode)}`;
+  }
 }
 
 /** Try to parse a markdown block into structured property data */
@@ -77,7 +91,8 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
   return { photo, title, price, location, surface, url, extras };
 }
 
-const PropertyCard = ({ photo, title, price, location, surface, url, extras }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
+  const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {photo && (
@@ -117,8 +132,8 @@ const PropertyCard = ({ photo, title, price, location, surface, url, extras }: P
             {line}
           </div>
         ))}
-        {url && (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="block pt-1">
+        {finalUrl && (
+          <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="block pt-1">
             <Button size="sm" variant="outline" className="w-full gap-2">
               <ExternalLink className="h-3.5 w-3.5" />
               Ver propiedad

@@ -8,6 +8,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   hasProfile: boolean;
+  agentCode: string | null;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -20,24 +21,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
+  const [agentCode, setAgentCode] = useState<string | null>(null);
 
-  const checkProfile = useCallback(async (userId: string): Promise<boolean> => {
+  const checkProfile = useCallback(async (userId: string): Promise<{ exists: boolean; code: string | null }> => {
     try {
       const { data } = await supabase
         .from("profiles")
-        .select("id")
+        .select("id, agent_code")
         .eq("user_id", userId)
         .maybeSingle();
-      return !!data;
+      return { exists: !!data, code: data?.agent_code ?? null };
     } catch {
-      return false;
+      return { exists: false, code: null };
     }
   }, []);
 
   const refreshProfile = useCallback(async () => {
     if (user) {
       const result = await checkProfile(user.id);
-      setHasProfile(result);
+      setHasProfile(result.exists);
+      setAgentCode(result.code);
     }
   }, [user, checkProfile]);
 
@@ -57,12 +60,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!mounted) return;
             const result = await checkProfile(session.user.id);
             if (mounted) {
-              setHasProfile(result);
+              setHasProfile(result.exists);
+              setAgentCode(result.code);
               setLoading(false);
             }
           }, 0);
         } else {
           setHasProfile(false);
+          setAgentCode(null);
           setLoading(false);
         }
       }
@@ -76,7 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (session?.user) {
         const result = await checkProfile(session.user.id);
-        if (mounted) setHasProfile(result);
+        if (mounted) {
+          setHasProfile(result.exists);
+          setAgentCode(result.code);
+        }
       }
       if (mounted) setLoading(false);
     }).catch(() => {
@@ -100,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, hasProfile, signInWithGoogle, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, loading, hasProfile, agentCode, signInWithGoogle, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
