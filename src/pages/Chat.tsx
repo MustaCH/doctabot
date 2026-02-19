@@ -52,7 +52,21 @@ const Chat = () => {
         .select("role, content")
         .eq("conversation_id", activeConvId)
         .order("created_at", { ascending: true });
-      if (data) setMessages(data as Msg[]);
+      if (data) {
+        // Split assistant messages that were saved combined with ---
+        const expanded: Msg[] = [];
+        for (const msg of data) {
+          if (msg.role === "assistant" && msg.content.includes("\n\n---\n\n")) {
+            const parts = msg.content.split("\n\n---\n\n");
+            for (const part of parts) {
+              if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
+            }
+          } else {
+            expanded.push(msg as Msg);
+          }
+        }
+        setMessages(expanded);
+      }
     })();
   }, [activeConvId]);
 
@@ -116,6 +130,7 @@ const Chat = () => {
     }
 
     let assistantContent = "";
+    let allAssistantMessages: string[] = [];
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -134,13 +149,36 @@ const Chat = () => {
             return [...prev, { role: "assistant", content: assistantContent }];
           });
         },
+        onNewMessage: () => {
+          // Save current content and start a new assistant message
+          if (assistantContent.trim()) {
+            allAssistantMessages.push(assistantContent.trim());
+          }
+          assistantContent = "";
+          setMessages((prev) => {
+            // Trim the last assistant message content, then add placeholder for next
+            const updated = prev.map((m, i) => {
+              if (i === prev.length - 1 && m.role === "assistant") {
+                return { ...m, content: m.content.trim() };
+              }
+              return m;
+            });
+            return updated;
+          });
+        },
         onDone: async () => {
           setIsStreaming(false);
-          if (assistantContent) {
+          // Collect the last message too
+          if (assistantContent.trim()) {
+            allAssistantMessages.push(assistantContent.trim());
+          }
+          // Save all assistant messages to DB as one combined message
+          const fullContent = allAssistantMessages.join("\n\n---\n\n");
+          if (fullContent) {
             await supabase.from("messages").insert({
               conversation_id: convId!,
               role: "assistant",
-              content: assistantContent,
+              content: fullContent,
             });
             await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
             loadConversations();
