@@ -8,7 +8,7 @@ import ChatInput, { type ChatAttachment } from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, UserCircle } from "lucide-react";
+import { Menu, UserCircle, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -28,6 +28,19 @@ const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+
+  // Scroll listener for floating button
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distanceFromBottom > 100);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -408,6 +421,18 @@ const Chat = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Scroll to bottom button */}
+        <div className="relative">
+          <button
+            onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })}
+            className={`absolute -top-12 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-md transition-all duration-200 ${
+              showScrollBtn ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
+            }`}
+          >
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+          </button>
         </div>
 
         {/* Input */}
