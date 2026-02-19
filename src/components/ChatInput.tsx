@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizontal, Paperclip, X } from "lucide-react";
+import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 
 export interface ChatAttachment {
   file: File;
@@ -72,29 +72,38 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <div className="flex gap-2 mb-2 px-1 overflow-x-auto">
-          {attachments.map((att, i) => (
-            <div key={i} className="relative shrink-0 group">
-              {att.file.type.startsWith("image/") ? (
-                <img
-                  src={att.previewUrl}
-                  alt={att.file.name}
-                  className="h-16 w-16 rounded-lg object-cover border border-border"
-                />
-              ) : (
-                <div className="h-16 w-16 rounded-lg border border-border bg-muted flex items-center justify-center">
-                  <span className="text-[10px] text-muted-foreground text-center px-1 truncate">
-                    {att.file.name.split(".").pop()?.toUpperCase()}
-                  </span>
-                </div>
-              )}
-              <button
-                onClick={() => removeAttachment(i)}
-                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+          {attachments.map((att, i) => {
+            const isImage = att.file.type.startsWith("image/");
+            return (
+              <div key={i} className="relative shrink-0 group">
+                {isImage ? (
+                  <div className="relative h-16 w-16 rounded-lg border border-border overflow-hidden">
+                    <img
+                      src={att.previewUrl}
+                      alt={att.file.name}
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/50 px-1 py-0.5">
+                      <ImageIcon className="h-3 w-3 text-white" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-16 w-28 rounded-lg border border-border bg-muted flex items-center gap-1.5 px-2">
+                    <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground truncate leading-tight">
+                      {att.file.name}
+                    </span>
+                  </div>
+                )}
+                <button
+                  onClick={() => removeAttachment(i)}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
