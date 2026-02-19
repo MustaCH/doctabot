@@ -113,12 +113,33 @@ const Chat = () => {
     loadConversations();
   };
 
+  const compressImage = (file: File, maxDim = 1024, quality = 0.7): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl.split(",")[1]);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        resolve(result.split(",")[1]); // strip data:...;base64,
+        resolve(result.split(",")[1]);
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
@@ -142,12 +163,15 @@ const Chat = () => {
     let msgAttachments: MsgAttachment[] | undefined;
     if (chatAttachments?.length) {
       msgAttachments = await Promise.all(
-        chatAttachments.map(async (a) => ({
-          type: (a.file.type.startsWith("image/") ? "image" : "file") as "image" | "file",
-          base64: await fileToBase64(a.file),
-          mimeType: a.file.type,
-          fileName: a.file.name,
-        }))
+        chatAttachments.map(async (a) => {
+          const isImage = a.file.type.startsWith("image/");
+          return {
+            type: (isImage ? "image" : "file") as "image" | "file",
+            base64: isImage ? await compressImage(a.file) : await fileToBase64(a.file),
+            mimeType: isImage ? "image/jpeg" : a.file.type,
+            fileName: a.file.name,
+          };
+        })
       );
       if (msgAttachments.length === 0) msgAttachments = undefined;
     }
