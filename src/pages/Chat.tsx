@@ -31,6 +31,7 @@ const Chat = () => {
   const abortRef = useRef<AbortController | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
+  const [quotedText, setQuotedText] = useState<string | null>(null);
 
   // Scroll listener for floating button
   useEffect(() => {
@@ -227,12 +228,17 @@ const Chat = () => {
       }
     }
 
-    // Build message content with PDF text inline
+    // Build message content with PDF text and quoted text inline
     let messageContent = text;
+    if (quotedText) {
+      const truncatedQuote = quotedText.length > 300 ? quotedText.slice(0, 300) + "…" : quotedText;
+      messageContent = `> ${truncatedQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
+      setQuotedText(null);
+    }
     if (pdfTexts.length > 0) {
       const pdfContext = pdfTexts.join("\n\n");
-      messageContent = text
-        ? `${text}\n\n${pdfContext}`
+      messageContent = messageContent
+        ? `${messageContent}\n\n${pdfContext}`
         : pdfContext;
     }
 
@@ -417,6 +423,7 @@ const Chat = () => {
               attachments={msg.attachments}
               userAvatar={userAvatar}
               userName={userName}
+              onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
             />
           ))}
           {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
@@ -454,7 +461,12 @@ const Chat = () => {
         )}
 
         {/* Input */}
-        <ChatInput onSend={(text, atts) => handleSend(text, atts)} disabled={isStreaming || isProcessingPdf} />
+        <ChatInput
+          onSend={(text, atts) => handleSend(text, atts)}
+          disabled={isStreaming || isProcessingPdf}
+          quotedText={quotedText}
+          onClearQuote={() => setQuotedText(null)}
+        />
       </div>
     </div>
   );

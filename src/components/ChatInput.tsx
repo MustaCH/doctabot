@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -12,13 +12,22 @@ export interface ChatAttachment {
 interface ChatInputProps {
   onSend: (message: string, attachments?: ChatAttachment[]) => void;
   disabled?: boolean;
+  quotedText?: string | null;
+  onClearQuote?: () => void;
 }
 
-const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
+const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProps) => {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus textarea when a quote is set
+  useEffect(() => {
+    if (quotedText) {
+      textareaRef.current?.focus();
+    }
+  }, [quotedText]);
 
   const handleSend = () => {
     const trimmed = text.trim();
@@ -77,8 +86,31 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
 
+  // Truncate quoted text for preview
+  const quotePreview = quotedText
+    ? quotedText.length > 120
+      ? quotedText.slice(0, 120) + "…"
+      : quotedText
+    : null;
+
   return (
     <div className="border-t border-border bg-card px-3 py-2 safe-bottom">
+      {/* Quote preview */}
+      {quotePreview && (
+        <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="flex-1 rounded-lg border-l-2 border-primary bg-muted/50 px-3 py-1.5">
+            <p className="text-[11px] font-medium text-primary mb-0.5">Alan</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{quotePreview}</p>
+          </div>
+          <button
+            onClick={onClearQuote}
+            className="mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <div className="flex gap-2 mb-2 px-1 overflow-x-auto">
