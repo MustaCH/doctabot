@@ -1,6 +1,7 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
 
 interface ChatMessageProps {
@@ -40,12 +41,7 @@ const ChatMessage = memo(({ role, content, userAvatar, userName }: ChatMessagePr
         {isUser ? (
           <p className="whitespace-pre-wrap">{content}</p>
         ) : (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:underline prose-img:rounded-xl prose-img:my-2">
-            <ReactMarkdown components={{
-              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-              img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
-            }}>{content}</ReactMarkdown>
-          </div>
+          <AssistantContent content={content} />
         )}
       </div>
     </div>
@@ -53,5 +49,24 @@ const ChatMessage = memo(({ role, content, userAvatar, userName }: ChatMessagePr
 });
 
 ChatMessage.displayName = "ChatMessage";
+
+/** Renders assistant content – detects property cards or falls back to markdown */
+const AssistantContent = memo(({ content }: { content: string }) => {
+  const propertyData = useMemo(() => parsePropertyCard(content), [content]);
+
+  if (propertyData) {
+    return <PropertyCard {...propertyData} />;
+  }
+
+  return (
+    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:underline prose-img:rounded-xl prose-img:my-2">
+      <ReactMarkdown components={{
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+        img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
+      }}>{content}</ReactMarkdown>
+    </div>
+  );
+});
+AssistantContent.displayName = "AssistantContent";
 
 export default ChatMessage;
