@@ -43,19 +43,26 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName }: 
       >
         {/* Attached images */}
         {attachments && attachments.length > 0 && (
-          <div className={`flex flex-wrap gap-1.5 ${content && content !== "(imagen adjunta)" ? "mb-2" : ""}`}>
-            {attachments.map((att, i) => (
-              <img
-                key={i}
-                src={`data:${att.mimeType};base64,${att.base64}`}
-                alt="Adjunto"
-                className="max-w-full max-h-48 rounded-lg object-cover"
-              />
-            ))}
+          <div className={`flex flex-wrap gap-1.5 ${content && content !== "(imagen adjunta)" && content !== "(archivo adjunto)" ? "mb-2" : ""}`}>
+            {attachments.map((att, i) =>
+              att.type === "image" ? (
+                <img
+                  key={i}
+                  src={`data:${att.mimeType};base64,${att.base64}`}
+                  alt="Adjunto"
+                  className="max-w-full max-h-48 rounded-lg object-cover"
+                />
+              ) : (
+                <div key={i} className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                  <span className="text-xs">📄</span>
+                  <span className="text-xs truncate max-w-[150px]">{att.fileName || "archivo"}</span>
+                </div>
+              )
+            )}
           </div>
         )}
         {isUser ? (
-          content !== "(imagen adjunta)" && <p className="whitespace-pre-wrap">{content}</p>
+          content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap">{content}</p>
         ) : (
           <AssistantContent content={content} />
         )}
