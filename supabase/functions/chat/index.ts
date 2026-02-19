@@ -264,10 +264,33 @@ serve(async (req) => {
     const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
     const contextualPrompt = `${SYSTEM_PROMPT}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
 
-    // AI call with tool loop
+    // Build messages for AI, converting attachments to multimodal content
+    const buildAIMessages = (msgs: any[]) => {
+      return msgs.map((m: any) => {
+        if (m.role === "user" && m.attachments?.length) {
+          const content: any[] = [];
+          for (const att of m.attachments) {
+            if (att.type === "image") {
+              content.push({
+                type: "image_url",
+                image_url: { url: `data:${att.mimeType};base64,${att.base64}` },
+              });
+            }
+          }
+          if (m.content && m.content !== "(imagen adjunta)") {
+            content.push({ type: "text", text: m.content });
+          } else if (content.length > 0) {
+            content.push({ type: "text", text: "Analizá esta imagen y describí lo que ves." });
+          }
+          return { role: "user", content };
+        }
+        return { role: m.role, content: m.content };
+      });
+    };
+
     let currentMessages = [
       { role: "system", content: contextualPrompt },
-      ...messages,
+      ...buildAIMessages(messages),
     ];
 
     // First call - non-streaming to handle tool calls
