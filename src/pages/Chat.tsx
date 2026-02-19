@@ -96,6 +96,17 @@ const Chat = () => {
     }
   };
 
+  const handleDeleteConversation = async (id: string) => {
+    // Delete messages first, then conversation
+    await supabase.from("messages").delete().eq("conversation_id", id);
+    await supabase.from("conversations").delete().eq("id", id);
+    if (activeConvId === id) {
+      setActiveConvId(null);
+      setMessages([]);
+    }
+    loadConversations();
+  };
+
   const handleSend = async (text: string) => {
     if (isStreaming) return;
 
@@ -215,6 +226,7 @@ const Chat = () => {
           activeId={activeConvId ?? undefined}
           onSelect={setActiveConvId}
           onNew={handleNewConversation}
+          onDelete={handleDeleteConversation}
         />
       </div>
 
@@ -227,6 +239,7 @@ const Chat = () => {
             activeId={activeConvId ?? undefined}
             onSelect={setActiveConvId}
             onNew={handleNewConversation}
+            onDelete={handleDeleteConversation}
             onClose={() => setSidebarOpen(false)}
           />
         </SheetContent>

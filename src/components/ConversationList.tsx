@@ -1,4 +1,4 @@
-import { MessageSquare, Plus, LogOut } from "lucide-react";
+import { MessageSquare, Plus, LogOut, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,10 +16,11 @@ interface ConversationListProps {
   activeId?: string;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onDelete?: (id: string) => void;
   onClose?: () => void;
 }
 
-const ConversationList = ({ conversations, activeId, onSelect, onNew, onClose }: ConversationListProps) => {
+const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onClose }: ConversationListProps) => {
   const { user, signOut } = useAuth();
 
   return (
@@ -49,18 +50,32 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onClose }:
           </div>
         ) : (
           conversations.map((c) => (
-            <button
+            <div
               key={c.id}
-              onClick={() => { onSelect(c.id); onClose?.(); }}
-              className={`w-full px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+              className={`group flex items-center gap-1 pr-2 transition-colors hover:bg-muted/50 ${
                 c.id === activeId ? "bg-muted" : ""
               }`}
             >
-              <p className="truncate text-sm font-medium">{c.title}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
-              </p>
-            </button>
+              <button
+                onClick={() => { onSelect(c.id); onClose?.(); }}
+                className="flex-1 min-w-0 px-4 py-3 text-left"
+              >
+                <p className="truncate text-sm font-medium">{c.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
+                </p>
+              </button>
+              {onDelete && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                  onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           ))
         )}
       </div>
