@@ -8,7 +8,7 @@ import ChatInput, { type ChatAttachment } from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, UserCircle, ChevronDown } from "lucide-react";
+import { Menu, UserCircle, ChevronDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -29,6 +29,7 @@ const Chat = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
 
   // Scroll listener for floating button
   useEffect(() => {
@@ -212,9 +213,16 @@ const Chat = () => {
       }
 
       // Extract PDF text
-      for (const att of pdfAtts) {
-        const pdfText = await extractPdfText(att.file);
-        pdfTexts.push(`📄 Documento "${att.file.name}":\n${pdfText}`);
+      if (pdfAtts.length > 0) {
+        setIsProcessingPdf(true);
+        try {
+          for (const att of pdfAtts) {
+            const pdfText = await extractPdfText(att.file);
+            pdfTexts.push(`📄 Documento "${att.file.name}":\n${pdfText}`);
+          }
+        } finally {
+          setIsProcessingPdf(false);
+        }
       }
     }
 
@@ -435,8 +443,16 @@ const Chat = () => {
           </button>
         </div>
 
+        {/* PDF processing indicator */}
+        {isProcessingPdf && (
+          <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2 text-xs text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Procesando PDF...
+          </div>
+        )}
+
         {/* Input */}
-        <ChatInput onSend={(text, atts) => handleSend(text, atts)} disabled={isStreaming} />
+        <ChatInput onSend={(text, atts) => handleSend(text, atts)} disabled={isStreaming || isProcessingPdf} />
       </div>
     </div>
   );
