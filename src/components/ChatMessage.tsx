@@ -83,7 +83,7 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
             </div>
           )}
           {isUser ? (
-            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
+            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-all overflow-hidden">{content}</p>
           ) : (
             <AssistantContent content={content} />
           )}
@@ -119,7 +119,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
   }
 
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:underline prose-img:rounded-xl prose-img:my-2">
+    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:underline prose-img:rounded-xl prose-img:my-2 overflow-hidden break-words [word-break:break-word]">
       <ReactMarkdown components={{
         a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
         img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
