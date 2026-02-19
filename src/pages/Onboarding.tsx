@@ -38,7 +38,7 @@ const Onboarding = () => {
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
         <div className="space-y-3 text-center">
           <img src={alanAvatar} alt="Alan" className="mx-auto h-16 w-16" />
-          <h1 className="text-2xl font-bold tracking-tight">¡Bienvenido a Alan! 👋</h1>
+          <h1 className="text-2xl font-bold tracking-tight">¡Bienvenido! 👋</h1>
           <p className="text-sm text-muted-foreground">
             Completá tus datos para comenzar a usar el asistente.
           </p>
