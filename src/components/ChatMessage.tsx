@@ -1,6 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageSquare } from "lucide-react";
+import alanAvatar from "@/assets/alan-avatar.png";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -23,9 +23,10 @@ const ChatMessage = ({ role, content, userAvatar, userName }: ChatMessageProps) 
             </AvatarFallback>
           </>
         ) : (
-          <AvatarFallback className="bg-accent text-accent-foreground text-xs">
-            <MessageSquare className="h-3.5 w-3.5" />
-          </AvatarFallback>
+          <>
+            <AvatarImage src={alanAvatar} alt="Alan" />
+            <AvatarFallback className="bg-accent text-accent-foreground text-xs">A</AvatarFallback>
+          </>
         )}
       </Avatar>
       <div

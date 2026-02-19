@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { MessageSquare } from "lucide-react";
+import alanAvatar from "@/assets/alan-avatar.png";
 
 const Login = () => {
   const { signInWithGoogle } = useAuth();
@@ -10,8 +10,8 @@ const Login = () => {
       <div className="w-full max-w-sm space-y-8 text-center">
         {/* Logo / Branding */}
         <div className="space-y-3">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/25">
-            <MessageSquare className="h-10 w-10 text-primary-foreground" />
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl shadow-lg shadow-primary/25 overflow-hidden">
+            <img src={alanAvatar} alt="Alan" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Alan</h1>
           <p className="text-sm text-muted-foreground">
