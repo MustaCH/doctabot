@@ -1,38 +1,37 @@
 
-## Botón de copiar en respuestas de Alan + Botón flotante de scroll
+## Botón X siempre visible en mobile + Indicador "Procesando PDF..."
 
-### 1. Botón "Copiar" en burbujas de Alan
+### 1. Botón X visible en mobile
 
-Se agrega un botón discreto debajo de cada burbuja de respuesta del asistente que copia el texto plano al portapapeles.
+**Archivo:** `src/components/ChatInput.tsx` (linea 106)
 
-- Aparece al hacer hover en desktop; siempre visible en mobile
-- Usa el icono `Copy` de lucide-react, cambia a `Check` por 2 segundos tras copiar
-- Usa `navigator.clipboard.writeText(content)` para copiar solo el texto sin formato
-- Se posiciona debajo de la burbuja, alineado a la izquierda con un tamano pequeno (`text-xs`)
+Cambiar la clase del boton de eliminar adjunto para que sea visible siempre en mobile y solo con hover en desktop:
 
-**Archivo:** `src/components/ChatMessage.tsx`
-- Importar `Copy`, `Check` de lucide-react y `useState`
-- En el componente `ChatMessage`, cuando `role === "assistant"`, renderizar debajo de la burbuja un boton con el icono y el texto "Copiar"
-- Al hacer click, copiar `content` y cambiar el estado a "copiado" por 2 segundos
+```
+// Antes:
+"opacity-0 group-hover:opacity-100 transition-opacity"
 
-### 2. Botón flotante "Scroll to bottom"
+// Después:
+"opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+```
 
-Se agrega un boton circular flotante que aparece cuando el usuario scrollea hacia arriba y hay contenido nuevo abajo.
+Esto hace que en pantallas menores a `md` (768px) el boton siempre sea visible, y en desktop mantenga el comportamiento hover actual.
+
+### 2. Indicador "Procesando PDF..."
 
 **Archivo:** `src/pages/Chat.tsx`
-- Agregar un estado `showScrollBtn` (boolean, default false)
-- Escuchar el evento `scroll` en `scrollRef.current`:
-  - Si la distancia al fondo (`scrollHeight - scrollTop - clientHeight`) es mayor a 100px, mostrar el boton
-  - Si no, ocultarlo
-- Renderizar un boton circular fijo sobre el area de mensajes (bottom-right, encima del input) con el icono `ChevronDown`
-- Al hacer click, scrollear suavemente al fondo con `scrollTo({ top: scrollHeight, behavior: "smooth" })`
-- Animacion de entrada/salida con `transition-opacity` y `scale`
+
+- Agregar un estado `isProcessingPdf` (boolean, default false)
+- Activarlo (`true`) antes del bucle de extraccion de texto PDF (linea ~208)
+- Desactivarlo (`false`) despues de que termine la extraccion
+- Renderizar un indicador visual encima del input cuando `isProcessingPdf` es true: un pequeno banner con un spinner y el texto "Procesando PDF..." con animacion de aparicion
+- Deshabilitar el boton de envio mientras se procesa (pasando `disabled={isStreaming || isProcessingPdf}` al ChatInput)
+
+El indicador se mostrara como una barra sutil entre el area de mensajes y el input, con un icono de carga animado y texto descriptivo.
 
 ### Resumen de cambios
 
 | Archivo | Cambio |
 |---|---|
-| `src/components/ChatMessage.tsx` | Agregar boton copiar debajo de burbujas del asistente |
-| `src/pages/Chat.tsx` | Agregar estado y logica de scroll + boton flotante |
-
-No se requieren cambios de base de datos ni edge functions.
+| `src/components/ChatInput.tsx` | Cambiar clases del boton X para visibilidad mobile |
+| `src/pages/Chat.tsx` | Agregar estado y UI de "Procesando PDF..." |
