@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { feedbackSend, feedbackAttach, feedbackRemove } from "@/hooks/use-feedback";
 
 export interface ChatAttachment {
   file: File;
@@ -22,6 +23,7 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const handleSend = () => {
     const trimmed = text.trim();
     if ((!trimmed && attachments.length === 0) || disabled) return;
+    feedbackSend();
     onSend(trimmed, attachments.length > 0 ? attachments : undefined);
     setText("");
     setAttachments([]);
@@ -60,10 +62,12 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
       newAttachments.push({ file, previewUrl: URL.createObjectURL(file) });
     }
     setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
+    if (newAttachments.length > 0) feedbackAttach();
     e.target.value = "";
   };
 
   const removeAttachment = (index: number) => {
+    feedbackRemove();
     setAttachments((prev) => {
       const removed = prev[index];
       URL.revokeObjectURL(removed.previewUrl);
