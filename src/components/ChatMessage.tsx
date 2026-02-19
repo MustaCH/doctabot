@@ -109,13 +109,121 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
 
 ChatMessage.displayName = "ChatMessage";
 
+/** Detects if content contains a drafted email/message block */
+function extractDraftBlock(content: string): { intro: string; draft: string; outro: string } | null {
+  // Look for common email/message draft delimiters
+  const patterns = [
+    // --- Asunto: ... --- or similar markdown separator blocks
+    /^([\s\S]*?)(---+\n[\s\S]*?---+\n?)([\s\S]*)$/m,
+    // Triple backtick code blocks
+    /^([\s\S]*?)```(?:email|mensaje|texto|mail)?\n([\s\S]*?)```([\s\S]*)$/m,
+  ];
+
+  for (const pattern of patterns) {
+    const match = content.match(pattern);
+    if (match) {
+      const [, intro, draft, outro] = match;
+      // Only treat as a draft if it's substantial
+      if (draft.trim().length > 30) {
+        return { intro: intro.trim(), draft: draft.trim(), outro: outro.trim() };
+      }
+    }
+  }
+
+  // Detect email-like content: has "Asunto:", "De:", "Para:", or "Subject:"
+  const emailKeywords = /\b(Asunto|Subject|Para|De|To|From|Estimad[ao]|Dear|Saludos|Atentamente|Cordialmente)\b/i;
+  const lines = content.split("\n");
+  
+  // Find a block that looks like an email (multiple lines with email structure)
+  let startIdx = -1;
+  let endIdx = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    if (emailKeywords.test(lines[i]) && startIdx === -1) {
+      // Check this isn't inside a prose explanation
+      const prevLine = lines[i - 1] ?? "";
+      if (!prevLine.endsWith(":") && !prevLine.match(/^\d+\./)) {
+        startIdx = i;
+      }
+    }
+  }
+  
+  if (startIdx > -1) {
+    // Find the end: look for sign-off patterns
+    const signoffPattern = /\b(Saludos|Atentamente|Cordialmente|Regards|Sincerely|Cheers|Un saludo|Hasta pronto)\b/i;
+    for (let i = startIdx; i < lines.length; i++) {
+      if (signoffPattern.test(lines[i])) {
+        // Include a few more lines for the name/signature
+        endIdx = Math.min(i + 3, lines.length - 1);
+        break;
+      }
+    }
+    
+    if (endIdx > startIdx + 2) {
+      const intro = lines.slice(0, startIdx).join("\n").trim();
+      const draft = lines.slice(startIdx, endIdx + 1).join("\n").trim();
+      const outro = lines.slice(endIdx + 1).join("\n").trim();
+      if (draft.length > 50) {
+        return { intro, draft, outro };
+      }
+    }
+  }
+
+  return null;
+}
+
+const CopyableDraft = ({ draft }: { draft: string }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(draft);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+  return (
+    <div className="mt-2 rounded-xl border border-border bg-background overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
+        <span className="text-xs font-medium text-muted-foreground">✉️ Texto listo para copiar</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? "¡Copiado!" : "Copiar"}
+        </button>
+      </div>
+      <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed px-3.5 py-3 text-foreground/90 max-h-72 overflow-y-auto">{draft}</pre>
+    </div>
+  );
+};
+
 /** Renders assistant content – detects property cards or falls back to markdown */
 const AssistantContent = memo(({ content }: { content: string }) => {
   const { agentCode } = useAuth();
   const propertyData = useMemo(() => parsePropertyCard(content), [content]);
+  const draftBlock = useMemo(() => !propertyData ? extractDraftBlock(content) : null, [content, propertyData]);
 
   if (propertyData) {
     return <PropertyCard {...propertyData} agentCode={agentCode} />;
+  }
+
+  if (draftBlock) {
+    return (
+      <div>
+        {draftBlock.intro && (
+          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:underline overflow-hidden break-words [word-break:break-word] mb-2">
+            <ReactMarkdown components={{
+              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+            }}>{draftBlock.intro}</ReactMarkdown>
+          </div>
+        )}
+        <CopyableDraft draft={draftBlock.draft} />
+        {draftBlock.outro && (
+          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 overflow-hidden break-words [word-break:break-word] mt-2">
+            <ReactMarkdown>{draftBlock.outro}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
