@@ -217,7 +217,7 @@ const Chat = () => {
               </div>
               <h2 className="text-lg font-semibold">¡Hola! Soy Alan 👋</h2>
               <p className="max-w-xs text-sm text-muted-foreground">
-                Tu asistente de RE/MAX Argentina. Puedo buscar propiedades, compararlas, guardar favoritos y generar fichas. ¡Preguntame lo que necesites!
+                Tu asistente de RE/MAX Docta. Puedo buscar propiedades, compararlas, guardar favoritos y generar fichas. ¡Preguntame lo que necesites!
               </p>
             </div>
           )}
