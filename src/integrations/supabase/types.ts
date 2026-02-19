@@ -124,6 +124,7 @@ export type Database = {
           title: string | null
           updated_at: string
           url: string | null
+          zone: string | null
         }
         Insert: {
           address?: string | null
@@ -149,6 +150,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           url?: string | null
+          zone?: string | null
         }
         Update: {
           address?: string | null
@@ -174,6 +176,7 @@ export type Database = {
           title?: string | null
           updated_at?: string
           url?: string | null
+          zone?: string | null
         }
         Relationships: []
       }
