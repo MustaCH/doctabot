@@ -421,40 +421,12 @@ serve(async (req) => {
       choice = aiData.choices?.[0];
     }
 
-    // Now stream the final response
-    const finalMessages = [...currentMessages];
+    // If we have a complete response (no tool calls or after tool calls), convert to SSE
     if (choice?.message?.content) {
-      // Already have a complete response, stream it
-      finalMessages.push(choice.message);
-    }
-
-    // Make streaming call for the final answer
-    const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: choice?.finish_reason === "tool_calls" ? currentMessages : [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...messages,
-          ...(choice?.message ? [{ role: "assistant", content: choice.message.content }] : []),
-        ].filter(m => m.role !== "assistant" || m.content),
-        stream: true,
-      }),
-    });
-
-    if (!streamResponse.ok) throw new Error(`Stream error: ${streamResponse.status}`);
-
-    // If we already have a complete non-streamed response, convert it to SSE
-    if (choice?.message?.content && choice.finish_reason !== "tool_calls") {
       const content = choice.message.content;
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          // Send as a single SSE event
           const chunk = JSON.stringify({
             choices: [{ delta: { content }, finish_reason: null }],
           });
@@ -463,11 +435,26 @@ serve(async (req) => {
           controller.close();
         },
       });
-
       return new Response(stream, {
         headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
       });
     }
+
+    // Fallback: stream from AI directly (no tool calls path)
+    const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: currentMessages,
+        stream: true,
+      }),
+    });
+
+    if (!streamResponse.ok) throw new Error(`Stream error: ${streamResponse.status}`);
 
     return new Response(streamResponse.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
