@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const SCRAPE_BASE_URL = "http://qiuautomations-scrapingcba-7uwjyy-33ffaf-31-97-164-164.traefik.me/api/scrape";
@@ -41,31 +41,107 @@ function getZone(lng: number | null, lat: number | null): string | null {
   return null;
 }
 
+function parseNumber(val: any): number | null {
+  if (val == null) return null;
+  if (typeof val === "number") return val;
+  const s = String(val).replace(/[^\d.,\-]/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function parseInteger(val: any): number | null {
+  if (val == null) return null;
+  const s = String(val).replace(/[^\d]/g, "");
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+function buildRecord(prop: any) {
+  const propLat = prop.latitude ?? prop.lat ?? null;
+  const propLng = prop.longitude ?? prop.lng ?? null;
+  // Derive external_id from URL if no explicit id
+  const externalId = String(prop.external_id ?? prop.id ?? prop.url ?? "");
+  return {
+    external_id: externalId || null,
+    title: prop.title ?? null,
+    operation: prop.operation ?? null,
+    price: parseNumber(prop.price),
+    currency: prop.currency ?? null,
+    address: prop.address ?? null,
+    locality: prop.locality ?? null,
+    lat: propLat ? Number(propLat) : null,
+    lng: propLng ? Number(propLng) : null,
+    brokers: prop.brokers ?? null,
+    contact_person: prop.contactPerson ?? prop.contact_person ?? null,
+    office: prop.office ?? null,
+    dimensions_land_m2: parseNumber(prop.dimensionsLand ?? prop.dimensions_land_m2),
+    m2_total: parseNumber(prop.m2Total ?? prop.m2_total),
+    m2_cover: parseNumber(prop.m2Cover ?? prop.m2_cover),
+    ambientes: parseInteger(prop.ambientes),
+    banos: parseInteger(prop.baños ?? prop.banos),
+    property_type: prop.propertyType ?? prop.property_type ?? null,
+    url: prop.url ?? null,
+    photo: Array.isArray(prop.photos) ? prop.photos[0] : (prop.photo ?? null),
+    zone: getZone(propLng ? Number(propLng) : null, propLat ? Number(propLat) : null),
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    console.log("🏠 Starting nightly property scrape...");
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Step 1: Check max pages
-    console.log("📄 Checking max pages...");
-    const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages`);
-    if (!maxPagesRes.ok) throw new Error(`checkMaxPages failed: ${maxPagesRes.status}`);
-    const maxPagesData = await maxPagesRes.json();
-    const maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
-    console.log(`📄 Max pages detected: ${maxPages}`);
+    // Accept optional startPage/endPage from body or query
+    let startPage = 1;
+    let endPage: number | null = null;
 
-    // Step 2: Scrape all pages
+    try {
+      const body = await req.json();
+      if (body.startPage) startPage = Number(body.startPage);
+      if (body.endPage) endPage = Number(body.endPage);
+    } catch { /* no body, use defaults */ }
+
+    // If no endPage specified, check max pages but cap at 10 pages per invocation
+    if (!endPage) {
+      console.log("📄 Checking max pages...");
+      const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages`);
+      if (!maxPagesRes.ok) throw new Error(`checkMaxPages failed: ${maxPagesRes.status}`);
+      const maxPagesData = await maxPagesRes.json();
+      const maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
+      console.log(`📄 Max pages: ${maxPages}`);
+
+      // Cap at 10 pages per invocation to avoid timeout
+      endPage = Math.min(startPage + 9, maxPages);
+      
+      // If there are more pages, schedule the next batch
+      if (endPage < maxPages) {
+        const nextStart = endPage + 1;
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+        console.log(`⏭️ Scheduling next batch: pages ${nextStart}-${Math.min(nextStart + 9, maxPages)}`);
+        // Fire and forget next batch
+        fetch(`${supabaseUrl}/functions/v1/scrape-properties`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${anonKey}`,
+          },
+          body: JSON.stringify({ startPage: nextStart }),
+        }).catch(e => console.error("Failed to schedule next batch:", e));
+      }
+    }
+
+    console.log(`🏠 Scraping pages ${startPage}-${endPage}...`);
+
+    // Scrape pages
     let allProperties: any[] = [];
     const BATCH_SIZE = 5;
     
-    for (let start = 1; start <= maxPages; start += BATCH_SIZE) {
-      const end = Math.min(start + BATCH_SIZE - 1, maxPages);
-      console.log(`🔍 Scraping pages ${start}-${end}...`);
+    for (let start = startPage; start <= endPage; start += BATCH_SIZE) {
+      const end = Math.min(start + BATCH_SIZE - 1, endPage);
+      console.log(`🔍 Fetching pages ${start}-${end}...`);
       
       const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${start}&endPage=${end}`);
       if (!scrapeRes.ok) {
@@ -75,67 +151,47 @@ serve(async (req) => {
       
       const scrapeData = await scrapeRes.json();
       const properties = Array.isArray(scrapeData) ? scrapeData : scrapeData.properties ?? scrapeData.data ?? [];
+      if (allProperties.length === 0 && properties.length > 0) {
+        console.log("📋 Sample property keys:", JSON.stringify(Object.keys(properties[0])));
+        console.log("📋 Sample property:", JSON.stringify(properties[0]).slice(0, 500));
+      }
       allProperties = allProperties.concat(properties);
     }
 
-    console.log(`📦 Total properties scraped: ${allProperties.length}`);
+    console.log(`📦 Properties scraped: ${allProperties.length}`);
 
-    // Step 3: Upsert into database
+    // Build records and batch upsert
+    const records = allProperties
+      .map(buildRecord)
+      .filter(r => r.external_id);
+
     let upserted = 0;
     let errors = 0;
+    const UPSERT_BATCH = 50;
 
-    for (const prop of allProperties) {
-      const propLat = prop.latitude ?? prop.lat ?? null;
-      const propLng = prop.longitude ?? prop.lng ?? null;
-      const record = {
-        external_id: String(prop.external_id ?? prop.id ?? ""),
-        title: prop.title ?? null,
-        operation: prop.operation ?? null,
-        price: prop.price ? Number(prop.price) : null,
-        currency: prop.currency ?? null,
-        address: prop.address ?? null,
-        locality: prop.locality ?? null,
-        lat: propLat,
-        lng: propLng,
-        brokers: prop.brokers ?? null,
-        contact_person: prop.contact_person ?? null,
-        office: prop.office ?? null,
-        dimensions_land_m2: prop.dimensions_land_m2 ? Number(prop.dimensions_land_m2) : null,
-        m2_total: prop.m2_total ? Number(prop.m2_total) : null,
-        m2_cover: prop.m2_cover ? Number(prop.m2_cover) : null,
-        ambientes: prop.ambientes ? Number(prop.ambientes) : null,
-        banos: prop.banos ? Number(prop.banos) : null,
-        property_type: prop.property_type ?? null,
-        url: prop.url ?? null,
-        photo: prop.photo ?? null,
-        zone: getZone(propLng ? Number(propLng) : null, propLat ? Number(propLat) : null),
-      };
-
-      if (!record.external_id) {
-        errors++;
-        continue;
-      }
-
+    for (let i = 0; i < records.length; i += UPSERT_BATCH) {
+      const batch = records.slice(i, i + UPSERT_BATCH);
       const { error } = await supabase
         .from("properties")
-        .upsert(record, { onConflict: "external_id" });
+        .upsert(batch, { onConflict: "external_id" });
 
       if (error) {
-        console.error(`Error upserting ${record.external_id}:`, error.message);
-        errors++;
+        console.error(`Batch upsert error at ${i}:`, error.message);
+        errors += batch.length;
       } else {
-        upserted++;
+        upserted += batch.length;
       }
     }
 
     const result = { 
-      success: true, 
+      success: true,
+      pages: `${startPage}-${endPage}`,
       total_scraped: allProperties.length, 
       upserted, 
       errors,
       timestamp: new Date().toISOString(),
     };
-    console.log("✅ Scrape complete:", result);
+    console.log("✅ Batch complete:", JSON.stringify(result));
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
