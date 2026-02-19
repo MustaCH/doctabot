@@ -142,16 +142,19 @@ const Chat = () => {
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          // Capture values NOW before React batching changes them
+          const snapshot = assistantContent;
+          const startNew = needsNewBubble;
+          if (startNew) needsNewBubble = false;
           setMessages((prev) => {
-            if (needsNewBubble) {
-              needsNewBubble = false;
-              return [...prev, { role: "assistant" as const, content: assistantContent }];
+            if (startNew) {
+              return [...prev, { role: "assistant" as const, content: snapshot }];
             }
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
-              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantContent } : m));
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
             }
-            return [...prev, { role: "assistant" as const, content: assistantContent }];
+            return [...prev, { role: "assistant" as const, content: snapshot }];
           });
         },
         onNewMessage: () => {
