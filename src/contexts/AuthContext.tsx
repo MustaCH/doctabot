@@ -21,45 +21,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
 
-  const checkProfile = useCallback(async (userId: string) => {
+  const checkProfile = useCallback(async (userId: string): Promise<boolean> => {
     try {
       const { data } = await supabase
         .from("profiles")
         .select("id")
         .eq("user_id", userId)
         .maybeSingle();
-      setHasProfile(!!data);
+      return !!data;
     } catch {
-      setHasProfile(false);
+      return false;
     }
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user) await checkProfile(user.id);
+    if (user) {
+      const result = await checkProfile(user.id);
+      setHasProfile(result);
+    }
   }, [user, checkProfile]);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await checkProfile(session.user.id);
-      } else {
-        setHasProfile(false);
-      }
-      setLoading(false);
-    });
+    let mounted = true;
 
+    // Set up auth listener first
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!mounted) return;
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          // Use setTimeout to avoid Supabase deadlock with async in listener
+          setTimeout(async () => {
+            if (!mounted) return;
+            const result = await checkProfile(session.user.id);
+            if (mounted) {
+              setHasProfile(result);
+              setLoading(false);
+            }
+          }, 0);
+        } else {
+          setHasProfile(false);
+          setLoading(false);
+        }
+      }
+    );
+
+    // Then get initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
-        await checkProfile(session.user.id);
+        const result = await checkProfile(session.user.id);
+        if (mounted) setHasProfile(result);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
+    }).catch(() => {
+      if (mounted) setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [checkProfile]);
 
   const signInWithGoogle = async () => {
