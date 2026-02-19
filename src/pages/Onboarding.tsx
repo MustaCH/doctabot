@@ -72,6 +72,27 @@ const Onboarding = () => {
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Guardando..." : "Comenzar"}
         </Button>
+
+        <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-foreground">📲 Instalá la app en tu dispositivo</h2>
+
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <div>
+              <p className="font-medium text-foreground">iPhone / iPad (Safari)</p>
+              <p>Tocá el ícono de compartir <span className="inline-block align-middle">⬆️</span> → <strong>"Agregar a pantalla de inicio"</strong>.</p>
+            </div>
+
+            <div>
+              <p className="font-medium text-foreground">Android (Chrome)</p>
+              <p>Tocá el menú <span className="inline-block align-middle">⋮</span> → <strong>"Instalar aplicación"</strong> o <strong>"Agregar a pantalla de inicio"</strong>.</p>
+            </div>
+
+            <div>
+              <p className="font-medium text-foreground">PC / Mac (Chrome / Edge)</p>
+              <p>Hacé clic en el ícono de instalación en la barra de direcciones o en el menú → <strong>"Instalar Alan"</strong>.</p>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
   );
