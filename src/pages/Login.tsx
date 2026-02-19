@@ -20,7 +20,7 @@ const Login = () => {
           <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <span>Powered by</span>
             <span className="font-semibold" style={{ color: "hsl(var(--accent))" }}>RE/MAX</span>
-            <span>Argentina</span>
+            <span>Docta</span>
           </div>
         </div>
 
