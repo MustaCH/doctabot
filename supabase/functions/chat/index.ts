@@ -25,6 +25,10 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 5. **remove_favorite**: Eliminar una propiedad de favoritos
 6. **generate_report**: Generar una ficha/reporte de una propiedad para compartir con clientes
 
+REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
+- Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
+- Si hay propiedades de RE/MAX Docta y de otras oficinas, mostrá primero las de Docta y luego las demás.
+
 REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
 
 1. **Cantidad**: La herramienta search_properties devuelve "total_count" (total real de propiedades que coinciden) y "showing" (cuántas se muestran). SIEMPRE usá "total_count" para decir cuántas hay disponibles.
@@ -206,6 +210,14 @@ serve(async (req) => {
           
           if (error) return JSON.stringify({ error: error.message });
           if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
+
+          // Sort: RE/MAX Docta properties first
+          data.sort((a: any, b: any) => {
+            const aDocta = a.office?.toLowerCase().includes("docta") ? 0 : 1;
+            const bDocta = b.office?.toLowerCase().includes("docta") ? 0 : 1;
+            return aDocta - bDocta;
+          });
+
           return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
         }
         case "compare_properties": {
