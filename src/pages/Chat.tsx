@@ -107,6 +107,11 @@ const Chat = () => {
     loadConversations();
   };
 
+  const handleRenameConversation = async (id: string, title: string) => {
+    await supabase.from("conversations").update({ title }).eq("id", id);
+    loadConversations();
+  };
+
   const handleSend = async (text: string) => {
     if (isStreaming) return;
 
@@ -227,6 +232,7 @@ const Chat = () => {
           onSelect={setActiveConvId}
           onNew={handleNewConversation}
           onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
         />
       </div>
 
@@ -240,6 +246,7 @@ const Chat = () => {
             onSelect={setActiveConvId}
             onNew={handleNewConversation}
             onDelete={handleDeleteConversation}
+            onRename={handleRenameConversation}
             onClose={() => setSidebarOpen(false)}
           />
         </SheetContent>
