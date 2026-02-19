@@ -97,10 +97,10 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
     <div className="border-t border-border bg-card px-3 py-2 safe-bottom">
       {/* Quote preview */}
       {quotePreview && (
-        <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <div className="flex-1 rounded-lg border-l-2 border-primary bg-muted/50 px-3 py-1.5">
+        <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+          <div className="flex-1 min-w-0 rounded-lg border-l-2 border-primary bg-muted/50 px-3 py-1.5 overflow-hidden">
             <p className="text-[11px] font-medium text-primary mb-0.5">Alan</p>
-            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{quotePreview}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed break-words overflow-hidden">{quotePreview}</p>
           </div>
           <button
             onClick={onClearQuote}
