@@ -173,9 +173,8 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
                 Ver propiedad
               </Button>
             </a>
-            <Button size="sm" variant="outline" className="gap-2" onClick={handleCopy}>
+            <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0" onClick={handleCopy}>
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? "Copiado" : "Copiar"}
             </Button>
           </div>
         )}
