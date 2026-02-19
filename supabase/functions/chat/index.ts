@@ -33,12 +33,14 @@ REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
 
 [Mensaje introductorio con el conteo total]
 ===MSG_BREAK===
+![foto](photo_url)
 🏠 **[Título propiedad 1]**
 💰 Precio: [currency] [precio]
 📍 Ubicación: [dirección], [localidad]
 📐 Superficie: [m2_total] m² totales ([ambientes] amb.)
 🔗 [Ver propiedad]([url])
 ===MSG_BREAK===
+![foto](photo_url_2)
 🏠 **[Título propiedad 2]**
 💰 Precio: ...
 ...
@@ -46,6 +48,7 @@ REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
 [Mensaje de cierre/sugerencia]
 
 IMPORTANTE: Cada ===MSG_BREAK=== genera una burbuja de chat separada. NO uses --- ni otro separador. SOLO ===MSG_BREAK===.
+La foto viene en el campo "photo" de cada propiedad. Si no tiene foto, omití la línea de imagen.
 
 3. **Links**: Los links DEBEN ser markdown válido: [texto](url). La URL viene en el campo "url" de cada propiedad. NUNCA inventes URLs.
 
