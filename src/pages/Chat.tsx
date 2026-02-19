@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
+import * as pdfjsLib from "pdfjs-dist";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput, { type ChatAttachment } from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
@@ -145,6 +146,25 @@ const Chat = () => {
       reader.readAsDataURL(file);
     });
 
+  const extractPdfText = async (file: File): Promise<string> => {
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+        if (pageText.trim()) pages.push(`--- Página ${i} ---\n${pageText}`);
+      }
+      return pages.join("\n\n") || "(No se pudo extraer texto del PDF)";
+    } catch (e) {
+      console.error("PDF extraction error:", e);
+      return "(Error al leer el PDF)";
+    }
+  };
+
   const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
     if (isStreaming) return;
 
@@ -159,28 +179,47 @@ const Chat = () => {
       }
     }
 
-    // Convert files to base64
+    // Process attachments
     let msgAttachments: MsgAttachment[] | undefined;
+    let pdfTexts: string[] = [];
     if (chatAttachments?.length) {
-      msgAttachments = await Promise.all(
-        chatAttachments.map(async (a) => {
-          const isImage = a.file.type.startsWith("image/");
-          return {
-            type: (isImage ? "image" : "file") as "image" | "file",
-            base64: isImage ? await compressImage(a.file) : await fileToBase64(a.file),
-            mimeType: isImage ? "image/jpeg" : a.file.type,
+      const imageAtts = chatAttachments.filter((a) => a.file.type.startsWith("image/"));
+      const pdfAtts = chatAttachments.filter((a) => a.file.type === "application/pdf");
+
+      // Compress images
+      if (imageAtts.length) {
+        msgAttachments = await Promise.all(
+          imageAtts.map(async (a) => ({
+            type: "image" as const,
+            base64: await compressImage(a.file),
+            mimeType: "image/jpeg",
             fileName: a.file.name,
-          };
-        })
-      );
-      if (msgAttachments.length === 0) msgAttachments = undefined;
+          }))
+        );
+      }
+
+      // Extract PDF text
+      for (const att of pdfAtts) {
+        const pdfText = await extractPdfText(att.file);
+        pdfTexts.push(`📄 Documento "${att.file.name}":\n${pdfText}`);
+      }
     }
 
-    const hasImages = msgAttachments?.some((a) => a.type === "image");
-    const fallbackText = hasImages ? "(imagen adjunta)" : "(archivo adjunto)";
+    // Build message content with PDF text inline
+    let messageContent = text;
+    if (pdfTexts.length > 0) {
+      const pdfContext = pdfTexts.join("\n\n");
+      messageContent = text
+        ? `${text}\n\n${pdfContext}`
+        : pdfContext;
+    }
+
+    const hasImages = msgAttachments && msgAttachments.length > 0;
+    const hasPdfs = pdfTexts.length > 0;
+    const fallbackText = hasImages ? "(imagen adjunta)" : hasPdfs ? messageContent : "(archivo adjunto)";
     const userMsg: Msg = {
       role: "user",
-      content: text || fallbackText,
+      content: messageContent || fallbackText,
       attachments: msgAttachments,
     };
     const newMessages = [...messages, userMsg];
@@ -191,7 +230,7 @@ const Chat = () => {
     await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
-      content: text || fallbackText,
+      content: messageContent || fallbackText,
     });
 
     // Update conversation title from first message
