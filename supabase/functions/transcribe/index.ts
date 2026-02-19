@@ -17,11 +17,15 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Convert audio to base64
+    // Convert audio to base64 in chunks to avoid stack overflow
     const arrayBuffer = await audioFile.arrayBuffer();
-    const base64Audio = btoa(
-      String.fromCharCode(...new Uint8Array(arrayBuffer))
-    );
+    const bytes = new Uint8Array(arrayBuffer);
+    const CHUNK = 8192;
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const base64Audio = btoa(binary);
 
     // Use Gemini to transcribe the audio
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
