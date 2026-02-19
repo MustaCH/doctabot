@@ -7,7 +7,8 @@ import ChatInput from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
+import { Menu, UserCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
 
@@ -221,6 +222,7 @@ const Chat = () => {
 
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
+  const navigate = useNavigate();
 
   return (
     <div className="flex h-[100dvh] w-full">
@@ -265,10 +267,18 @@ const Chat = () => {
             <Menu className="h-4.5 w-4.5" />
           </Button>
           <img src={alanAvatar} alt="Alan" className="h-8 w-8 rounded-lg" />
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-semibold">Alan</p>
             <p className="text-xs text-muted-foreground">Asistente inmobiliario</p>
           </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => navigate("/profile")}
+          >
+            <UserCircle className="h-5 w-5" />
+          </Button>
         </div>
 
         {/* Messages */}
