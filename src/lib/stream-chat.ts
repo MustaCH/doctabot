@@ -2,16 +2,20 @@ export type Msg = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
+const MSG_BREAK = "===MSG_BREAK===";
+
 export async function streamChat({
   messages,
   conversationId,
   onDelta,
+  onNewMessage,
   onDone,
   signal,
 }: {
   messages: Msg[];
   conversationId: string;
   onDelta: (text: string) => void;
+  onNewMessage?: () => void;
   onDone: () => void;
   signal?: AbortSignal;
 }) {
@@ -34,6 +38,47 @@ export async function streamChat({
   let buf = "";
   let done = false;
 
+  // Buffer to detect MSG_BREAK across chunks
+  let contentBuffer = "";
+
+  const processContent = (text: string) => {
+    contentBuffer += text;
+    // Check for MSG_BREAK in the buffer
+    while (contentBuffer.includes(MSG_BREAK)) {
+      const idx = contentBuffer.indexOf(MSG_BREAK);
+      const before = contentBuffer.slice(0, idx);
+      if (before.trim()) {
+        onDelta(before);
+      }
+      onNewMessage?.();
+      contentBuffer = contentBuffer.slice(idx + MSG_BREAK.length);
+    }
+    // Emit content that can't contain a partial MSG_BREAK
+    // Keep the last N chars where N = MSG_BREAK.length - 1 in case it's a partial match
+    const safeLen = contentBuffer.length - (MSG_BREAK.length - 1);
+    if (safeLen > 0) {
+      onDelta(contentBuffer.slice(0, safeLen));
+      contentBuffer = contentBuffer.slice(safeLen);
+    }
+  };
+
+  const flushContentBuffer = () => {
+    if (contentBuffer.trim()) {
+      // Final check for MSG_BREAK
+      while (contentBuffer.includes(MSG_BREAK)) {
+        const idx = contentBuffer.indexOf(MSG_BREAK);
+        const before = contentBuffer.slice(0, idx);
+        if (before.trim()) onDelta(before);
+        onNewMessage?.();
+        contentBuffer = contentBuffer.slice(idx + MSG_BREAK.length);
+      }
+      if (contentBuffer.trim()) {
+        onDelta(contentBuffer);
+      }
+    }
+    contentBuffer = "";
+  };
+
   while (!done) {
     const { done: readerDone, value } = await reader.read();
     if (readerDone) break;
@@ -51,7 +96,7 @@ export async function streamChat({
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-        if (content) onDelta(content);
+        if (content) processContent(content);
       } catch {
         buf = line + "\n" + buf;
         break;
@@ -59,7 +104,7 @@ export async function streamChat({
     }
   }
 
-  // Flush remaining
+  // Flush remaining SSE buffer
   if (buf.trim()) {
     for (let raw of buf.split("\n")) {
       if (!raw) continue;
@@ -70,10 +115,11 @@ export async function streamChat({
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-        if (content) onDelta(content);
+        if (content) processContent(content);
       } catch { /* ignore */ }
     }
   }
 
+  flushContentBuffer();
   onDone();
 }
