@@ -131,6 +131,7 @@ const Chat = () => {
 
     let assistantContent = "";
     let allAssistantMessages: string[] = [];
+    let needsNewBubble = false;
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -142,28 +143,30 @@ const Chat = () => {
         onDelta: (chunk) => {
           assistantContent += chunk;
           setMessages((prev) => {
+            if (needsNewBubble) {
+              needsNewBubble = false;
+              return [...prev, { role: "assistant" as const, content: assistantContent }];
+            }
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
               return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantContent } : m));
             }
-            return [...prev, { role: "assistant", content: assistantContent }];
+            return [...prev, { role: "assistant" as const, content: assistantContent }];
           });
         },
         onNewMessage: () => {
-          // Save current content and start a new assistant message
           if (assistantContent.trim()) {
             allAssistantMessages.push(assistantContent.trim());
           }
           assistantContent = "";
+          needsNewBubble = true;
+          // Trim trailing whitespace from last bubble
           setMessages((prev) => {
-            // Trim the last assistant message content, then add placeholder for next
-            const updated = prev.map((m, i) => {
-              if (i === prev.length - 1 && m.role === "assistant") {
-                return { ...m, content: m.content.trim() };
-              }
-              return m;
-            });
-            return updated;
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
+            }
+            return prev;
           });
         },
         onDone: async () => {
