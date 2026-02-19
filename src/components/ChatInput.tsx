@@ -77,10 +77,10 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
 
           if (error) throw error;
           const transcript = data?.text?.trim();
-          if (transcript) {
+          if (transcript && transcript.length >= 2) {
             onSend(transcript);
           } else {
-            toast.error("No se pudo transcribir el audio");
+            toast.error("No se pudo entender el audio. Intentá de nuevo.");
           }
         } catch {
           toast.error("Error al transcribir el audio");
