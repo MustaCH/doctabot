@@ -83,7 +83,7 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
             </div>
           )}
           {isUser ? (
-            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <UserContent content={content} />
+            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-all overflow-hidden">{content}</p>
           ) : (
             <AssistantContent content={content} />
           )}
@@ -108,32 +108,6 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
 });
 
 ChatMessage.displayName = "ChatMessage";
-
-/** Renders user content – detects quoted replies and renders WhatsApp-style */
-const UserContent = memo(({ content }: { content: string }) => {
-  if (content === "(imagen adjunta)" || content === "(archivo adjunto)") return null;
-
-  // Detect blockquote pattern: lines starting with "> " followed by blank line and actual message
-  const quoteMatch = content.match(/^((?:> .+\n?)+)\n\n?([\s\S]*)$/);
-
-  if (quoteMatch) {
-    const quotedRaw = quoteMatch[1].replace(/^> /gm, "").trim();
-    const userText = quoteMatch[2].trim();
-
-    return (
-      <div className="overflow-hidden">
-        <div className="rounded-lg bg-white/15 px-2.5 py-1.5 mb-1.5 border-l-2 border-white/50 overflow-hidden">
-          <p className="text-[11px] font-semibold opacity-80 mb-0.5">Alan</p>
-          <p className="text-xs opacity-75 line-clamp-3 break-words">{quotedRaw}</p>
-        </div>
-        {userText && <p className="whitespace-pre-wrap break-words">{userText}</p>}
-      </div>
-    );
-  }
-
-  return <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>;
-});
-UserContent.displayName = "UserContent";
 
 /** Renders assistant content – detects property cards or falls back to markdown */
 const AssistantContent = memo(({ content }: { content: string }) => {
