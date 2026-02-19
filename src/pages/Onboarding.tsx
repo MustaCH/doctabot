@@ -57,12 +57,12 @@ const Onboarding = () => {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="agentCode">Código de agente</Label>
+            <Label htmlFor="agentCode">Código de asociado</Label>
             <Input
               id="agentCode"
               value={agentCode}
               onChange={(e) => setAgentCode(e.target.value)}
-              placeholder="Ej: RMX-1234"
+              placeholder="Ej: 420401222"
               maxLength={20}
               required
             />
