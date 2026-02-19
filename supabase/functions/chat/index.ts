@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Sos "Alan", un asistente de IA profesional y amigable para agentes inmobiliarios de RE/MAX Argentina.
+const SYSTEM_PROMPT = `Sos "Alan", un asistente de IA profesional y amigable para agentes inmobiliarios de RE/MAX Argentina, especialmente RE/MAX DOCTA de Córdoba.
 
 Tu personalidad:
 - Hablás en español argentino (vos, usás, tenés, etc.)
@@ -14,16 +14,18 @@ Tu personalidad:
 - Usás emojis con moderación para ser más amigable
 - Siempre tratás de ser útil y preciso
 
+Las propiedades de Córdoba Capital están clasificadas en las siguientes zonas: Ruta 20, Nueva Córdoba, Centro, Alberdi, Alta Córdoba, General Paz, Zona Sur y Zona Norte. Cuando un agente mencione una de estas zonas, usá el filtro "zone" en la búsqueda.
+
 Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 
-1. **search_properties**: Buscar propiedades en la base de datos según criterios (ubicación, precio, tipo, ambientes, etc.)
+1. **search_properties**: Buscar propiedades en la base de datos según criterios (zona, ubicación, precio, tipo, ambientes, etc.)
 2. **compare_properties**: Comparar 2 o más propiedades lado a lado
 3. **get_favorites**: Ver las propiedades favoritas del agente
 4. **add_favorite**: Guardar una propiedad como favorita
 5. **remove_favorite**: Eliminar una propiedad de favoritos
 6. **generate_report**: Generar una ficha/reporte de una propiedad para compartir con clientes
 
-Cuando muestres propiedades, incluí siempre: título, precio, ubicación, superficie, ambientes y un link.
+Cuando muestres propiedades, incluí siempre: título, precio, ubicación, zona (si aplica), superficie, ambientes y un link.
 Si el agente pide comparar propiedades, usá una tabla comparativa.
 Si no encontrás resultados, sugerí criterios alternativos.`;
 
@@ -45,11 +47,12 @@ serve(async (req) => {
         type: "function",
         function: {
           name: "search_properties",
-          description: "Buscar propiedades en la base de datos. Puede filtrar por localidad, tipo de operación (venta/alquiler), tipo de propiedad, rango de precio, cantidad de ambientes, etc.",
+          description: "Buscar propiedades en la base de datos. Puede filtrar por localidad, zona de Córdoba Capital, tipo de operación (venta/alquiler), tipo de propiedad, rango de precio, cantidad de ambientes, etc.",
           parameters: {
             type: "object",
             properties: {
               locality: { type: "string", description: "Localidad o barrio (ej: Nueva Córdoba, Alto Alberdi)" },
+              zone: { type: "string", description: "Zona de Córdoba Capital: Ruta 20, Nueva Córdoba, Centro, Alberdi, Alta Córdoba, General Paz, Zona Sur, Zona Norte" },
               operation: { type: "string", description: "Tipo de operación: Venta o Alquiler" },
               property_type: { type: "string", description: "Tipo de propiedad: Departamento, Casa, Terreno, Local, Oficina, etc." },
               min_price: { type: "number", description: "Precio mínimo" },
@@ -147,6 +150,7 @@ serve(async (req) => {
       switch (name) {
         case "search_properties": {
           let query = supabase.from("properties").select("*");
+          if (args.zone) query = query.ilike("zone", `%${args.zone}%`);
           if (args.locality) query = query.ilike("locality", `%${args.locality}%`);
           if (args.operation) query = query.ilike("operation", `%${args.operation}%`);
           if (args.property_type) query = query.ilike("property_type", `%${args.property_type}%`);
