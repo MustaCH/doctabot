@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -52,10 +53,11 @@ ChatMessage.displayName = "ChatMessage";
 
 /** Renders assistant content – detects property cards or falls back to markdown */
 const AssistantContent = memo(({ content }: { content: string }) => {
+  const { agentCode } = useAuth();
   const propertyData = useMemo(() => parsePropertyCard(content), [content]);
 
   if (propertyData) {
-    return <PropertyCard {...propertyData} />;
+    return <PropertyCard {...propertyData} agentCode={agentCode} />;
   }
 
   return (
