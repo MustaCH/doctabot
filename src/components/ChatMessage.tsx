@@ -1,3 +1,4 @@
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -9,7 +10,7 @@ interface ChatMessageProps {
   userName?: string;
 }
 
-const ChatMessage = ({ role, content, userAvatar, userName }: ChatMessageProps) => {
+const ChatMessage = memo(({ role, content, userAvatar, userName }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -49,6 +50,8 @@ const ChatMessage = ({ role, content, userAvatar, userName }: ChatMessageProps) 
       </div>
     </div>
   );
-};
+});
+
+ChatMessage.displayName = "ChatMessage";
 
 export default ChatMessage;
