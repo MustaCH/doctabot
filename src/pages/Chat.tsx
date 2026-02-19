@@ -354,7 +354,7 @@ const Chat = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex h-[100dvh] w-full">
+    <div className="flex h-[100dvh] w-full overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden w-72 shrink-0 border-r border-border md:block">
         <ConversationList
@@ -384,7 +384,7 @@ const Chat = () => {
       </Sheet>
 
       {/* Chat area */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Chat header */}
         <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
           <Button
@@ -411,7 +411,7 @@ const Chat = () => {
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden py-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
               <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />

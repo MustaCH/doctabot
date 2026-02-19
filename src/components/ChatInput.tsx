@@ -86,15 +86,19 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
 
-  // Truncate quoted text for preview
+  // Clean and truncate quoted text for preview
   const quotePreview = quotedText
-    ? quotedText.length > 120
-      ? quotedText.slice(0, 120) + "…"
-      : quotedText
+    ? (() => {
+        let cleaned = quotedText
+          .replace(/!\[.*?\]\(.*?\)/g, "[imagen]")
+          .replace(/https?:\/\/\S{40,}/g, "[enlace]")
+          .replace(/\*\*/g, "");
+        return cleaned.length > 100 ? cleaned.slice(0, 100) + "…" : cleaned;
+      })()
     : null;
 
   return (
-    <div className="border-t border-border bg-card px-3 py-2 safe-bottom">
+    <div className="border-t border-border bg-card px-3 py-2 safe-bottom overflow-hidden">
       {/* Quote preview */}
       {quotePreview && (
         <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
