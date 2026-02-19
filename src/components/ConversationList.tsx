@@ -61,7 +61,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
   return (
     <div className="flex h-full flex-col bg-card">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3 pr-12 md:pr-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
             <MessageSquare className="h-4 w-4 text-accent-foreground" />
