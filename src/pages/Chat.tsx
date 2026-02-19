@@ -12,6 +12,7 @@ import { Menu, UserCircle, ChevronDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
+import { feedbackReceive } from "@/hooks/use-feedback";
 
 interface Conversation {
   id: string;
@@ -306,6 +307,7 @@ const Chat = () => {
         },
         onDone: async () => {
           setIsStreaming(false);
+          feedbackReceive();
           // Collect the last message too
           if (assistantContent.trim()) {
             allAssistantMessages.push(assistantContent.trim());
