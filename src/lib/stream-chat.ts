@@ -1,7 +1,8 @@
 export type MsgAttachment = {
-  type: "image";
+  type: "image" | "file";
   base64: string;
   mimeType: string;
+  fileName?: string;
 };
 
 export type Msg = {

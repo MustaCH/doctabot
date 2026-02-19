@@ -275,12 +275,21 @@ serve(async (req) => {
                 type: "image_url",
                 image_url: { url: `data:${att.mimeType};base64,${att.base64}` },
               });
+            } else if (att.type === "file") {
+              content.push({
+                type: "image_url",
+                image_url: { url: `data:${att.mimeType};base64,${att.base64}` },
+              });
             }
           }
-          if (m.content && m.content !== "(imagen adjunta)") {
+          const fileName = m.attachments.find((a: any) => a.fileName)?.fileName;
+          if (m.content && m.content !== "(imagen adjunta)" && m.content !== "(archivo adjunto)") {
             content.push({ type: "text", text: m.content });
           } else if (content.length > 0) {
-            content.push({ type: "text", text: "Analizá esta imagen y describí lo que ves." });
+            const defaultPrompt = fileName
+              ? `Analizá este archivo "${fileName}" y describí su contenido.`
+              : "Analizá esta imagen y describí lo que ves.";
+            content.push({ type: "text", text: defaultPrompt });
           }
           return { role: "user", content };
         }

@@ -142,20 +142,21 @@ const Chat = () => {
     let msgAttachments: MsgAttachment[] | undefined;
     if (chatAttachments?.length) {
       msgAttachments = await Promise.all(
-        chatAttachments
-          .filter((a) => a.file.type.startsWith("image/"))
-          .map(async (a) => ({
-            type: "image" as const,
-            base64: await fileToBase64(a.file),
-            mimeType: a.file.type,
-          }))
+        chatAttachments.map(async (a) => ({
+          type: (a.file.type.startsWith("image/") ? "image" : "file") as "image" | "file",
+          base64: await fileToBase64(a.file),
+          mimeType: a.file.type,
+          fileName: a.file.name,
+        }))
       );
       if (msgAttachments.length === 0) msgAttachments = undefined;
     }
 
+    const hasImages = msgAttachments?.some((a) => a.type === "image");
+    const fallbackText = hasImages ? "(imagen adjunta)" : "(archivo adjunto)";
     const userMsg: Msg = {
       role: "user",
-      content: text || "(imagen adjunta)",
+      content: text || fallbackText,
       attachments: msgAttachments,
     };
     const newMessages = [...messages, userMsg];
@@ -166,7 +167,7 @@ const Chat = () => {
     await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
-      content: text || "(imagen adjunta)",
+      content: text || fallbackText,
     });
 
     // Update conversation title from first message
