@@ -169,13 +169,24 @@ serve(async (req) => {
       },
     ];
 
-    // Get user_id from auth header
+    // Get user_id and profile from auth header
     const authHeader = req.headers.get("Authorization");
     let userId: string | null = null;
+    let agentName: string | null = null;
+    let agentCode: string | null = null;
     if (authHeader) {
       const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
       const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
       userId = user?.id ?? null;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name, agent_code")
+          .eq("user_id", userId)
+          .single();
+        agentName = profile?.full_name ?? null;
+        agentCode = profile?.agent_code ?? null;
+      }
     }
 
     // UUID validation regex
@@ -315,7 +326,10 @@ serve(async (req) => {
     const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
     const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
-    const contextualPrompt = `${SYSTEM_PROMPT}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+    const agentContext = agentName
+      ? `\n\nEl agente con quien estás hablando se llama **${agentName}**${agentCode ? ` (código: ${agentCode})` : ""}. Dirigite a él/ella por su nombre cuando sea natural. Cuando redactes emails, cartas o cualquier documento en su nombre, usá "${agentName}" como firma automáticamente — nunca dejes un espacio en blanco para el nombre.`
+      : "";
+    const contextualPrompt = `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
 
     // Build messages for AI, converting attachments to multimodal content
     const buildAIMessages = (msgs: any[]) => {
