@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import { toast } from "sonner";
 
 export interface ChatAttachment {
   file: File;
@@ -44,16 +45,21 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
     }
   };
 
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     const newAttachments: ChatAttachment[] = [];
     for (let i = 0; i < Math.min(files.length, 4 - attachments.length); i++) {
       const file = files[i];
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`"${file.name}" es demasiado grande. Máximo 4MB.`);
+        continue;
+      }
       newAttachments.push({ file, previewUrl: URL.createObjectURL(file) });
     }
     setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
-    // Reset input so same file can be re-selected
     e.target.value = "";
   };
 
