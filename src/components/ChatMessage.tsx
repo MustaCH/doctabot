@@ -1,4 +1,4 @@
-import { memo } from "react";
+import React, { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import alanAvatar from "@/assets/alan-avatar.png";
