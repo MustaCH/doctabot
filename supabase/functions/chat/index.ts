@@ -178,38 +178,77 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
+    // UUID validation regex
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Sanitize ILIKE patterns - escape wildcards and limit length
+    const sanitizePattern = (val: unknown): string | null => {
+      if (typeof val !== "string" || val.trim() === "") return null;
+      return val.replace(/[%_\\]/g, "\\$&").slice(0, 100);
+    };
+
+    // Safe numeric validation
+    const safePositiveNumber = (val: unknown): number | null => {
+      const n = Number(val);
+      return typeof val === "number" && isFinite(n) && n >= 0 ? n : null;
+    };
+
+    // Safe integer validation
+    const safePositiveInt = (val: unknown): number | null => {
+      const n = parseInt(String(val));
+      return !isNaN(n) && n >= 0 ? n : null;
+    };
+
+    // Map DB errors to safe messages
+    const safeDbError = (error: any): string => {
+      console.error("Tool DB error:", error?.code, error?.message);
+      if (error?.code === "23505") return "Registro duplicado";
+      if (error?.code === "23503") return "Referencia inválida";
+      if (error?.code?.startsWith("23")) return "Error de validación";
+      return "Error al procesar la solicitud";
+    };
+
     // Execute tool calls
     async function executeTool(name: string, args: any): Promise<string> {
       switch (name) {
         case "search_properties": {
-          // Build base filter (without limit) for counting
+          // Validate and sanitize all inputs
+          const zone = sanitizePattern(args.zone);
+          const locality = sanitizePattern(args.locality);
+          const operation = sanitizePattern(args.operation);
+          const property_type = sanitizePattern(args.property_type);
+          const currency = sanitizePattern(args.currency);
+          const min_price = safePositiveNumber(args.min_price);
+          const max_price = safePositiveNumber(args.max_price);
+          const min_ambientes = safePositiveInt(args.min_ambientes);
+          const max_ambientes = safePositiveInt(args.max_ambientes);
+          const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
+
           let baseQuery = supabase.from("properties").select("*", { count: "exact", head: true });
           let dataQuery = supabase.from("properties").select("*");
-          
+
           const applyFilters = (q: any) => {
-            if (args.zone) q = q.ilike("zone", `%${args.zone}%`);
-            if (args.locality) q = q.ilike("locality", `%${args.locality}%`);
-            if (args.operation) q = q.ilike("operation", `%${args.operation}%`);
-            if (args.property_type) q = q.ilike("property_type", `%${args.property_type}%`);
-            if (args.min_price) q = q.gte("price", args.min_price);
-            if (args.max_price) q = q.lte("price", args.max_price);
-            if (args.currency) q = q.ilike("currency", `%${args.currency}%`);
-            if (args.min_ambientes) q = q.gte("ambientes", args.min_ambientes);
-            if (args.max_ambientes) q = q.lte("ambientes", args.max_ambientes);
+            if (zone) q = q.ilike("zone", `%${zone}%`);
+            if (locality) q = q.ilike("locality", `%${locality}%`);
+            if (operation) q = q.ilike("operation", `%${operation}%`);
+            if (property_type) q = q.ilike("property_type", `%${property_type}%`);
+            if (min_price !== null) q = q.gte("price", min_price);
+            if (max_price !== null) q = q.lte("price", max_price);
+            if (currency) q = q.ilike("currency", `%${currency}%`);
+            if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
+            if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
             return q;
           };
-          
+
           baseQuery = applyFilters(baseQuery);
           dataQuery = applyFilters(dataQuery);
-          
-          const limit = args.limit ?? 5;
           dataQuery = dataQuery.limit(limit);
-          
+
           const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
           const totalCount = countResult.count ?? 0;
           const { data, error } = dataResult;
-          
-          if (error) return JSON.stringify({ error: error.message });
+
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
 
           // Sort: RE/MAX Docta properties first
@@ -222,8 +261,13 @@ serve(async (req) => {
           return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
         }
         case "compare_properties": {
-          const { data, error } = await supabase.from("properties").select("*").in("id", args.property_ids);
-          if (error) return JSON.stringify({ error: error.message });
+          if (!Array.isArray(args.property_ids) || args.property_ids.length === 0) {
+            return JSON.stringify({ error: "IDs de propiedades inválidos" });
+          }
+          const validIds = args.property_ids.filter((id: unknown) => typeof id === "string" && uuidRegex.test(id));
+          if (validIds.length === 0) return JSON.stringify({ error: "IDs de propiedades inválidos" });
+          const { data, error } = await supabase.from("properties").select("*").in("id", validIds);
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ properties: data });
         }
         case "get_favorites": {
@@ -232,24 +276,33 @@ serve(async (req) => {
             .from("favorites")
             .select("property_id, properties(*)")
             .eq("user_id", userId);
-          if (error) return JSON.stringify({ error: error.message });
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ favorites: data });
         }
         case "add_favorite": {
           if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          if (!args.property_id || !uuidRegex.test(args.property_id)) {
+            return JSON.stringify({ error: "ID de propiedad inválido" });
+          }
           const { error } = await supabase.from("favorites").insert({ user_id: userId, property_id: args.property_id });
-          if (error) return JSON.stringify({ error: error.message });
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ success: true, message: "Propiedad agregada a favoritos" });
         }
         case "remove_favorite": {
           if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          if (!args.property_id || !uuidRegex.test(args.property_id)) {
+            return JSON.stringify({ error: "ID de propiedad inválido" });
+          }
           const { error } = await supabase.from("favorites").delete().eq("user_id", userId).eq("property_id", args.property_id);
-          if (error) return JSON.stringify({ error: error.message });
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ success: true, message: "Propiedad eliminada de favoritos" });
         }
         case "generate_report": {
+          if (!args.property_id || !uuidRegex.test(args.property_id)) {
+            return JSON.stringify({ error: "ID de propiedad inválido" });
+          }
           const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
-          if (error) return JSON.stringify({ error: error.message });
+          if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con clientes. Incluí todos los datos relevantes de forma organizada." });
         }
         default:
@@ -407,7 +460,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "Error al procesar la solicitud" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
