@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { MessageSquare, Plus, LogOut, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -28,12 +28,34 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete?: (id: string) => void;
+  onRename?: (id: string, title: string) => void;
   onClose?: () => void;
 }
 
-const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onClose }: ConversationListProps) => {
+const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onRename, onClose }: ConversationListProps) => {
   const { user, signOut } = useAuth();
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId) editInputRef.current?.focus();
+  }, [editingId]);
+
+  const startEditing = (c: Conversation) => {
+    setEditingId(c.id);
+    setEditTitle(c.title);
+  };
+
+  const confirmEdit = () => {
+    if (editingId && editTitle.trim()) {
+      onRename?.(editingId, editTitle.trim());
+    }
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => setEditingId(null);
 
   return (
     <div className="flex h-full flex-col bg-card">
@@ -68,24 +90,54 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                 c.id === activeId ? "bg-muted" : ""
               }`}
             >
-              <button
-                onClick={() => { onSelect(c.id); onClose?.(); }}
-                className="flex-1 min-w-0 px-4 py-3 text-left"
-              >
-                <p className="truncate text-sm font-medium">{c.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
-                </p>
-              </button>
-              {onDelete && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+              {editingId === c.id ? (
+                <div className="flex flex-1 items-center gap-1 px-2 py-2">
+                  <input
+                    ref={editInputRef}
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") cancelEdit(); }}
+                    className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary" onClick={confirmEdit}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground" onClick={cancelEdit}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => { onSelect(c.id); onClose?.(); }}
+                    className="flex-1 min-w-0 px-4 py-3 text-left"
+                  >
+                    <p className="truncate text-sm font-medium">{c.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
+                    </p>
+                  </button>
+                  {onRename && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                      onClick={(e) => { e.stopPropagation(); startEditing(c); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {onDelete && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           ))
