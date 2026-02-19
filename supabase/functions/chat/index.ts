@@ -327,7 +327,15 @@ serve(async (req) => {
     const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
     const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
     const agentContext = agentName
-      ? `\n\n## IDENTIDAD DEL AGENTE HUMANO\nVos (Alan, el asistente IA) estás asistiendo al agente inmobiliario **${agentName}**${agentCode ? ` (código de asociado: ${agentCode})` : ""}. Recordá: vos sos el asistente IA llamado Alan, y **${agentName}** es el agente humano real que usa la app.\n\nREGLAS CRÍTICAS:\n- Dirigite al agente por su nombre (${agentName}) cuando sea natural en la conversación.\n- Cuando redactes emails, cartas, fichas o cualquier documento en nombre del agente, la firma SIEMPRE debe ser "${agentName}".\n- NUNCA uses "Alan" como firma en documentos — Alan es tu nombre como IA, no el del agente.\n- NUNCA dejes espacios en blanco como "[Tu Nombre]" o "[Nombre del Agente]" — siempre completá con "${agentName}".`
+      ? `\n\n## IDENTIDAD DEL AGENTE HUMANO
+Vos (Alan, el asistente IA) estás asistiendo al agente inmobiliario **${agentName}**${agentCode ? ` (código de asociado RE/MAX: ${agentCode})` : ""}. Recordá: vos sos el asistente IA llamado Alan, y **${agentName}** es el agente humano real que usa la app.
+
+REGLAS CRÍTICAS — INCUMPLIRLAS ES UN ERROR GRAVE:
+1. Cuando redactes emails, mensajes de WhatsApp, cartas, fichas o cualquier texto en nombre del agente, la firma SIEMPRE debe ser "${agentName}". NUNCA uses "Alan" como firma.
+2. NUNCA dejes placeholders vacíos como "[Tu Nombre]", "[Nombre del Agente]", "[Tu nombre]", "[nombre]" — siempre completá con el valor real: "${agentName}".
+3. NUNCA uses frases como "Soy [Tu Nombre]" — siempre escribí "Soy ${agentName}".
+4. ${agentCode ? `Cuando incluyas links a propiedades en emails o mensajes, SIEMPRE agregá el parámetro "?associate=${agentCode}" al final de cada URL de propiedad para asegurar la atribución. Ejemplo: si la URL es "https://remax.com.ar/propiedades/123", el link DEBE ser "https://remax.com.ar/propiedades/123?associate=${agentCode}".` : ""}
+5. Dirigite al agente por su nombre (${agentName}) cuando sea natural y amigable en la conversación.`
       : "";
     const contextualPrompt = `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
 
@@ -422,15 +430,28 @@ serve(async (req) => {
     }
 
     // If we have a complete response (no tool calls or after tool calls), convert to SSE
+    // Split by MSG_BREAK and send each segment as a separate SSE event with a special separator event
     if (choice?.message?.content) {
       const content = choice.message.content;
       const encoder = new TextEncoder();
+      const MSG_BREAK = "===MSG_BREAK===";
+      const segments = content.split(MSG_BREAK).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
       const stream = new ReadableStream({
         start(controller) {
-          const chunk = JSON.stringify({
-            choices: [{ delta: { content }, finish_reason: null }],
-          });
-          controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+          for (let i = 0; i < segments.length; i++) {
+            // Send content chunk for this segment
+            const chunk = JSON.stringify({
+              choices: [{ delta: { content: segments[i] }, finish_reason: null }],
+            });
+            controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+            // If not the last segment, send a MSG_BREAK marker
+            if (i < segments.length - 1) {
+              const breakChunk = JSON.stringify({
+                choices: [{ delta: { content: MSG_BREAK }, finish_reason: null }],
+              });
+              controller.enqueue(encoder.encode(`data: ${breakChunk}\n\n`));
+            }
+          }
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         },
