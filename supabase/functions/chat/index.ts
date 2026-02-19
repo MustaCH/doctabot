@@ -327,7 +327,7 @@ serve(async (req) => {
     const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
     const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
     const agentContext = agentName
-      ? `\n\nEl agente con quien estás hablando se llama **${agentName}**${agentCode ? ` (código: ${agentCode})` : ""}. Dirigite a él/ella por su nombre cuando sea natural. Cuando redactes emails, cartas o cualquier documento en su nombre, usá "${agentName}" como firma automáticamente — nunca dejes un espacio en blanco para el nombre.`
+      ? `\n\n## IDENTIDAD DEL AGENTE HUMANO\nVos (Alan, el asistente IA) estás asistiendo al agente inmobiliario **${agentName}**${agentCode ? ` (código de asociado: ${agentCode})` : ""}. Recordá: vos sos el asistente IA llamado Alan, y **${agentName}** es el agente humano real que usa la app.\n\nREGLAS CRÍTICAS:\n- Dirigite al agente por su nombre (${agentName}) cuando sea natural en la conversación.\n- Cuando redactes emails, cartas, fichas o cualquier documento en nombre del agente, la firma SIEMPRE debe ser "${agentName}".\n- NUNCA uses "Alan" como firma en documentos — Alan es tu nombre como IA, no el del agente.\n- NUNCA dejes espacios en blanco como "[Tu Nombre]" o "[Nombre del Agente]" — siempre completá con "${agentName}".`
       : "";
     const contextualPrompt = `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
 
