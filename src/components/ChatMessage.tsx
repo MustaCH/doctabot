@@ -4,7 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Reply } from "lucide-react";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
 interface ChatMessageProps {
@@ -13,6 +13,7 @@ interface ChatMessageProps {
   attachments?: MsgAttachment[];
   userAvatar?: string;
   userName?: string;
+  onReply?: (content: string) => void;
 }
 
 const CopyButton = ({ content }: { content: string }) => {
@@ -33,7 +34,7 @@ const CopyButton = ({ content }: { content: string }) => {
   );
 };
 
-const ChatMessage = memo(({ role, content, attachments, userAvatar, userName }: ChatMessageProps) => {
+const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -87,7 +88,20 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName }: 
             <AssistantContent content={content} />
           )}
         </div>
-        {!isUser && <CopyButton content={content} />}
+        {!isUser && (
+          <div className="flex items-center gap-2">
+            <CopyButton content={content} />
+            {onReply && (
+              <button
+                onClick={() => onReply(content)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
+              >
+                <Reply className="h-3 w-3" />
+                Citar
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
