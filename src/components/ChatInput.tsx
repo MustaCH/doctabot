@@ -1,21 +1,29 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, Paperclip, X } from "lucide-react";
+
+export interface ChatAttachment {
+  file: File;
+  previewUrl: string;
+}
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, attachments?: ChatAttachment[]) => void;
   disabled?: boolean;
 }
 
 const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
+    if ((!trimmed && attachments.length === 0) || disabled) return;
+    onSend(trimmed, attachments.length > 0 ? attachments : undefined);
     setText("");
+    setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -36,9 +44,78 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newAttachments: ChatAttachment[] = [];
+    for (let i = 0; i < Math.min(files.length, 4 - attachments.length); i++) {
+      const file = files[i];
+      newAttachments.push({ file, previewUrl: URL.createObjectURL(file) });
+    }
+    setAttachments((prev) => [...prev, ...newAttachments].slice(0, 4));
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => {
+      const removed = prev[index];
+      URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const hasContent = text.trim().length > 0 || attachments.length > 0;
+
   return (
     <div className="border-t border-border bg-card px-3 py-2 safe-bottom">
+      {/* Attachment previews */}
+      {attachments.length > 0 && (
+        <div className="flex gap-2 mb-2 px-1 overflow-x-auto">
+          {attachments.map((att, i) => (
+            <div key={i} className="relative shrink-0 group">
+              {att.file.type.startsWith("image/") ? (
+                <img
+                  src={att.previewUrl}
+                  alt={att.file.name}
+                  className="h-16 w-16 rounded-lg object-cover border border-border"
+                />
+              ) : (
+                <div className="h-16 w-16 rounded-lg border border-border bg-muted flex items-center justify-center">
+                  <span className="text-[10px] text-muted-foreground text-center px-1 truncate">
+                    {att.file.name.split(".").pop()?.toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={() => removeAttachment(i)}
+                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-2">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-10 w-10 shrink-0 rounded-xl"
+          disabled={disabled || attachments.length >= 4}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="h-4.5 w-4.5" />
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+          multiple
+          className="hidden"
+          onChange={handleFileSelect}
+        />
         <textarea
           ref={textareaRef}
           value={text}
@@ -53,7 +130,7 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
         <Button
           size="icon"
           onClick={handleSend}
-          disabled={!text.trim() || disabled}
+          disabled={!hasContent || disabled}
           className="h-10 w-10 shrink-0 rounded-xl"
         >
           <SendHorizontal className="h-4.5 w-4.5" />

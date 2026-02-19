@@ -4,15 +4,17 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
+import type { MsgAttachment } from "@/lib/stream-chat";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
+  attachments?: MsgAttachment[];
   userAvatar?: string;
   userName?: string;
 }
 
-const ChatMessage = memo(({ role, content, userAvatar, userName }: ChatMessageProps) => {
+const ChatMessage = memo(({ role, content, attachments, userAvatar, userName }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -39,8 +41,21 @@ const ChatMessage = memo(({ role, content, userAvatar, userName }: ChatMessagePr
             : "bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))] rounded-tl-md"
         }`}
       >
+        {/* Attached images */}
+        {attachments && attachments.length > 0 && (
+          <div className={`flex flex-wrap gap-1.5 ${content && content !== "(imagen adjunta)" ? "mb-2" : ""}`}>
+            {attachments.map((att, i) => (
+              <img
+                key={i}
+                src={`data:${att.mimeType};base64,${att.base64}`}
+                alt="Adjunto"
+                className="max-w-full max-h-48 rounded-lg object-cover"
+              />
+            ))}
+          </div>
+        )}
         {isUser ? (
-          <p className="whitespace-pre-wrap">{content}</p>
+          content !== "(imagen adjunta)" && <p className="whitespace-pre-wrap">{content}</p>
         ) : (
           <AssistantContent content={content} />
         )}

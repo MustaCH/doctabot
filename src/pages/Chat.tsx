@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { streamChat, type Msg } from "@/lib/stream-chat";
+import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
 import ChatMessage from "@/components/ChatMessage";
-import ChatInput from "@/components/ChatInput";
+import ChatInput, { type ChatAttachment } from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,18 @@ const Chat = () => {
     loadConversations();
   };
 
-  const handleSend = async (text: string) => {
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1]); // strip data:...;base64,
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
     if (isStreaming) return;
 
     let convId = activeConvId;
@@ -127,7 +138,26 @@ const Chat = () => {
       }
     }
 
-    const userMsg: Msg = { role: "user", content: text };
+    // Convert files to base64
+    let msgAttachments: MsgAttachment[] | undefined;
+    if (chatAttachments?.length) {
+      msgAttachments = await Promise.all(
+        chatAttachments
+          .filter((a) => a.file.type.startsWith("image/"))
+          .map(async (a) => ({
+            type: "image" as const,
+            base64: await fileToBase64(a.file),
+            mimeType: a.file.type,
+          }))
+      );
+      if (msgAttachments.length === 0) msgAttachments = undefined;
+    }
+
+    const userMsg: Msg = {
+      role: "user",
+      content: text || "(imagen adjunta)",
+      attachments: msgAttachments,
+    };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setIsStreaming(true);
@@ -136,7 +166,7 @@ const Chat = () => {
     await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
-      content: text,
+      content: text || "(imagen adjunta)",
     });
 
     // Update conversation title from first message
@@ -297,6 +327,7 @@ const Chat = () => {
               key={i}
               role={msg.role}
               content={msg.content}
+              attachments={msg.attachments}
               userAvatar={userAvatar}
               userName={userName}
             />
@@ -316,7 +347,7 @@ const Chat = () => {
         </div>
 
         {/* Input */}
-        <ChatInput onSend={handleSend} disabled={isStreaming} />
+        <ChatInput onSend={(text, atts) => handleSend(text, atts)} disabled={isStreaming} />
       </div>
     </div>
   );

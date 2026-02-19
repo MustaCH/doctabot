@@ -1,4 +1,14 @@
-export type Msg = { role: "user" | "assistant"; content: string };
+export type MsgAttachment = {
+  type: "image";
+  base64: string;
+  mimeType: string;
+};
+
+export type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  attachments?: MsgAttachment[];
+};
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
@@ -38,12 +48,10 @@ export async function streamChat({
   let buf = "";
   let done = false;
 
-  // Buffer to detect MSG_BREAK across chunks
   let contentBuffer = "";
 
   const processContent = (text: string) => {
     contentBuffer += text;
-    // Check for MSG_BREAK in the buffer
     while (contentBuffer.includes(MSG_BREAK)) {
       const idx = contentBuffer.indexOf(MSG_BREAK);
       const before = contentBuffer.slice(0, idx);
@@ -53,8 +61,6 @@ export async function streamChat({
       onNewMessage?.();
       contentBuffer = contentBuffer.slice(idx + MSG_BREAK.length);
     }
-    // Emit content that can't contain a partial MSG_BREAK
-    // Keep the last N chars where N = MSG_BREAK.length - 1 in case it's a partial match
     const safeLen = contentBuffer.length - (MSG_BREAK.length - 1);
     if (safeLen > 0) {
       onDelta(contentBuffer.slice(0, safeLen));
@@ -64,7 +70,6 @@ export async function streamChat({
 
   const flushContentBuffer = () => {
     if (contentBuffer.trim()) {
-      // Final check for MSG_BREAK
       while (contentBuffer.includes(MSG_BREAK)) {
         const idx = contentBuffer.indexOf(MSG_BREAK);
         const before = contentBuffer.slice(0, idx);
@@ -104,7 +109,6 @@ export async function streamChat({
     }
   }
 
-  // Flush remaining SSE buffer
   if (buf.trim()) {
     for (let raw of buf.split("\n")) {
       if (!raw) continue;
