@@ -1,0 +1,7 @@
+project_id = "pulaeosldsfcgyotolxa"
+
+[functions.chat]
+verify_jwt = false
+
+[functions.scrape-properties]
+verify_jwt = false
