@@ -7,8 +7,9 @@ import ChatInput from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, MessageSquare } from "lucide-react";
+import { Menu } from "lucide-react";
 import { toast } from "sonner";
+import alanAvatar from "@/assets/alan-avatar.png";
 
 interface Conversation {
   id: string;
@@ -199,9 +200,7 @@ const Chat = () => {
           >
             <Menu className="h-4.5 w-4.5" />
           </Button>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
-            <MessageSquare className="h-4 w-4 text-accent-foreground" />
-          </div>
+          <img src={alanAvatar} alt="Alan" className="h-8 w-8 rounded-lg" />
           <div>
             <p className="text-sm font-semibold">Alan</p>
             <p className="text-xs text-muted-foreground">Asistente inmobiliario</p>
@@ -212,9 +211,7 @@ const Chat = () => {
         <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-                <MessageSquare className="h-8 w-8 text-accent" />
-              </div>
+              <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />
               <h2 className="text-lg font-semibold">¡Hola! Soy Alan 👋</h2>
               <p className="max-w-xs text-sm text-muted-foreground">
                 Tu asistente de RE/MAX Docta. Puedo buscar propiedades, compararlas, guardar favoritos y generar fichas. ¡Preguntame lo que necesites!
@@ -232,9 +229,7 @@ const Chat = () => {
           ))}
           {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
             <div className="flex gap-2.5 px-4 py-1.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent">
-                <MessageSquare className="h-3.5 w-3.5 text-accent-foreground" />
-              </div>
+              <img src={alanAvatar} alt="Alan" className="h-7 w-7 rounded-full mt-1" />
               <div className="rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
                 <div className="flex gap-1">
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:0ms]" />
