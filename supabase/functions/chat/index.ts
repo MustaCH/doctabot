@@ -354,10 +354,14 @@ Cuando redactés cualquier borrador (email, WhatsApp, mensaje, carta), la firma 
 Ejemplo correcto: "Hola, soy ${agentName} de RE/MAX Docta." / "¡Saludos! ${agentName}"
 PROHIBIDO: "[Tu Nombre]", "[Nombre del Agente]", "Soy Alan" — NUNCA uses estas formas.
 
-**REGLA 2 — URLs CON ATRIBUCIÓN:**${agentCode ? `
-Cuando incluyas links a propiedades en borradores, SIEMPRE agregá ?associate=${agentCode} al final.
+**REGLA 2 — URLs CON ATRIBUCIÓN (APLICA EN ABSOLUTAMENTE TODOS LOS MENSAJES):**${agentCode ? `
+Cada vez que incluyas una URL de propiedad (remax.com.ar, cualquier portal inmobiliario) en CUALQUIER parte de tu respuesta — ya sea en borradores, en el chat normal, en fichas, en comparaciones, en CUALQUIER lugar — SIEMPRE debés agregar ?associate=${agentCode} al final.
+Esta regla aplica sin excepción, dentro o fuera de <<<DRAFT_START>>>.
 Correcto: https://www.remax.com.ar/listings/ejemplo?associate=${agentCode}
-Incorrecto: https://www.remax.com.ar/listings/ejemplo (sin el parámetro)` : ""}
+Correcto en markdown: [Ver propiedad](https://www.remax.com.ar/listings/ejemplo?associate=${agentCode})
+INCORRECTO (PROHIBIDO): https://www.remax.com.ar/listings/ejemplo
+INCORRECTO (PROHIBIDO): [Ver propiedad](https://www.remax.com.ar/listings/ejemplo)
+Si la URL ya tiene parámetros (?algo=valor), agregá &associate=${agentCode} al final.` : ""}
 
 **REGLA 3 — FORMATO DE BORRADORES:**
 Usá SIEMPRE los marcadores <<<DRAFT_START>>> y <<<DRAFT_END>>> para delimitar el borrador (solos en su línea).

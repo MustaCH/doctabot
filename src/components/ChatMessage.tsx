@@ -7,6 +7,24 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply } from "lucide-react";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
+/** Inject ?associate=agentCode into any property URL that doesn't already have it */
+function injectAssociate(text: string, agentCode: string | null): string {
+  if (!agentCode) return text;
+  return text.replace(
+    /(https?:\/\/[^\s"')>\]]+)/g,
+    (url) => {
+      if (!/remax\.com\.ar|zonaprop\.com|argenprop\.com|inmuebles\.mercadolibre/i.test(url)) return url;
+      // Strip trailing punctuation captured accidentally
+      const trailingMatch = url.match(/([.,;!?)\]]+)$/);
+      const trailing = trailingMatch ? trailingMatch[1] : "";
+      const cleanUrl = trailing ? url.slice(0, -trailing.length) : url;
+      if (cleanUrl.includes(`associate=`)) return url; // already has associate param
+      const sep = cleanUrl.includes("?") ? "&" : "?";
+      return `${cleanUrl}${sep}associate=${encodeURIComponent(agentCode)}${trailing}`;
+    }
+  );
+}
+
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
@@ -155,8 +173,9 @@ const CopyableDraft = ({ draft }: { draft: string }) => {
 /** Renders assistant content – detects property cards or falls back to markdown */
 const AssistantContent = memo(({ content }: { content: string }) => {
   const { agentCode } = useAuth();
-  const propertyData = useMemo(() => parsePropertyCard(content), [content]);
-  const draftBlock = useMemo(() => !propertyData ? extractDraftBlock(content) : null, [content, propertyData]);
+  const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
+  const propertyData = useMemo(() => parsePropertyCard(processedContent), [processedContent]);
+  const draftBlock = useMemo(() => !propertyData ? extractDraftBlock(processedContent) : null, [processedContent, propertyData]);
 
   if (propertyData) {
     return <PropertyCard {...propertyData} agentCode={agentCode} />;
@@ -187,7 +206,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
       <ReactMarkdown components={{
         a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
         img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
-      }}>{content}</ReactMarkdown>
+      }}>{processedContent}</ReactMarkdown>
     </div>
   );
 });
