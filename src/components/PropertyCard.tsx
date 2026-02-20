@@ -132,6 +132,17 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
               RE/MAX Docta
             </Badge>
           )}
+          {canFavorite && (
+            <button
+              onClick={toggle}
+              disabled={favLoading}
+              className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm transition-colors hover:bg-black/50"
+            >
+              <Heart
+                className={`h-3.5 w-3.5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-white"}`}
+              />
+            </button>
+          )}
         </div>
       ) : (
         <div className="relative flex aspect-video w-full items-center justify-center bg-muted">
@@ -141,6 +152,17 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
               <BadgeCheck className="h-3 w-3" />
               RE/MAX Docta
             </Badge>
+          )}
+          {canFavorite && (
+            <button
+              onClick={toggle}
+              disabled={favLoading}
+              className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/10 dark:bg-white/10 backdrop-blur-sm transition-colors hover:bg-black/20"
+            >
+              <Heart
+                className={`h-3.5 w-3.5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
+              />
+            </button>
           )}
         </div>
       )}
@@ -187,19 +209,6 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             >
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
-            {canFavorite && (
-              <Button
-                size="sm"
-                variant="outline"
-                className={`h-9 w-9 p-0 shrink-0 transition-colors ${isFavorite ? "border-red-400 bg-red-50 dark:bg-red-950/30" : ""}`}
-                onClick={toggle}
-                disabled={favLoading}
-              >
-                <Heart
-                  className={`h-3.5 w-3.5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
-                />
-              </Button>
-            )}
           </div>
         )}
       </div>
