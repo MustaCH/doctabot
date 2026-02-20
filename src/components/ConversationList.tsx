@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X, Heart } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X } from "lucide-react";
 import SwipeableConversationItem from "@/components/SwipeableConversationItem";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,7 +37,6 @@ interface ConversationListProps {
 
 const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onRename, onClose }: ConversationListProps) => {
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -179,9 +177,6 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
             <p className="truncate text-sm font-medium">{user?.user_metadata?.full_name ?? "Usuario"}</p>
             <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
           </div>
-          <Button size="icon" variant="ghost" onClick={() => navigate("/favorites")} className="h-8 w-8 shrink-0" title="Mis favoritos">
-            <Heart className="h-4 w-4 fill-destructive text-destructive" />
-          </Button>
           <Button size="icon" variant="ghost" onClick={signOut} className="h-8 w-8 shrink-0">
             <LogOut className="h-4 w-4" />
           </Button>
