@@ -776,11 +776,35 @@ serve(async (req) => {
           const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
           if (!startStr) return JSON.stringify({ error: "La fecha de inicio es requerida" });
 
+          // Normalize a datetime string to full ISO format in Argentina time (UTC-3)
+          const normalizeDatetime = (raw: string): Date | null => {
+            if (!raw) return null;
+            // Already has timezone info
+            if (raw.includes("+") || raw.endsWith("Z")) {
+              const d = new Date(raw);
+              return isNaN(d.getTime()) ? null : d;
+            }
+            // Has date and time (e.g. "2026-02-20T16:00" or "2026-02-20 16:00")
+            const withTz = raw.replace(" ", "T") + "-03:00";
+            const d = new Date(withTz);
+            if (!isNaN(d.getTime())) return d;
+            // Only time provided (e.g. "16:00") — combine with today in Argentina
+            const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
+            const dateStr = nowArg.toISOString().slice(0, 10);
+            const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+            if (timeMatch) {
+              const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2,"0")}:${timeMatch[2]}:00-03:00`);
+              return isNaN(d2.getTime()) ? null : d2;
+            }
+            return null;
+          };
+
           // Parse start and compute end (+1h if not provided)
-          const startDate = new Date(startStr.includes("+") || startStr.includes("Z") ? startStr : startStr + "-03:00");
-          const endDate = args.end_datetime
-            ? new Date((args.end_datetime as string).includes("+") || (args.end_datetime as string).includes("Z") ? args.end_datetime : args.end_datetime + "-03:00")
-            : new Date(startDate.getTime() + 60 * 60 * 1000);
+          const startDate = normalizeDatetime(startStr);
+          if (!startDate) return JSON.stringify({ error: `Fecha de inicio inválida: '${startStr}'. Usá formato ISO como '2026-02-20T16:00'.` });
+
+          const endDateRaw = args.end_datetime ? normalizeDatetime(String(args.end_datetime)) : null;
+          const endDate = endDateRaw ?? new Date(startDate.getTime() + 60 * 60 * 1000);
 
           const eventBody: any = {
             summary,
@@ -856,12 +880,12 @@ serve(async (req) => {
           if (args.description !== undefined) patch.description = String(args.description).slice(0, 2000);
           if (args.location !== undefined) patch.location = String(args.location).slice(0, 500);
           if (args.start_datetime) {
-            const sd = new Date((args.start_datetime as string).includes("+") || (args.start_datetime as string).includes("Z") ? args.start_datetime : args.start_datetime + "-03:00");
-            patch.start = { dateTime: sd.toISOString(), timeZone: "America/Argentina/Cordoba" };
+            const sd = normalizeDatetime(String(args.start_datetime));
+            if (sd) patch.start = { dateTime: sd.toISOString(), timeZone: "America/Argentina/Cordoba" };
           }
           if (args.end_datetime) {
-            const ed = new Date((args.end_datetime as string).includes("+") || (args.end_datetime as string).includes("Z") ? args.end_datetime : args.end_datetime + "-03:00");
-            patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
+            const ed = normalizeDatetime(String(args.end_datetime));
+            if (ed) patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
           }
 
           const patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
