@@ -153,6 +153,27 @@ export type Database = {
         }
         Relationships: []
       }
+      invitation_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
@@ -299,6 +320,10 @@ export type Database = {
     }
     Functions: {
       is_conversation_owner: { Args: { conv_id: string }; Returns: boolean }
+      validate_invitation_code: {
+        Args: { input_code: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
