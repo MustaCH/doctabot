@@ -1,7 +1,8 @@
-import { ExternalLink, Copy, Check, BadgeCheck, Home } from "lucide-react";
+import { ExternalLink, Copy, Check, BadgeCheck, Home, Heart } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useFavorite } from "@/hooks/use-favorite";
 
 interface PropertyCardProps {
   photo?: string;
@@ -106,6 +107,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const { isFavorite, toggle, loading: favLoading, canFavorite } = useFavorite(url);
 
   const handleCopy = async () => {
     if (!finalUrl) return;
@@ -177,9 +179,27 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
                 Ver propiedad
               </Button>
             </a>
-            <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0" onClick={handleCopy}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 w-9 p-0 shrink-0"
+              onClick={handleCopy}
+            >
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
+            {canFavorite && (
+              <Button
+                size="sm"
+                variant="outline"
+                className={`h-9 w-9 p-0 shrink-0 transition-colors ${isFavorite ? "border-red-400 bg-red-50 dark:bg-red-950/30" : ""}`}
+                onClick={toggle}
+                disabled={favLoading}
+              >
+                <Heart
+                  className={`h-3.5 w-3.5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
+                />
+              </Button>
+            )}
           </div>
         )}
       </div>
