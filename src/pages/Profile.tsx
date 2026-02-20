@@ -4,35 +4,102 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2 } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
+
+const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
 
 const Profile = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [fullName, setFullName] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("full_name, agent_code")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (data) {
-        setFullName(data.full_name);
-        setAgentCode(data.agent_code);
+      const [profileRes, calendarRes] = await Promise.all([
+        supabase.from("profiles").select("full_name, agent_code").eq("user_id", user.id).maybeSingle(),
+        supabase.from("google_calendar_tokens").select("id").eq("user_id", user.id).maybeSingle(),
+      ]);
+      if (profileRes.data) {
+        setFullName(profileRes.data.full_name);
+        setAgentCode(profileRes.data.agent_code);
       }
+      setCalendarConnected(!!calendarRes.data);
       setLoading(false);
     };
     loadProfile();
   }, [user]);
+
+  // Handle redirect back from Google OAuth
+  useEffect(() => {
+    const calendarParam = searchParams.get("calendar");
+    if (calendarParam === "connected") {
+      setCalendarConnected(true);
+      toast.success("Google Calendar conectado correctamente ✅");
+      navigate("/profile", { replace: true });
+    } else if (calendarParam === "error") {
+      toast.error("Error al conectar Google Calendar. Intentá de nuevo.");
+      navigate("/profile", { replace: true });
+    }
+  }, [searchParams, navigate]);
+
+  const handleConnectCalendar = async () => {
+    if (!user) return;
+    setCalendarLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-calendar-auth?action=init`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ returnUrl: window.location.origin + "/profile" }),
+      });
+      const json = await res.json();
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        toast.error("No se pudo iniciar la conexión.");
+        setCalendarLoading(false);
+      }
+    } catch {
+      toast.error("Error al conectar. Intentá de nuevo.");
+      setCalendarLoading(false);
+    }
+  };
+
+  const handleDisconnectCalendar = async () => {
+    if (!user) return;
+    setCalendarLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-calendar-auth`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setCalendarConnected(false);
+        toast.success("Google Calendar desconectado");
+      } else {
+        toast.error("Error al desconectar.");
+      }
+    } catch {
+      toast.error("Error al desconectar. Intentá de nuevo.");
+    }
+    setCalendarLoading(false);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +179,51 @@ const Profile = () => {
             <Users className="mr-2 h-4 w-4 text-primary" />
             Clientes
           </Button>
+        </div>
+
+        {/* Google Calendar */}
+        <div className="rounded-lg border bg-card p-4 space-y-2">
+          <p className="text-sm font-medium">Google Calendar</p>
+          <p className="text-xs text-muted-foreground">
+            {calendarConnected
+              ? "Tu calendario está conectado. Alan puede crear eventos y recordatorios."
+              : "Conectá tu calendario para que Alan pueda crear eventos y recordatorios."}
+          </p>
+          {calendarConnected ? (
+            <div className="flex items-center justify-between pt-1">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                <CalendarCheck className="h-4 w-4" />
+                Conectado
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                onClick={handleDisconnectCalendar}
+                disabled={calendarLoading}
+              >
+                {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
+                Desconectar
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-xs h-8"
+              onClick={handleConnectCalendar}
+              disabled={calendarLoading}
+            >
+              {calendarLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              ) : (
+                <CalendarCheck className="h-3 w-3 mr-1" />
+              )}
+              Conectar Google Calendar
+            </Button>
+          )}
         </div>
 
         <div className="space-y-4">
