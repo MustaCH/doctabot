@@ -36,7 +36,17 @@ serve(async (req) => {
 
     const userId = data.claims.sub;
 
-    // Build Google OAuth URL with state = userId
+    // Get returnUrl from body to redirect back after OAuth
+    let returnUrl = "";
+    try {
+      const body = await req.json();
+      returnUrl = typeof body?.returnUrl === "string" ? body.returnUrl : "";
+    } catch { /* no body is fine */ }
+
+    // Encode userId + returnUrl in state
+    const statePayload = btoa(JSON.stringify({ userId, returnUrl }));
+
+    // Build Google OAuth URL
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: REDIRECT_URI,
@@ -44,7 +54,7 @@ serve(async (req) => {
       scope: "https://www.googleapis.com/auth/calendar",
       access_type: "offline",
       prompt: "consent",
-      state: userId,
+      state: statePayload,
     });
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -54,14 +64,24 @@ serve(async (req) => {
   // --- Step 2: OAuth Callback — Google redirects here with ?code= ---
   if (req.method === "GET") {
     const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state"); // userId
+    const stateRaw = url.searchParams.get("state");
     const errorParam = url.searchParams.get("error");
 
-    if (errorParam || !code || !state) {
-      return new Response(
-        `<html><body><script>window.opener?.postMessage({type:'google-calendar-error',error:'${errorParam || 'missing_params'}'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
+    // Decode state
+    let userId = "";
+    let returnUrl = "";
+    try {
+      const parsed = JSON.parse(atob(stateRaw ?? ""));
+      userId = parsed.userId ?? "";
+      returnUrl = parsed.returnUrl ?? "";
+    } catch {
+      userId = stateRaw ?? ""; // Fallback for old plain userId state
+    }
+
+    const fallbackReturn = returnUrl || "https://doctabot.lovable.app/profile";
+
+    if (errorParam || !code || !userId) {
+      return Response.redirect(`${fallbackReturn}?calendar=error`, 302);
     }
 
     // Exchange code for tokens
@@ -80,30 +100,25 @@ serve(async (req) => {
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
       console.error("Token exchange error:", err);
-      return new Response(
-        `<html><body><script>window.opener?.postMessage({type:'google-calendar-error',error:'token_exchange_failed'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
+      return Response.redirect(`${fallbackReturn}?calendar=error`, 302);
     }
 
     const tokens = await tokenRes.json();
     const { access_token, refresh_token, expires_in, token_type, scope } = tokens;
 
     if (!access_token || !refresh_token) {
-      return new Response(
-        `<html><body><script>window.opener?.postMessage({type:'google-calendar-error',error:'missing_tokens'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
+      console.error("Missing tokens in response:", tokens);
+      return Response.redirect(`${fallbackReturn}?calendar=error`, 302);
     }
 
     const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
 
-    // Save tokens to DB using service role (bypasses RLS since we trust state=userId)
+    // Save tokens to DB using service role (bypasses RLS since we trust userId from state)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { error: dbError } = await supabase
       .from("google_calendar_tokens")
       .upsert({
-        user_id: state,
+        user_id: userId,
         access_token,
         refresh_token,
         token_type: token_type ?? "Bearer",
@@ -113,16 +128,10 @@ serve(async (req) => {
 
     if (dbError) {
       console.error("DB error saving tokens:", dbError);
-      return new Response(
-        `<html><body><script>window.opener?.postMessage({type:'google-calendar-error',error:'db_error'},'*');window.close();</script></body></html>`,
-        { headers: { "Content-Type": "text/html" } }
-      );
+      return Response.redirect(`${fallbackReturn}?calendar=error`, 302);
     }
 
-    return new Response(
-      `<html><body><script>window.opener?.postMessage({type:'google-calendar-success'},'*');window.close();</script></body></html>`,
-      { headers: { "Content-Type": "text/html" } }
-    );
+    return Response.redirect(`${fallbackReturn}?calendar=connected`, 302);
   }
 
   // --- Step 3: Disconnect — DELETE tokens ---
