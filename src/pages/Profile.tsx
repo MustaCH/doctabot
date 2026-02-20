@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart } from "lucide-react";
+import { ArrowLeft, LogOut, Heart, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -93,15 +93,26 @@ const Profile = () => {
           </div>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate("/favorites")}
-        >
-          <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
-          Mis favoritos
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => navigate("/favorites")}
+          >
+            <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
+            Favoritos
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => navigate("/clients")}
+          >
+            <Users className="mr-2 h-4 w-4 text-primary" />
+            Clientes
+          </Button>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
