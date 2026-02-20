@@ -29,6 +29,10 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 9. **list_clients**: Listar los clientes del agente, con filtro por estado o búsqueda por nombre
 10. **get_client**: Ver el perfil completo de un cliente con su historial de conversaciones
 11. **link_conversation**: Vincular la conversación actual a un cliente y/o asignarle un tipo
+12. **create_calendar_event**: Crear un evento en Google Calendar del agente (visitas, reuniones, recordatorios)
+13. **list_calendar_events**: Ver los próximos eventos del calendario del agente
+14. **update_calendar_event**: Modificar un evento existente del calendario
+15. **delete_calendar_event**: Eliminar un evento del calendario
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -92,6 +96,25 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 - prospect: Cliente potencial (default)
 - active: Cliente activo en proceso
 - closed: Operación cerrada
+
+## GESTIÓN DE GOOGLE CALENDAR
+
+Tenés control total sobre el Google Calendar del agente. Usá estas herramientas de forma proactiva:
+
+**CUÁNDO CREAR EVENTOS AUTOMÁTICAMENTE:**
+- Si el agente menciona una visita a una propiedad con fecha y hora → create_calendar_event con el título y la dirección como location.
+- Si el agente dice "recordame", "agendá", "poneme un recordatorio" → create_calendar_event.
+- Si el agente cierra un trato o acuerda una firma de boleto/escritura → create_calendar_event.
+
+**CUÁNDO LISTAR EVENTOS:**
+- Si el agente pregunta "qué tengo mañana", "mi agenda", "qué visitas tengo esta semana" → list_calendar_events.
+
+**REGLAS:**
+- Siempre confirmá los eventos creados con el título, fecha y hora en formato legible.
+- Si el agente no dio la hora exacta, preguntale antes de crear el evento.
+- Usá zona horaria de Córdoba Argentina (UTC-3) siempre.
+- Si el calendario no está conectado, decile al agente que lo conecte desde su perfil (ícono de usuario arriba a la derecha).
+- Podés encadenar acciones: crear cliente + link_conversation + create_calendar_event en la misma respuesta.
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
@@ -389,6 +412,75 @@ serve(async (req) => {
           },
         },
       },
+      {
+        type: "function",
+        function: {
+          name: "create_calendar_event",
+          description: "Crear un evento en el Google Calendar del agente. Usar para recordatorios de visitas, reuniones con clientes, seguimientos, vencimientos, etc.",
+          parameters: {
+            type: "object",
+            properties: {
+              summary: { type: "string", description: "Título del evento (ej: 'Visita propiedad con María González')" },
+              description: { type: "string", description: "Descripción o detalle del evento (opcional)" },
+              start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601 (ej: '2025-03-15T10:00:00'). Asumir zona horaria de Argentina (UTC-3)." },
+              end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
+              location: { type: "string", description: "Ubicación del evento (dirección de la propiedad, oficina, etc.) (opcional)" },
+            },
+            required: ["summary", "start_datetime"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "list_calendar_events",
+          description: "Listar los próximos eventos del Google Calendar del agente.",
+          parameters: {
+            type: "object",
+            properties: {
+              days_ahead: { type: "integer", description: "Cuántos días hacia adelante buscar (default 7, máximo 30)" },
+              max_results: { type: "integer", description: "Cantidad máxima de eventos (default 10, máximo 20)" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "update_calendar_event",
+          description: "Actualizar un evento existente en el Google Calendar del agente.",
+          parameters: {
+            type: "object",
+            properties: {
+              event_id: { type: "string", description: "ID del evento a actualizar" },
+              summary: { type: "string", description: "Nuevo título del evento (opcional)" },
+              description: { type: "string", description: "Nueva descripción (opcional)" },
+              start_datetime: { type: "string", description: "Nueva fecha y hora de inicio ISO 8601 (opcional)" },
+              end_datetime: { type: "string", description: "Nueva fecha y hora de fin ISO 8601 (opcional)" },
+              location: { type: "string", description: "Nueva ubicación (opcional)" },
+            },
+            required: ["event_id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "delete_calendar_event",
+          description: "Eliminar un evento del Google Calendar del agente.",
+          parameters: {
+            type: "object",
+            properties: {
+              event_id: { type: "string", description: "ID del evento a eliminar" },
+            },
+            required: ["event_id"],
+            additionalProperties: false,
+          },
+        },
+      },
     ];
 
     // Get user_id and profile from auth header
@@ -409,6 +501,44 @@ serve(async (req) => {
         agentName = profile?.full_name ?? null;
         agentCode = profile?.agent_code ?? null;
       }
+    }
+
+    // --- Google Calendar helpers ---
+    const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+    const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+
+    async function getValidCalendarToken(uid: string): Promise<string | null> {
+      const { data: tokenRow } = await supabase
+        .from("google_calendar_tokens")
+        .select("access_token, refresh_token, expires_at")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (!tokenRow) return null;
+
+      // Check if token is still valid (with 60s buffer)
+      const expiresAt = new Date(tokenRow.expires_at).getTime();
+      if (Date.now() < expiresAt - 60_000) return tokenRow.access_token;
+
+      // Refresh the token
+      const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          refresh_token: tokenRow.refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+      if (!refreshRes.ok) return null;
+      const refreshData = await refreshRes.json();
+      const newAccessToken = refreshData.access_token;
+      const newExpiresAt = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString();
+      await supabase.from("google_calendar_tokens").update({
+        access_token: newAccessToken,
+        expires_at: newExpiresAt,
+      }).eq("user_id", uid);
+      return newAccessToken;
     }
 
     // UUID validation regex
@@ -635,6 +765,128 @@ serve(async (req) => {
             .eq("user_id", userId);
           if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ success: true, message: "Conversación vinculada correctamente." });
+        }
+        case "create_calendar_event": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
+
+          const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
+          if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
+          const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
+          if (!startStr) return JSON.stringify({ error: "La fecha de inicio es requerida" });
+
+          // Parse start and compute end (+1h if not provided)
+          const startDate = new Date(startStr.includes("+") || startStr.includes("Z") ? startStr : startStr + "-03:00");
+          const endDate = args.end_datetime
+            ? new Date((args.end_datetime as string).includes("+") || (args.end_datetime as string).includes("Z") ? args.end_datetime : args.end_datetime + "-03:00")
+            : new Date(startDate.getTime() + 60 * 60 * 1000);
+
+          const eventBody: any = {
+            summary,
+            start: { dateTime: startDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+            end: { dateTime: endDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+          };
+          if (args.description) eventBody.description = String(args.description).slice(0, 2000);
+          if (args.location) eventBody.location = String(args.location).slice(0, 500);
+
+          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(eventBody),
+          });
+          if (!calRes.ok) {
+            const err = await calRes.text();
+            console.error("Calendar create error:", err);
+            return JSON.stringify({ error: "Error al crear el evento en Google Calendar" });
+          }
+          const event = await calRes.json();
+          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, message: `Evento "${summary}" creado correctamente en Google Calendar.` });
+        }
+        case "list_calendar_events": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+          const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 7, 1), 30);
+          const maxResults = Math.min(Math.max(safePositiveInt(args.max_results) ?? 10, 1), 20);
+          const timeMin = new Date().toISOString();
+          const timeMax = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
+
+          const params = new URLSearchParams({
+            timeMin,
+            timeMax,
+            maxResults: String(maxResults),
+            singleEvents: "true",
+            orderBy: "startTime",
+          });
+          const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (!calRes.ok) return JSON.stringify({ error: "Error al obtener eventos de Google Calendar" });
+          const data = await calRes.json();
+          const events = (data.items ?? []).map((e: any) => ({
+            id: e.id,
+            summary: e.summary,
+            description: e.description,
+            location: e.location,
+            start: e.start?.dateTime ?? e.start?.date,
+            end: e.end?.dateTime ?? e.end?.date,
+            html_link: e.htmlLink,
+          }));
+          return JSON.stringify({ events, total: events.length });
+        }
+        case "update_calendar_event": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+          const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
+          if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
+
+          // Fetch existing event first
+          const getRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (!getRes.ok) return JSON.stringify({ error: "Evento no encontrado" });
+          const existingEvent = await getRes.json();
+
+          const patch: any = {};
+          if (args.summary) patch.summary = String(args.summary).slice(0, 500);
+          if (args.description !== undefined) patch.description = String(args.description).slice(0, 2000);
+          if (args.location !== undefined) patch.location = String(args.location).slice(0, 500);
+          if (args.start_datetime) {
+            const sd = new Date((args.start_datetime as string).includes("+") || (args.start_datetime as string).includes("Z") ? args.start_datetime : args.start_datetime + "-03:00");
+            patch.start = { dateTime: sd.toISOString(), timeZone: "America/Argentina/Cordoba" };
+          }
+          if (args.end_datetime) {
+            const ed = new Date((args.end_datetime as string).includes("+") || (args.end_datetime as string).includes("Z") ? args.end_datetime : args.end_datetime + "-03:00");
+            patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
+          }
+
+          const patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+          });
+          if (!patchRes.ok) return JSON.stringify({ error: "Error al actualizar el evento" });
+          const updated = await patchRes.json();
+          return JSON.stringify({ success: true, event_id: updated.id, html_link: updated.htmlLink, message: `Evento actualizado correctamente.` });
+        }
+        case "delete_calendar_event": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+          const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
+          if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
+
+          const delRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (!delRes.ok && delRes.status !== 410) return JSON.stringify({ error: "Error al eliminar el evento" });
+          return JSON.stringify({ success: true, message: "Evento eliminado del calendario." });
         }
         default:
           return JSON.stringify({ error: "Tool not found" });
