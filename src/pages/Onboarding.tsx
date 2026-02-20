@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { toast } from "sonner";
-import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft } from "lucide-react";
+import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft, KeyRound } from "lucide-react";
 
 type Device = "iphone" | "android" | "desktop" | null;
 
@@ -43,13 +43,33 @@ const installInstructions: Record<Exclude<Device, null>, { title: string; steps:
 };
 
 const Onboarding = () => {
-  const { user, refreshProfile } = useAuth();
-  const [step, setStep] = useState<1 | 2>(1);
+  const { user, refreshProfile, signOut } = useAuth();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [inviteCode, setInviteCode] = useState("");
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name ?? "");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device>(null);
 
+  // Step 1: validate invitation code
+  const handleCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = inviteCode.trim();
+    if (!trimmed) {
+      toast.error("Ingresá el código de invitación");
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase.rpc("validate_invitation_code", { input_code: trimmed });
+    setLoading(false);
+    if (error || !data) {
+      toast.error("Código de invitación inválido. Consultá con tu broker.");
+      return;
+    }
+    setStep(2);
+  };
+
+  // Step 2: save profile
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !agentCode.trim()) {
@@ -68,7 +88,7 @@ const Onboarding = () => {
       return;
     }
     setLoading(false);
-    setStep(2);
+    setStep(3);
   };
 
   const handleFinish = async () => {
@@ -81,29 +101,71 @@ const Onboarding = () => {
     { key: "desktop", label: "PC / Mac", icon: <Monitor className="h-5 w-5" /> },
   ];
 
+  const stepTitles: Record<1 | 2 | 3, string> = {
+    1: "Código de acceso 🔑",
+    2: "¡Bienvenido! 👋",
+    3: "Instalá la app 📲",
+  };
+  const stepSubtitles: Record<1 | 2 | 3, string> = {
+    1: "Esta plataforma es exclusiva para agentes de RE/MAX Docta. Ingresá el código que te dio tu broker.",
+    2: "Completá tus datos para comenzar a usar el asistente.",
+    3: "Elegí tu dispositivo para ver cómo instalar Alan.",
+  };
+
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6">
       <div className="w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="space-y-3 text-center">
           <img src={alanAvatar} alt="Alan" className="mx-auto h-16 w-16" />
-          <h1 className="text-2xl font-bold tracking-tight">
-            {step === 1 ? "¡Bienvenido! 👋" : "Instalá la app 📲"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {step === 1
-              ? "Completá tus datos para comenzar a usar el asistente."
-              : "Elegí tu dispositivo para ver cómo instalar Alan."}
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{stepTitles[step]}</h1>
+          <p className="text-sm text-muted-foreground">{stepSubtitles[step]}</p>
         </div>
 
         {/* Step indicators */}
         <div className="flex items-center justify-center gap-2">
-          <div className={`h-2 w-8 rounded-full transition-colors ${step === 1 ? "bg-primary" : "bg-primary/30"}`} />
-          <div className={`h-2 w-8 rounded-full transition-colors ${step === 2 ? "bg-primary" : "bg-primary/30"}`} />
+          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-primary/30"}`} />
+          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-primary/30"}`} />
+          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 3 ? "bg-primary" : "bg-primary/30"}`} />
         </div>
 
-        {step === 1 ? (
+        {step === 1 && (
+          <form onSubmit={handleCodeSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="inviteCode">Código de invitación</Label>
+              <div className="relative">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="inviteCode"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  placeholder="Ej: DOCTA1"
+                  maxLength={10}
+                  className="pl-9 tracking-widest font-mono uppercase"
+                  autoComplete="off"
+                  required
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Si no tenés un código, contactá a tu broker.
+              </p>
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Verificando..." : "Verificar código"}
+              {!loading && <ChevronRight className="ml-1 h-4 w-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground"
+              onClick={() => signOut()}
+            >
+              Cerrar sesión
+            </Button>
+          </form>
+        )}
+
+        {step === 2 && (
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="fullName">Nombre completo</Label>
@@ -132,9 +194,10 @@ const Onboarding = () => {
               {!loading && <ChevronRight className="ml-1 h-4 w-4" />}
             </Button>
           </form>
-        ) : (
+        )}
+
+        {step === 3 && (
           <div className="space-y-4">
-            {/* Device selector */}
             <div className="grid grid-cols-3 gap-2">
               {deviceOptions.map((d) => (
                 <button
@@ -153,7 +216,6 @@ const Onboarding = () => {
               ))}
             </div>
 
-            {/* Instructions */}
             {selectedDevice && (
               <div className="animate-in fade-in slide-in-from-bottom-2 rounded-lg border bg-muted/50 p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-foreground">
@@ -168,7 +230,7 @@ const Onboarding = () => {
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground">
+              <Button variant="ghost" size="sm" onClick={() => setStep(2)} className="text-muted-foreground">
                 <ArrowLeft className="mr-1 h-4 w-4" /> Atrás
               </Button>
               <Button onClick={handleFinish} className="flex-1">
