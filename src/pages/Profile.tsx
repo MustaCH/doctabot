@@ -93,6 +93,16 @@ const Profile = () => {
           </div>
         </div>
 
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => navigate("/favorites")}
+        >
+          <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
+          Mis favoritos
+        </Button>
+
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="fullName">Nombre completo</Label>
@@ -120,16 +130,6 @@ const Profile = () => {
 
         <Button type="submit" className="w-full" disabled={saving}>
           {saving ? "Guardando..." : "Guardar cambios"}
-        </Button>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate("/favorites")}
-        >
-          <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
-          Mis favoritos
         </Button>
 
         <Button
