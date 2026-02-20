@@ -101,7 +101,7 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
             </div>
           )}
           {isUser ? (
-            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-all overflow-hidden">{content}</p>
+            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
           ) : (
             <AssistantContent content={content} />
           )}
