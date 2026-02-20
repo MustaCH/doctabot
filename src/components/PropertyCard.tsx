@@ -105,6 +105,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const handleCopy = async () => {
     if (!finalUrl) return;
@@ -114,13 +115,14 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      {photo && (
+      {photo && !imgError && (
         <div className="relative aspect-video w-full overflow-hidden bg-muted">
           <img
             src={photo}
             alt={title ?? "Propiedad"}
             className="h-full w-full object-cover"
             loading="lazy"
+            onError={() => setImgError(true)}
           />
           {isDocta && (
             <Badge className="absolute top-2 left-2 gap-1 bg-primary text-primary-foreground shadow-md text-[10px] px-2 py-0.5">
@@ -130,7 +132,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
           )}
         </div>
       )}
-      {!photo && isDocta && (
+      {(!photo || imgError) && isDocta && (
         <div className="px-3.5 pt-3">
           <Badge className="gap-1 bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
             <BadgeCheck className="h-3 w-3" />
