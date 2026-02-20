@@ -28,13 +28,12 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const token = authHeader.replace("Bearer ", "");
-    const { data, error } = await supabase.auth.getClaims(token);
-    if (error || !data?.claims) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const userId = data.claims.sub;
+    const userId = user.id;
 
     // Get returnUrl from body to redirect back after OAuth
     let returnUrl = "";
@@ -144,13 +143,12 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const token = authHeader.replace("Bearer ", "");
-    const { data, error } = await supabase.auth.getClaims(token);
-    if (error || !data?.claims) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { error: delError } = await supabase.from("google_calendar_tokens").delete().eq("user_id", data.claims.sub);
+    const { error: delError } = await supabase.from("google_calendar_tokens").delete().eq("user_id", user.id);
     if (delError) {
       return new Response(JSON.stringify({ error: "Error al desconectar" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
