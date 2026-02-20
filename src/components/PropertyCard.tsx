@@ -1,4 +1,4 @@
-import { ExternalLink, Copy, Check, BadgeCheck } from "lucide-react";
+import { ExternalLink, Copy, Check, BadgeCheck, Home } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -115,7 +115,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      {photo && !imgError && (
+      {photo && !imgError ? (
         <div className="relative aspect-video w-full overflow-hidden bg-muted">
           <img
             src={photo}
@@ -131,13 +131,15 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             </Badge>
           )}
         </div>
-      )}
-      {(!photo || imgError) && isDocta && (
-        <div className="px-3.5 pt-3">
-          <Badge className="gap-1 bg-primary text-primary-foreground text-[10px] px-2 py-0.5">
-            <BadgeCheck className="h-3 w-3" />
-            RE/MAX Docta
-          </Badge>
+      ) : (
+        <div className="relative flex aspect-video w-full items-center justify-center bg-muted">
+          <Home className="h-12 w-12 text-muted-foreground/30" />
+          {isDocta && (
+            <Badge className="absolute top-2 left-2 gap-1 bg-primary text-primary-foreground shadow-md text-[10px] px-2 py-0.5">
+              <BadgeCheck className="h-3 w-3" />
+              RE/MAX Docta
+            </Badge>
+          )}
         </div>
       )}
       <div className="space-y-2 p-3.5">
