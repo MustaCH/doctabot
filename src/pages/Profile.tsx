@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2 } from "lucide-react";
+import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -21,19 +21,24 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [hasGmailScope, setHasGmailScope] = useState(true);
 
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) return;
       const [profileRes, calendarRes] = await Promise.all([
         supabase.from("profiles").select("full_name, agent_code").eq("user_id", user.id).maybeSingle(),
-        supabase.from("google_calendar_tokens").select("id").eq("user_id", user.id).maybeSingle(),
+        supabase.from("google_calendar_tokens").select("id, scope").eq("user_id", user.id).maybeSingle(),
       ]);
       if (profileRes.data) {
         setFullName(profileRes.data.full_name);
         setAgentCode(profileRes.data.agent_code);
       }
       setCalendarConnected(!!calendarRes.data);
+      if (calendarRes.data) {
+        const scope = calendarRes.data.scope ?? "";
+        setHasGmailScope(scope.includes("gmail.send"));
+      }
       setLoading(false);
     };
     loadProfile();
@@ -44,6 +49,12 @@ const Profile = () => {
     const calendarParam = searchParams.get("calendar");
     if (calendarParam === "connected") {
       setCalendarConnected(true);
+      // Re-fetch to check new scopes
+      if (user) {
+        supabase.from("google_calendar_tokens").select("scope").eq("user_id", user.id).maybeSingle().then(({ data }) => {
+          if (data) setHasGmailScope((data.scope ?? "").includes("gmail.send"));
+        });
+      }
       toast.success("Google Calendar conectado correctamente ✅");
       navigate("/profile", { replace: true });
     } else if (calendarParam === "error") {
@@ -183,29 +194,60 @@ const Profile = () => {
 
         {/* Google Calendar */}
         <div className="rounded-lg border bg-card p-4 space-y-2">
-          <p className="text-sm font-medium">Google Calendar</p>
+          <p className="text-sm font-medium">Google Calendar, Meet y Gmail</p>
           <p className="text-xs text-muted-foreground">
             {calendarConnected
-              ? "Tu calendario está conectado. Alan puede crear eventos y recordatorios."
-              : "Conectá tu calendario para que Alan pueda crear eventos y recordatorios."}
+              ? "Tu cuenta de Google está conectada. Alan puede crear eventos, reuniones por Meet y enviar emails."
+              : "Conectá tu cuenta de Google para que Alan pueda crear eventos, videollamadas y enviar emails."}
           </p>
           {calendarConnected ? (
-            <div className="flex items-center justify-between pt-1">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                <CalendarCheck className="h-4 w-4" />
-                Conectado
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs text-destructive hover:text-destructive h-7 px-2"
-                onClick={handleDisconnectCalendar}
-                disabled={calendarLoading}
-              >
-                {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
-                Desconectar
-              </Button>
+            <div className="space-y-2 pt-1">
+              {/* Scope indicators */}
+              <div className="flex gap-2 flex-wrap">
+                <span className="flex items-center gap-1 text-xs font-medium text-primary">
+                  <CalendarCheck className="h-3.5 w-3.5" />
+                  Calendar
+                </span>
+                <span className={`flex items-center gap-1 text-xs font-medium ${hasGmailScope ? "text-primary" : "text-muted-foreground"}`}>
+                  <Mail className="h-3.5 w-3.5" />
+                  Gmail & Meet
+                </span>
+              </div>
+              {/* Warning if missing gmail scope */}
+              {!hasGmailScope && (
+                <div className="flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground">Permisos insuficientes</p>
+                    <p className="text-xs text-muted-foreground">Reconectá para activar el envío de emails y Google Meet.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 px-2 text-xs shrink-0"
+                    onClick={handleConnectCalendar}
+                    disabled={calendarLoading}
+                  >
+                    {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reconectar"}
+                  </Button>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {hasGmailScope ? "Todos los permisos activos ✅" : ""}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                  onClick={handleDisconnectCalendar}
+                  disabled={calendarLoading}
+                >
+                  {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
+                  Desconectar
+                </Button>
+              </div>
             </div>
           ) : (
             <Button
@@ -221,7 +263,7 @@ const Profile = () => {
               ) : (
                 <CalendarCheck className="h-3 w-3 mr-1" />
               )}
-              Conectar Google Calendar
+              Conectar con Google
             </Button>
           )}
         </div>
