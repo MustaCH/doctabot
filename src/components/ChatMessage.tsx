@@ -109,67 +109,23 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
 
 ChatMessage.displayName = "ChatMessage";
 
-/** Detects if content contains a drafted email/message block */
+const DRAFT_START = "<<<DRAFT_START>>>";
+const DRAFT_END = "<<<DRAFT_END>>>";
+
+/** Detects if content contains a drafted email/message block using explicit markers */
 function extractDraftBlock(content: string): { intro: string; draft: string; outro: string } | null {
-  // Look for common email/message draft delimiters
-  const patterns = [
-    // --- Asunto: ... --- or similar markdown separator blocks
-    /^([\s\S]*?)(---+\n[\s\S]*?---+\n?)([\s\S]*)$/m,
-    // Triple backtick code blocks
-    /^([\s\S]*?)```(?:email|mensaje|texto|mail)?\n([\s\S]*?)```([\s\S]*)$/m,
-  ];
+  const startIdx = content.indexOf(DRAFT_START);
+  const endIdx = content.indexOf(DRAFT_END);
 
-  for (const pattern of patterns) {
-    const match = content.match(pattern);
-    if (match) {
-      const [, intro, draft, outro] = match;
-      // Only treat as a draft if it's substantial
-      if (draft.trim().length > 30) {
-        return { intro: intro.trim(), draft: draft.trim(), outro: outro.trim() };
-      }
-    }
-  }
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
 
-  // Detect email-like content: has "Asunto:", "De:", "Para:", or "Subject:"
-  const emailKeywords = /\b(Asunto|Subject|Para|De|To|From|Estimad[ao]|Dear|Saludos|Atentamente|Cordialmente)\b/i;
-  const lines = content.split("\n");
-  
-  // Find a block that looks like an email (multiple lines with email structure)
-  let startIdx = -1;
-  let endIdx = -1;
-  
-  for (let i = 0; i < lines.length; i++) {
-    if (emailKeywords.test(lines[i]) && startIdx === -1) {
-      // Check this isn't inside a prose explanation
-      const prevLine = lines[i - 1] ?? "";
-      if (!prevLine.endsWith(":") && !prevLine.match(/^\d+\./)) {
-        startIdx = i;
-      }
-    }
-  }
-  
-  if (startIdx > -1) {
-    // Find the end: look for sign-off patterns
-    const signoffPattern = /\b(Saludos|Atentamente|Cordialmente|Regards|Sincerely|Cheers|Un saludo|Hasta pronto)\b/i;
-    for (let i = startIdx; i < lines.length; i++) {
-      if (signoffPattern.test(lines[i])) {
-        // Include a few more lines for the name/signature
-        endIdx = Math.min(i + 3, lines.length - 1);
-        break;
-      }
-    }
-    
-    if (endIdx > startIdx + 2) {
-      const intro = lines.slice(0, startIdx).join("\n").trim();
-      const draft = lines.slice(startIdx, endIdx + 1).join("\n").trim();
-      const outro = lines.slice(endIdx + 1).join("\n").trim();
-      if (draft.length > 50) {
-        return { intro, draft, outro };
-      }
-    }
-  }
+  const intro = content.slice(0, startIdx).trim();
+  const draft = content.slice(startIdx + DRAFT_START.length, endIdx).trim();
+  const outro = content.slice(endIdx + DRAFT_END.length).trim();
 
-  return null;
+  if (draft.length < 20) return null;
+
+  return { intro, draft, outro };
 }
 
 const CopyableDraft = ({ draft }: { draft: string }) => {
