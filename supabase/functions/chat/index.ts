@@ -24,6 +24,11 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 4. **add_favorite**: Guardar una propiedad como favorita
 5. **remove_favorite**: Eliminar una propiedad de favoritos
 6. **generate_report**: Generar una ficha/reporte de una propiedad para compartir con clientes
+7. **create_client**: Crear un perfil de cliente (nombre, teléfono, email, notas, estado)
+8. **update_client**: Actualizar datos de un cliente existente
+9. **list_clients**: Listar los clientes del agente, con filtro por estado o búsqueda por nombre
+10. **get_client**: Ver el perfil completo de un cliente con su historial de conversaciones
+11. **link_conversation**: Vincular la conversación actual a un cliente y/o asignarle un tipo
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -60,6 +65,33 @@ La foto viene en el campo "photo" de cada propiedad. Si no tiene foto, omití la
 4. Si no encontrás resultados, sugerí criterios alternativos.
 
 5. Si el agente pide comparar propiedades, usá una tabla comparativa.
+
+## GESTIÓN DE CLIENTES Y MINI-CRM
+
+Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, vincular conversaciones y clasificarlas, todo desde el chat.
+
+**CUÁNDO ACTUAR AUTOMÁTICAMENTE:**
+
+- Si el agente menciona trabajar "para [nombre de persona]" (ej: "busco un depto para María González"), primero usá list_clients con ese nombre. Si existe, usá link_conversation para vincular. Si no existe, creá el cliente con create_client y luego vinculá con link_conversation.
+- Clasificá el tipo de conversación automáticamente según el contexto:
+  - Búsqueda de propiedades → conversation_type: "search"
+  - Redacción de email/WhatsApp/mensaje → conversation_type: "email"
+  - Seguimiento de cliente o negociación → conversation_type: "followup"
+  - Consulta general → conversation_type: "general"
+- Siempre hacé estas acciones en segundo plano y confirmá brevemente al final de tu respuesta principal.
+
+**REGLAS DE COMPORTAMIENTO:**
+
+- Nunca le pedís al agente el ID de un cliente — usás list_clients para buscarlo por nombre.
+- Si hay ambigüedad (varios clientes con nombre similar), preguntá al agente cuál es.
+- Cuando el agente pida ver un cliente o su historial, usá get_client.
+- Confirmá las acciones de CRM de forma natural y concisa, sin tecnicismos. Ej: "Listo, vinculé esta búsqueda al perfil de María González 👤"
+- Si el agente pide la lista de sus clientes, mostrala de forma clara con nombre, teléfono y estado.
+
+**ESTADOS DE CLIENTES:**
+- prospect: Cliente potencial (default)
+- active: Cliente activo en proceso
+- closed: Operación cerrada
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
@@ -164,6 +196,91 @@ serve(async (req) => {
               property_id: { type: "string", description: "ID de la propiedad a eliminar de favoritos" },
             },
             required: ["property_id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "create_client",
+          description: "Crear un nuevo perfil de cliente para el agente. Usar cuando el agente quiera guardar datos de un cliente potencial o activo.",
+          parameters: {
+            type: "object",
+            properties: {
+              full_name: { type: "string", description: "Nombre completo del cliente (requerido)" },
+              phone: { type: "string", description: "Teléfono del cliente" },
+              email: { type: "string", description: "Email del cliente" },
+              notes: { type: "string", description: "Notas libres sobre el cliente" },
+              status: { type: "string", description: "Estado: prospect (default), active, closed" },
+            },
+            required: ["full_name"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "update_client",
+          description: "Actualizar datos de un cliente existente. Usar cuando el agente quiera modificar información de un cliente.",
+          parameters: {
+            type: "object",
+            properties: {
+              client_id: { type: "string", description: "ID del cliente a actualizar" },
+              full_name: { type: "string", description: "Nuevo nombre completo" },
+              phone: { type: "string", description: "Nuevo teléfono" },
+              email: { type: "string", description: "Nuevo email" },
+              notes: { type: "string", description: "Nuevas notas" },
+              status: { type: "string", description: "Nuevo estado: prospect, active, closed" },
+            },
+            required: ["client_id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "list_clients",
+          description: "Listar los clientes del agente. Permite filtrar por estado o buscar por nombre parcial.",
+          parameters: {
+            type: "object",
+            properties: {
+              search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
+              status: { type: "string", description: "Filtrar por estado: prospect, active, closed" },
+              limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_client",
+          description: "Obtener el perfil completo de un cliente con su historial de conversaciones vinculadas.",
+          parameters: {
+            type: "object",
+            properties: {
+              client_id: { type: "string", description: "ID del cliente" },
+            },
+            required: ["client_id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "link_conversation",
+          description: "Vincular la conversación actual a un cliente y/o asignarle un tipo. Usar automáticamente cuando se identifica un cliente o el tipo de conversación.",
+          parameters: {
+            type: "object",
+            properties: {
+              client_id: { type: "string", description: "ID del cliente a vincular (opcional)" },
+              conversation_type: { type: "string", description: "Tipo: search, email, followup, general" },
+            },
             additionalProperties: false,
           },
         },
@@ -331,6 +448,104 @@ serve(async (req) => {
           const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
           if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con clientes. Incluí todos los datos relevantes de forma organizada." });
+        }
+        case "create_client": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const full_name = typeof args.full_name === "string" ? args.full_name.trim().slice(0, 200) : null;
+          if (!full_name) return JSON.stringify({ error: "El nombre es requerido" });
+          const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
+          const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
+          const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
+          const validStatuses = ["prospect", "active", "closed"];
+          const status = validStatuses.includes(args.status) ? args.status : "prospect";
+          const { data, error } = await supabase
+            .from("clients")
+            .insert({ user_id: userId, full_name, phone, email, notes, status })
+            .select("id, full_name, status")
+            .single();
+          if (error) return JSON.stringify({ error: safeDbError(error) });
+          return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
+        }
+        case "update_client": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          if (!args.client_id || !uuidRegex.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+          const updates: Record<string, any> = {};
+          if (typeof args.full_name === "string") updates.full_name = args.full_name.trim().slice(0, 200);
+          if (typeof args.phone === "string") updates.phone = args.phone.trim().slice(0, 50);
+          if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
+          if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
+          const validStatuses = ["prospect", "active", "closed"];
+          if (validStatuses.includes(args.status)) updates.status = args.status;
+          if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
+          const { data, error } = await supabase
+            .from("clients")
+            .update(updates)
+            .eq("id", args.client_id)
+            .eq("user_id", userId)
+            .select("id, full_name, status")
+            .single();
+          if (error) return JSON.stringify({ error: safeDbError(error) });
+          return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
+        }
+        case "list_clients": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const search = sanitizePattern(args.search);
+          const validStatuses = ["prospect", "active", "closed"];
+          const status = validStatuses.includes(args.status) ? args.status : null;
+          const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
+          let query = supabase
+            .from("clients")
+            .select("id, full_name, phone, email, status, notes, created_at, updated_at")
+            .eq("user_id", userId)
+            .order("updated_at", { ascending: false })
+            .limit(limit);
+          if (search) query = query.ilike("full_name", `%${search}%`);
+          if (status) query = query.eq("status", status);
+          const { data, error } = await query;
+          if (error) return JSON.stringify({ error: safeDbError(error) });
+          return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0 });
+        }
+        case "get_client": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          if (!args.client_id || !uuidRegex.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+          const { data: client, error: clientError } = await supabase
+            .from("clients")
+            .select("*")
+            .eq("id", args.client_id)
+            .eq("user_id", userId)
+            .single();
+          if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
+          const { data: convs } = await supabase
+            .from("conversations")
+            .select("id, title, conversation_type, updated_at")
+            .eq("client_id", args.client_id)
+            .order("updated_at", { ascending: false });
+          return JSON.stringify({ client, conversations: convs ?? [] });
+        }
+        case "link_conversation": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          if (!conversationId || !uuidRegex.test(conversationId)) return JSON.stringify({ error: "ID de conversación inválido" });
+          const updates: Record<string, any> = {};
+          if (args.client_id && uuidRegex.test(args.client_id)) {
+            // Verify the client belongs to this user
+            const { data: client } = await supabase
+              .from("clients")
+              .select("id")
+              .eq("id", args.client_id)
+              .eq("user_id", userId)
+              .single();
+            if (client) updates.client_id = args.client_id;
+          }
+          const validTypes = ["search", "email", "followup", "general"];
+          if (validTypes.includes(args.conversation_type)) updates.conversation_type = args.conversation_type;
+          if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay datos para vincular" });
+          const { error } = await supabase
+            .from("conversations")
+            .update(updates)
+            .eq("id", conversationId)
+            .eq("user_id", userId);
+          if (error) return JSON.stringify({ error: safeDbError(error) });
+          return JSON.stringify({ success: true, message: "Conversación vinculada correctamente." });
         }
         default:
           return JSON.stringify({ error: "Tool not found" });

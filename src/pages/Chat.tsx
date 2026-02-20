@@ -18,6 +18,8 @@ interface Conversation {
   id: string;
   title: string;
   updated_at: string;
+  client_name?: string;
+  conversation_type?: string;
 }
 
 const Chat = () => {
@@ -49,9 +51,18 @@ const Chat = () => {
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
       .from("conversations")
-      .select("id, title, updated_at")
+      .select("id, title, updated_at, conversation_type, client_id, clients(full_name)")
       .order("updated_at", { ascending: false });
-    if (data) setConversations(data);
+    if (data) {
+      const mapped = data.map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        updated_at: c.updated_at,
+        conversation_type: c.conversation_type ?? undefined,
+        client_name: c.clients?.full_name ?? undefined,
+      }));
+      setConversations(mapped);
+    }
   }, []);
 
   useEffect(() => {

@@ -21,6 +21,8 @@ interface Conversation {
   id: string;
   title: string;
   updated_at: string;
+  client_name?: string;
+  conversation_type?: string;
 }
 
 interface ConversationListProps {
@@ -117,8 +119,20 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                       onClick={() => { onSelect(c.id); onClose?.(); }}
                       className="flex-1 min-w-0 px-4 py-3 text-left"
                     >
-                      <p className="truncate text-sm font-medium">{c.title}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {c.conversation_type && (
+                          <span className="shrink-0 text-xs" title={c.conversation_type}>
+                            {c.conversation_type === "search" ? "🔍" :
+                             c.conversation_type === "email" ? "✉️" :
+                             c.conversation_type === "followup" ? "🔔" : "💬"}
+                          </span>
+                        )}
+                        <p className="truncate text-sm font-medium">{c.title}</p>
+                      </div>
+                      {c.client_name && (
+                        <p className="truncate text-xs text-muted-foreground font-medium mt-0.5">👤 {c.client_name}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
                       </p>
                     </button>
