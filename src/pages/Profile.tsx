@@ -21,6 +21,21 @@ const Profile = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
 
+  // Handle redirect back from Google OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const calendarStatus = params.get("calendar");
+    if (calendarStatus === "connected") {
+      toast.success("Google Calendar conectado ✅");
+      setCalendarConnected(true);
+      // Clean URL
+      window.history.replaceState({}, "", "/profile");
+    } else if (calendarStatus === "error") {
+      toast.error("Error al conectar Google Calendar");
+      window.history.replaceState({}, "", "/profile");
+    }
+  }, []);
+
   const checkCalendarConnection = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -53,42 +68,21 @@ const Profile = () => {
     if (!session?.access_token) return;
     setCalendarLoading(true);
     try {
+      // Encode return URL in state so the callback can redirect back
+      const returnUrl = `${window.location.origin}/profile`;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/google-calendar-auth?action=init`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ returnUrl }),
       });
       const { url } = await res.json();
       if (!url) throw new Error("No URL returned");
 
-      // Open Google OAuth in a popup
-      const popup = window.open(url, "google-calendar-auth", "width=500,height=600,scrollbars=yes");
-
-      // Listen for postMessage from the popup
-      const handler = (event: MessageEvent) => {
-        if (event.data?.type === "google-calendar-success") {
-          toast.success("Google Calendar conectado ✅");
-          setCalendarConnected(true);
-          window.removeEventListener("message", handler);
-        } else if (event.data?.type === "google-calendar-error") {
-          toast.error("Error al conectar Google Calendar");
-          window.removeEventListener("message", handler);
-        }
-        setCalendarLoading(false);
-        if (!popup?.closed) popup?.close();
-      };
-      window.addEventListener("message", handler);
-
-      // Poll to detect if popup is closed without completing
-      const poll = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(poll);
-          window.removeEventListener("message", handler);
-          setCalendarLoading(false);
-        }
-      }, 500);
+      // Full redirect — Google blocks popups
+      window.location.href = url;
     } catch {
       toast.error("Error al iniciar conexión con Google Calendar");
       setCalendarLoading(false);
