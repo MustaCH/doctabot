@@ -772,6 +772,45 @@ Hola [cliente], soy ${agentName} de RE/MAX Docta. ...
       choice = aiData.choices?.[0];
     }
 
+    // Auto-generate a descriptive title after the first user message
+    if (conversationId && messages.length === 1 && userId) {
+      try {
+        const userText = typeof messages[0].content === "string"
+          ? messages[0].content
+          : (Array.isArray(messages[0].content)
+              ? messages[0].content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
+              : "");
+        const assistantText = choice?.message?.content ?? "";
+        const titleRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              {
+                role: "system",
+                content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal.",
+              },
+              {
+                role: "user",
+                content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantText.slice(0, 300)}`,
+              },
+            ],
+            stream: false,
+          }),
+        });
+        if (titleRes.ok) {
+          const titleData = await titleRes.json();
+          const generatedTitle = titleData.choices?.[0]?.message?.content?.trim();
+          if (generatedTitle) {
+            await supabase.from("conversations").update({ title: generatedTitle }).eq("id", conversationId);
+          }
+        }
+      } catch (e) {
+        console.error("Title generation error:", e);
+      }
+    }
+
     // If we have a complete response (no tool calls or after tool calls), convert to SSE
     // Split by MSG_BREAK and send each segment as a separate SSE event with a special separator event
     if (choice?.message?.content) {
