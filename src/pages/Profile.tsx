@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { ArrowLeft, LogOut, Heart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -120,6 +120,16 @@ const Profile = () => {
 
         <Button type="submit" className="w-full" disabled={saving}>
           {saving ? "Guardando..." : "Guardar cambios"}
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => navigate("/favorites")}
+        >
+          <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
+          Mis favoritos
         </Button>
 
         <Button
