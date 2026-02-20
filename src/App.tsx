@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
+import Favorites from "./pages/Favorites";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
             <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
