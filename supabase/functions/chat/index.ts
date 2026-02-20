@@ -29,10 +29,12 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 9. **list_clients**: Listar los clientes del agente, con filtro por estado o búsqueda por nombre
 10. **get_client**: Ver el perfil completo de un cliente con su historial de conversaciones
 11. **link_conversation**: Vincular la conversación actual a un cliente y/o asignarle un tipo
-12. **create_calendar_event**: Crear un evento en Google Calendar del agente (visitas, reuniones, recordatorios)
-13. **list_calendar_events**: Ver los próximos eventos del calendario del agente
-14. **update_calendar_event**: Modificar un evento existente del calendario
-15. **delete_calendar_event**: Eliminar un evento del calendario
+12. **create_calendar_event**: Crear un evento en Google Calendar del agente (visitas, reuniones, recordatorios). Soporta agregar enlace de Google Meet.
+13. **create_meet_event**: Crear un evento con enlace de Google Meet incluido (videollamadas, reuniones virtuales)
+14. **list_calendar_events**: Ver los próximos eventos del calendario del agente
+15. **update_calendar_event**: Modificar un evento existente del calendario
+16. **delete_calendar_event**: Eliminar un evento del calendario
+17. **send_email**: Enviar un email desde la cuenta Gmail del agente (SOLO con confirmación explícita del agente)
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -115,6 +117,26 @@ Tenés control total sobre el Google Calendar del agente. Usá estas herramienta
 - Usá zona horaria de Córdoba Argentina (UTC-3) siempre.
 - Si el calendario no está conectado, decile al agente que lo conecte desde su perfil (ícono de usuario arriba a la derecha).
 - Podés encadenar acciones: crear cliente + link_conversation + create_calendar_event en la misma respuesta.
+
+## GOOGLE MEET Y GMAIL
+
+Ahora también podés crear videollamadas de Google Meet y enviar emails desde la cuenta del agente.
+
+**GOOGLE MEET:**
+- Si el agente dice "reunión por Meet", "videollamada", "llamada de Google", "Meet con [cliente]" → usá create_meet_event.
+- También podés agregar un Meet a cualquier evento normal usando create_calendar_event con add_meet_link: true.
+- Al crear el evento, mostrá el link de Meet de forma clara y prominente: 🔗 Meet: [link]
+- Luego preguntá si quiere enviar el link al cliente por email.
+
+**GMAIL — REGLAS ESTRICTAS:**
+- Alan NUNCA envía un email sin confirmación explícita del agente. NUNCA.
+- El flujo obligatorio es:
+  1. Redactar el borrador completo entre <<<DRAFT_START>>> y <<<DRAFT_END>>> (como siempre)
+  2. Preguntar: "¿Lo envío?" o "¿Te lo mando?"
+  3. Solo si el agente dice "sí", "envialo", "mandalo" o similar → ejecutar send_email
+- Si el agente pide redactar un email sin dar dirección de destino, pedísela antes de enviar.
+- Si el calendario/Gmail no tiene los permisos necesarios (gmail.send), decile que debe reconectar desde su perfil para activar el envío de emails.
+- Después de enviar, confirmá con: "✉️ Email enviado a [destinatario]"
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
@@ -416,7 +438,7 @@ serve(async (req) => {
         type: "function",
         function: {
           name: "create_calendar_event",
-          description: "Crear un evento en el Google Calendar del agente. Usar para recordatorios de visitas, reuniones con clientes, seguimientos, vencimientos, etc.",
+          description: "Crear un evento en el Google Calendar del agente. Usar para recordatorios de visitas, reuniones presenciales, seguimientos, vencimientos, etc. Para reuniones con Meet usar create_meet_event.",
           parameters: {
             type: "object",
             properties: {
@@ -425,8 +447,46 @@ serve(async (req) => {
               start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601 (ej: '2025-03-15T10:00:00'). Asumir zona horaria de Argentina (UTC-3)." },
               end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
               location: { type: "string", description: "Ubicación del evento (dirección de la propiedad, oficina, etc.) (opcional)" },
+              add_meet_link: { type: "boolean", description: "Si es true, agrega un enlace de Google Meet al evento (opcional, default false)" },
             },
             required: ["summary", "start_datetime"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "create_meet_event",
+          description: "Crear un evento en Google Calendar con enlace de Google Meet incluido. Usar cuando el agente quiere agendar una videollamada, reunión virtual o Meet con un cliente.",
+          parameters: {
+            type: "object",
+            properties: {
+              summary: { type: "string", description: "Título del evento (ej: 'Reunión por Meet con María González')" },
+              description: { type: "string", description: "Descripción del evento (opcional)" },
+              start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601. Asumir zona horaria Argentina (UTC-3)." },
+              end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
+              attendees: { type: "array", items: { type: "string" }, description: "Lista de emails de los participantes (opcional)" },
+            },
+            required: ["summary", "start_datetime"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "send_email",
+          description: "Enviar un email desde la cuenta Gmail del agente. SOLO usar después de mostrar el borrador y recibir confirmación explícita del agente ('sí', 'envialo', 'mandalo'). NUNCA enviar sin confirmación.",
+          parameters: {
+            type: "object",
+            properties: {
+              to: { type: "string", description: "Email del destinatario" },
+              subject: { type: "string", description: "Asunto del email" },
+              body: { type: "string", description: "Cuerpo del email (texto plano o HTML básico)" },
+              cc: { type: "string", description: "Email para copia (CC), opcional" },
+            },
+            required: ["to", "subject", "body"],
             additionalProperties: false,
           },
         },
@@ -814,7 +874,18 @@ serve(async (req) => {
           if (args.description) eventBody.description = String(args.description).slice(0, 2000);
           if (args.location) eventBody.location = String(args.location).slice(0, 500);
 
-          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+          // Add Meet link if requested
+          if (args.add_meet_link === true) {
+            eventBody.conferenceData = {
+              createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
+            };
+          }
+
+          const calUrl = args.add_meet_link === true
+            ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
+            : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+          const calRes = await fetch(calUrl, {
             method: "POST",
             headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
             body: JSON.stringify(eventBody),
@@ -825,7 +896,114 @@ serve(async (req) => {
             return JSON.stringify({ error: "Error al crear el evento en Google Calendar" });
           }
           const event = await calRes.json();
-          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, message: `Evento "${summary}" creado correctamente en Google Calendar.` });
+          const meetLink = event.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri ?? null;
+          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: meetLink, message: `Evento "${summary}" creado correctamente en Google Calendar.` });
+        }
+        case "create_meet_event": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
+
+          const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
+          if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
+          const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
+          if (!startStr) return JSON.stringify({ error: "La fecha de inicio es requerida" });
+
+          const normDt = (raw: string): Date | null => {
+            if (!raw) return null;
+            if (raw.includes("+") || raw.endsWith("Z")) {
+              const d = new Date(raw); return isNaN(d.getTime()) ? null : d;
+            }
+            const withTz = raw.replace(" ", "T") + "-03:00";
+            const d = new Date(withTz);
+            if (!isNaN(d.getTime())) return d;
+            const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
+            const dateStr = nowArg.toISOString().slice(0, 10);
+            const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+            if (timeMatch) {
+              const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2,"0")}:${timeMatch[2]}:00-03:00`);
+              return isNaN(d2.getTime()) ? null : d2;
+            }
+            return null;
+          };
+
+          const startDate = normDt(startStr);
+          if (!startDate) return JSON.stringify({ error: `Fecha de inicio inválida: '${startStr}'.` });
+          const endDateRaw = args.end_datetime ? normDt(String(args.end_datetime)) : null;
+          const endDate = endDateRaw ?? new Date(startDate.getTime() + 60 * 60 * 1000);
+
+          const eventBody: any = {
+            summary,
+            start: { dateTime: startDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+            end: { dateTime: endDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+            conferenceData: {
+              createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
+            },
+          };
+          if (args.description) eventBody.description = String(args.description).slice(0, 2000);
+          if (Array.isArray(args.attendees) && args.attendees.length > 0) {
+            eventBody.attendees = args.attendees
+              .filter((e: unknown) => typeof e === "string" && e.includes("@"))
+              .slice(0, 20)
+              .map((e: string) => ({ email: e.trim().slice(0, 200) }));
+          }
+
+          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(eventBody),
+          });
+          if (!calRes.ok) {
+            const err = await calRes.text();
+            console.error("Meet event create error:", err);
+            return JSON.stringify({ error: "Error al crear el evento con Google Meet" });
+          }
+          const event = await calRes.json();
+          const meetLink = event.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri ?? null;
+          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: meetLink, start: startDate.toISOString(), end: endDate.toISOString(), message: `Reunión por Meet "${summary}" creada correctamente.` });
+        }
+        case "send_email": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getValidCalendarToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Gmail no conectado. El agente debe reconectar su cuenta desde el perfil para activar el envío de emails." });
+
+          const to = typeof args.to === "string" ? args.to.trim().slice(0, 500) : null;
+          if (!to || !to.includes("@")) return JSON.stringify({ error: "Email de destinatario inválido" });
+          const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 500) : null;
+          if (!subject) return JSON.stringify({ error: "El asunto es requerido" });
+          const body = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
+          if (!body) return JSON.stringify({ error: "El cuerpo del email es requerido" });
+          const cc = typeof args.cc === "string" ? args.cc.trim().slice(0, 500) : null;
+
+          // Build MIME message
+          let mimeLines = [
+            `To: ${to}`,
+            `Subject: ${subject}`,
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=UTF-8",
+          ];
+          if (cc) mimeLines.push(`Cc: ${cc}`);
+          mimeLines.push("", body);
+          const mimeMessage = mimeLines.join("\r\n");
+
+          // Base64url encode
+          const encoded = btoa(unescape(encodeURIComponent(mimeMessage)))
+            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+          const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ raw: encoded }),
+          });
+
+          if (!gmailRes.ok) {
+            const err = await gmailRes.text();
+            console.error("Gmail send error:", err);
+            if (gmailRes.status === 403) return JSON.stringify({ error: "Sin permisos para enviar emails. El agente debe reconectar su cuenta desde el perfil para activar Gmail." });
+            return JSON.stringify({ error: "Error al enviar el email" });
+          }
+          const gmailData = await gmailRes.json();
+          return JSON.stringify({ success: true, message_id: gmailData.id, message: `Email enviado correctamente a ${to}.` });
         }
         case "list_calendar_events": {
           if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
