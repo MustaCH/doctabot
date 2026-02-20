@@ -29,6 +29,8 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 9. **list_clients**: Listar los clientes del agente, con filtro por estado o búsqueda por nombre
 10. **get_client**: Ver el perfil completo de un cliente con su historial de conversaciones
 11. **link_conversation**: Vincular la conversación actual a un cliente y/o asignarle un tipo
+12. **get_calendar_events**: Ver los próximos eventos del Google Calendar del agente (solo disponible si el agente conectó su Google Calendar)
+13. **create_calendar_event**: Crear un nuevo evento en el Google Calendar del agente (solo disponible si el agente conectó su Google Calendar)
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -92,6 +94,23 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 - prospect: Cliente potencial (default)
 - active: Cliente activo en proceso
 - closed: Operación cerrada
+
+## GESTIÓN DE GOOGLE CALENDAR
+
+Si el agente conectó su Google Calendar, podés:
+- **Ver eventos**: Usá get_calendar_events para mostrar los próximos eventos. Mostrá fecha, hora, título y descripción de forma amigable.
+- **Crear eventos**: Usá create_calendar_event cuando el agente quiera agendar una visita, reunión o cualquier cita.
+
+**CUÁNDO ACTUAR:**
+- Si el agente dice "agendá una visita para mañana a las 10", creá el evento directamente.
+- Si pide ver su agenda o calendario, usá get_calendar_events.
+- Si el agente NO tiene Calendar conectado, indicá amablemente que puede conectarlo desde su perfil.
+
+**FORMATO PARA MOSTRAR EVENTOS:**
+📅 **[Título del evento]**
+🕐 [Fecha y hora]
+📍 [Ubicación si hay]
+📝 [Descripción si hay]
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
@@ -377,6 +396,40 @@ serve(async (req) => {
       {
         type: "function",
         function: {
+          name: "get_calendar_events",
+          description: "Ver los próximos eventos del Google Calendar del agente. Usar cuando el agente quiera consultar su agenda.",
+          parameters: {
+            type: "object",
+            properties: {
+              max_results: { type: "integer", description: "Cantidad máxima de eventos a obtener (default 10, max 20)" },
+              days_ahead: { type: "integer", description: "Cuántos días hacia adelante buscar (default 7, max 30)" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "create_calendar_event",
+          description: "Crear un nuevo evento en el Google Calendar del agente. Usar para agendar visitas, reuniones, citas con clientes.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Título del evento (requerido)" },
+              start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601 (ej: 2025-02-20T10:00:00-03:00)" },
+              end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601" },
+              description: { type: "string", description: "Descripción o notas del evento" },
+              location: { type: "string", description: "Ubicación del evento (dirección de la propiedad, etc.)" },
+            },
+            required: ["title", "start_datetime", "end_datetime"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
           name: "generate_report",
           description: "Generar una ficha/reporte detallado de una propiedad para compartir con clientes.",
           parameters: {
@@ -440,6 +493,43 @@ serve(async (req) => {
       if (error?.code?.startsWith("23")) return "Error de validación";
       return "Error al procesar la solicitud";
     };
+
+    // Helper: get a valid Google Calendar access token (refreshes if expired)
+    async function getCalendarAccessToken(calUserId: string): Promise<string | null> {
+      const { data: tokenRow } = await supabase
+        .from("google_calendar_tokens")
+        .select("access_token, refresh_token, expires_at")
+        .eq("user_id", calUserId)
+        .maybeSingle();
+
+      if (!tokenRow) return null;
+
+      const isExpired = new Date(tokenRow.expires_at) <= new Date(Date.now() + 60000);
+      if (!isExpired) return tokenRow.access_token;
+
+      // Refresh the token
+      const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+      const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+      const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          refresh_token: tokenRow.refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+      if (!refreshRes.ok) return null;
+      const refreshData = await refreshRes.json();
+      const newAccessToken = refreshData.access_token;
+      const newExpiresAt = new Date(Date.now() + refreshData.expires_in * 1000).toISOString();
+      await supabase.from("google_calendar_tokens").update({
+        access_token: newAccessToken,
+        expires_at: newExpiresAt,
+      }).eq("user_id", calUserId);
+      return newAccessToken;
+    }
 
     // Execute tool calls
     async function executeTool(name: string, args: any): Promise<string> {
@@ -635,6 +725,75 @@ serve(async (req) => {
             .eq("user_id", userId);
           if (error) return JSON.stringify({ error: safeDbError(error) });
           return JSON.stringify({ success: true, message: "Conversación vinculada correctamente." });
+        }
+        case "get_calendar_events": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getCalendarAccessToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no está conectado. El agente puede conectarlo desde su perfil." });
+
+          const maxResults = Math.min(Math.max(safePositiveInt(args.max_results) ?? 10, 1), 20);
+          const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 7, 1), 30);
+          const timeMin = new Date().toISOString();
+          const timeMax = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
+
+          const calRes = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (!calRes.ok) return JSON.stringify({ error: "Error al obtener eventos del calendario" });
+          const calData = await calRes.json();
+          const events = (calData.items ?? []).map((e: any) => ({
+            id: e.id,
+            title: e.summary ?? "(Sin título)",
+            start: e.start?.dateTime ?? e.start?.date,
+            end: e.end?.dateTime ?? e.end?.date,
+            location: e.location ?? null,
+            description: e.description ?? null,
+          }));
+          return JSON.stringify({ events, total: events.length });
+        }
+        case "create_calendar_event": {
+          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
+          const accessToken = await getCalendarAccessToken(userId);
+          if (!accessToken) return JSON.stringify({ error: "Google Calendar no está conectado. El agente puede conectarlo desde su perfil." });
+
+          const title = typeof args.title === "string" ? args.title.trim().slice(0, 500) : null;
+          if (!title) return JSON.stringify({ error: "El título del evento es requerido" });
+          if (!args.start_datetime || !args.end_datetime) return JSON.stringify({ error: "Fecha de inicio y fin son requeridas" });
+
+          const eventBody: any = {
+            summary: title,
+            start: { dateTime: args.start_datetime, timeZone: "America/Argentina/Cordoba" },
+            end: { dateTime: args.end_datetime, timeZone: "America/Argentina/Cordoba" },
+          };
+          if (typeof args.description === "string") eventBody.description = args.description.trim().slice(0, 2000);
+          if (typeof args.location === "string") eventBody.location = args.location.trim().slice(0, 500);
+
+          const createRes = await fetch(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify(eventBody),
+            }
+          );
+          if (!createRes.ok) {
+            const errText = await createRes.text();
+            console.error("Calendar create error:", errText);
+            return JSON.stringify({ error: "Error al crear el evento en Google Calendar" });
+          }
+          const created = await createRes.json();
+          return JSON.stringify({
+            success: true,
+            event: {
+              id: created.id,
+              title: created.summary,
+              start: created.start?.dateTime ?? created.start?.date,
+              end: created.end?.dateTime ?? created.end?.date,
+              link: created.htmlLink,
+            },
+            message: `Evento "${title}" creado correctamente en Google Calendar.`,
+          });
         }
         default:
           return JSON.stringify({ error: "Tool not found" });
