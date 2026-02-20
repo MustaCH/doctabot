@@ -14,8 +14,46 @@ export type Database = {
   }
   public: {
     Tables: {
+      clients: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          phone: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
+          client_id: string | null
+          conversation_type: string | null
           created_at: string
           id: string
           title: string
@@ -23,6 +61,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          client_id?: string | null
+          conversation_type?: string | null
           created_at?: string
           id?: string
           title?: string
@@ -30,13 +70,23 @@ export type Database = {
           user_id: string
         }
         Update: {
+          client_id?: string | null
+          conversation_type?: string | null
           created_at?: string
           id?: string
           title?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conversations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       favorites: {
         Row: {
