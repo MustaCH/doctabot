@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { toast } from "sonner";
-import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft, KeyRound } from "lucide-react";
+import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft, KeyRound, CalendarCheck } from "lucide-react";
 
 type Device = "iphone" | "android" | "desktop" | null;
 
@@ -42,14 +42,17 @@ const installInstructions: Record<Exclude<Device, null>, { title: string; steps:
   },
 };
 
+const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
+
 const Onboarding = () => {
   const { user, refreshProfile, signOut } = useAuth();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [inviteCode, setInviteCode] = useState("");
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name ?? "");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
 
   // Step 1: validate invitation code
   const handleCodeSubmit = async (e: React.FormEvent) => {
@@ -91,6 +94,33 @@ const Onboarding = () => {
     setStep(3);
   };
 
+  const handleConnectCalendar = async () => {
+    if (!user) return;
+    setCalendarLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-calendar-auth?action=init`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ returnUrl: window.location.origin + "/profile" }),
+      });
+      const json = await res.json();
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        toast.error("No se pudo iniciar la conexión.");
+        setCalendarLoading(false);
+      }
+    } catch {
+      toast.error("Error al conectar. Intentá de nuevo.");
+      setCalendarLoading(false);
+    }
+  };
+
   const handleFinish = async () => {
     await refreshProfile();
   };
@@ -101,15 +131,17 @@ const Onboarding = () => {
     { key: "desktop", label: "PC / Mac", icon: <Monitor className="h-5 w-5" /> },
   ];
 
-  const stepTitles: Record<1 | 2 | 3, string> = {
+  const stepTitles: Record<1 | 2 | 3 | 4, string> = {
     1: "Código de acceso 🔑",
     2: "¡Bienvenido! 👋",
-    3: "Instalá la app 📲",
+    3: "Google Calendar 📅",
+    4: "Instalá la app 📲",
   };
-  const stepSubtitles: Record<1 | 2 | 3, string> = {
+  const stepSubtitles: Record<1 | 2 | 3 | 4, string> = {
     1: "Esta plataforma es exclusiva para agentes de RE/MAX Docta. Ingresá el código que te dio tu broker.",
     2: "Completá tus datos para comenzar a usar el asistente.",
-    3: "Elegí tu dispositivo para ver cómo instalar Alan.",
+    3: "Conectá tu calendario para que Alan pueda crear eventos y recordatorios automáticamente.",
+    4: "Elegí tu dispositivo para ver cómo instalar Alan.",
   };
 
   return (
@@ -124,9 +156,9 @@ const Onboarding = () => {
 
         {/* Step indicators */}
         <div className="flex items-center justify-center gap-2">
-          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 1 ? "bg-primary" : "bg-primary/30"}`} />
-          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 2 ? "bg-primary" : "bg-primary/30"}`} />
-          <div className={`h-2 w-8 rounded-full transition-colors ${step >= 3 ? "bg-primary" : "bg-primary/30"}`} />
+          {([1, 2, 3, 4] as const).map((s) => (
+            <div key={s} className={`h-2 w-8 rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-primary/30"}`} />
+          ))}
         </div>
 
         {step === 1 && (
@@ -198,6 +230,37 @@ const Onboarding = () => {
 
         {step === 3 && (
           <div className="space-y-4">
+            <div className="rounded-lg border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <CalendarCheck className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium">Conectar calendario</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Al conectar tu Google Calendar, Alan podrá crear recordatorios y eventos de seguimiento automáticamente cuando lo necesites.
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleConnectCalendar}
+                disabled={calendarLoading}
+              >
+                {calendarLoading ? "Redirigiendo..." : "Conectar Google Calendar"}
+                {!calendarLoading && <ChevronRight className="ml-1 h-4 w-4" />}
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground"
+              onClick={() => setStep(4)}
+            >
+              Omitir por ahora
+            </Button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
               {deviceOptions.map((d) => (
                 <button
@@ -230,7 +293,7 @@ const Onboarding = () => {
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep(2)} className="text-muted-foreground">
+              <Button variant="ghost" size="sm" onClick={() => setStep(3)} className="text-muted-foreground">
                 <ArrowLeft className="mr-1 h-4 w-4" /> Atrás
               </Button>
               <Button onClick={handleFinish} className="flex-1">
