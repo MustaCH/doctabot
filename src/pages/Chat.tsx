@@ -1,39 +1,47 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
-import * as pdfjsLib from "pdfjs-dist";
+import { useConversations } from "@/hooks/use-conversations";
+import { useChatMessages } from "@/hooks/use-chat-messages";
 import ChatMessage from "@/components/ChatMessage";
-import ChatInput, { type ChatAttachment } from "@/components/ChatInput";
+import ChatInput from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Menu, UserCircle, ChevronDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
-import { feedbackReceive } from "@/hooks/use-feedback";
-
-interface Conversation {
-  id: string;
-  title: string;
-  updated_at: string;
-  client_name?: string;
-  conversation_type?: string;
-}
 
 const Chat = () => {
   const { user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
-  const [quotedText, setQuotedText] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  const {
+    conversations,
+    activeConvId,
+    setActiveConvId,
+    loadConversations,
+    createConversation,
+    handleNewConversation: rawNewConv,
+    handleDeleteConversation,
+    handleRenameConversation,
+  } = useConversations(user?.id);
+
+  const {
+    messages,
+    isStreaming,
+    isProcessingPdf,
+    quotedText,
+    setQuotedText,
+    handleSend,
+  } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations);
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   // Scroll listener for floating button
   useEffect(() => {
@@ -47,317 +55,18 @@ const Chat = () => {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Load conversations
-  const loadConversations = useCallback(async () => {
-    const { data } = await supabase
-      .from("conversations")
-      .select("id, title, updated_at, conversation_type, client_id, clients(full_name)")
-      .order("updated_at", { ascending: false });
-    if (data) {
-      const mapped = data.map((c: any) => ({
-        id: c.id,
-        title: c.title,
-        updated_at: c.updated_at,
-        conversation_type: c.conversation_type ?? undefined,
-        client_name: c.clients?.full_name ?? undefined,
-      }));
-      setConversations(mapped);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
-
-  // Load messages when active conversation changes
-  useEffect(() => {
-    if (!activeConvId) {
-      setMessages([]);
-      return;
-    }
-    (async () => {
-      const { data } = await supabase
-        .from("messages")
-        .select("role, content")
-        .eq("conversation_id", activeConvId)
-        .order("created_at", { ascending: true });
-      if (data) {
-        // Split assistant messages that were saved combined with ---
-        const expanded: Msg[] = [];
-        for (const msg of data) {
-          if (msg.role === "assistant" && msg.content.includes("\n\n---\n\n")) {
-            const parts = msg.content.split("\n\n---\n\n");
-            for (const part of parts) {
-              if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
-            }
-          } else {
-            expanded.push(msg as Msg);
-          }
-        }
-        setMessages(expanded);
-      }
-    })();
-  }, [activeConvId]);
-
-  // Auto-scroll
+  // Auto-scroll on new messages
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  const createConversation = async (): Promise<string> => {
-    const { data, error } = await supabase
-      .from("conversations")
-      .insert({ user_id: user!.id, title: "Nueva conversación" })
-      .select("id")
-      .single();
-    if (error) throw error;
-    await loadConversations();
-    return data.id;
-  };
-
   const handleNewConversation = async () => {
-    try {
-      const id = await createConversation();
-      setActiveConvId(id);
-      setSidebarOpen(false);
-    } catch {
-      toast.error("Error al crear conversación");
-    }
-  };
-
-  const handleDeleteConversation = async (id: string) => {
-    // Delete messages first, then conversation
-    await supabase.from("messages").delete().eq("conversation_id", id);
-    await supabase.from("conversations").delete().eq("id", id);
-    if (activeConvId === id) {
-      setActiveConvId(null);
-      setMessages([]);
-    }
-    loadConversations();
-  };
-
-  const handleRenameConversation = async (id: string, title: string) => {
-    await supabase.from("conversations").update({ title }).eq("id", id);
-    loadConversations();
-  };
-
-  const compressImage = (file: File, maxDim = 1024, quality = 0.7): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        resolve(dataUrl.split(",")[1]);
-      };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
-
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(",")[1]);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-  const extractPdfText = async (file: File): Promise<string> => {
-    try {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const pages: string[] = [];
-      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(" ");
-        if (pageText.trim()) pages.push(`--- Página ${i} ---\n${pageText}`);
-      }
-      return pages.join("\n\n") || "(No se pudo extraer texto del PDF)";
-    } catch (e) {
-      console.error("PDF extraction error:", e);
-      return "(Error al leer el PDF)";
-    }
-  };
-
-  const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
-    if (isStreaming) return;
-
-    let convId = activeConvId;
-    if (!convId) {
-      try {
-        convId = await createConversation();
-        setActiveConvId(convId);
-      } catch {
-        toast.error("Error al crear conversación");
-        return;
-      }
-    }
-
-    // Process attachments
-    let msgAttachments: MsgAttachment[] | undefined;
-    let pdfTexts: string[] = [];
-    if (chatAttachments?.length) {
-      const imageAtts = chatAttachments.filter((a) => a.file.type.startsWith("image/"));
-      const pdfAtts = chatAttachments.filter((a) => a.file.type === "application/pdf");
-
-      // Compress images
-      if (imageAtts.length) {
-        msgAttachments = await Promise.all(
-          imageAtts.map(async (a) => ({
-            type: "image" as const,
-            base64: await compressImage(a.file),
-            mimeType: "image/jpeg",
-            fileName: a.file.name,
-          }))
-        );
-      }
-
-      // Extract PDF text
-      if (pdfAtts.length > 0) {
-        setIsProcessingPdf(true);
-        try {
-          for (const att of pdfAtts) {
-            const pdfText = await extractPdfText(att.file);
-            pdfTexts.push(`📄 Documento "${att.file.name}":\n${pdfText}`);
-          }
-        } finally {
-          setIsProcessingPdf(false);
-        }
-      }
-    }
-
-    // Build message content with PDF text and quoted text inline
-    let messageContent = text;
-    if (quotedText) {
-      // Clean the quote: strip markdown images, long URLs, and excessive formatting
-      let cleanQuote = quotedText
-        .replace(/!\[.*?\]\(.*?\)/g, "[imagen]") // markdown images → [imagen]
-        .replace(/https?:\/\/\S{60,}/g, "[enlace]") // long URLs → [enlace]
-        .replace(/\*\*/g, "") // strip bold
-        .trim();
-      if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
-      messageContent = `> ${cleanQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
-      setQuotedText(null);
-    }
-    if (pdfTexts.length > 0) {
-      const pdfContext = pdfTexts.join("\n\n");
-      messageContent = messageContent
-        ? `${messageContent}\n\n${pdfContext}`
-        : pdfContext;
-    }
-
-    const hasImages = msgAttachments && msgAttachments.length > 0;
-    const hasPdfs = pdfTexts.length > 0;
-    const fallbackText = hasImages ? "(imagen adjunta)" : hasPdfs ? messageContent : "(archivo adjunto)";
-    const userMsg: Msg = {
-      role: "user",
-      content: messageContent || fallbackText,
-      attachments: msgAttachments,
-    };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setIsStreaming(true);
-
-    // Save user message
-    await supabase.from("messages").insert({
-      conversation_id: convId,
-      role: "user",
-      content: messageContent || fallbackText,
-    });
-
-    // Title is auto-generated by the edge function after the first exchange
-
-    let assistantContent = "";
-    let allAssistantMessages: string[] = [];
-    let needsNewBubble = false;
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      await streamChat({
-        messages: newMessages,
-        conversationId: convId!,
-        signal: controller.signal,
-        onDelta: (chunk) => {
-          assistantContent += chunk;
-          // Capture values NOW before React batching changes them
-          const snapshot = assistantContent;
-          const startNew = needsNewBubble;
-          if (startNew) needsNewBubble = false;
-          setMessages((prev) => {
-            if (startNew) {
-              return [...prev, { role: "assistant" as const, content: snapshot }];
-            }
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
-            }
-            return [...prev, { role: "assistant" as const, content: snapshot }];
-          });
-        },
-        onNewMessage: () => {
-          if (assistantContent.trim()) {
-            allAssistantMessages.push(assistantContent.trim());
-          }
-          assistantContent = "";
-          needsNewBubble = true;
-          // Trim trailing whitespace from last bubble
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
-            }
-            return prev;
-          });
-        },
-        onDone: async () => {
-          setIsStreaming(false);
-          feedbackReceive();
-          // Collect the last message too
-          if (assistantContent.trim()) {
-            allAssistantMessages.push(assistantContent.trim());
-          }
-          // Save all assistant messages to DB as one combined message
-          const fullContent = allAssistantMessages.join("\n\n---\n\n");
-          if (fullContent) {
-            await supabase.from("messages").insert({
-              conversation_id: convId!,
-              role: "assistant",
-              content: fullContent,
-            });
-            await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
-            loadConversations();
-          }
-        },
-      });
-    } catch (err: any) {
-      setIsStreaming(false);
-      if (err.message === "rate_limit") {
-        toast.error("Demasiadas solicitudes. Intentá de nuevo en un momento.");
-      } else if (err.message === "payment_required") {
-        toast.error("Créditos insuficientes. Contactá al administrador.");
-      } else if (err.name !== "AbortError") {
-        toast.error("Error al conectar con Alan. Intentá de nuevo.");
-      }
-    }
+    await rawNewConv();
+    setSidebarOpen(false);
   };
 
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
-  const navigate = useNavigate();
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden">
