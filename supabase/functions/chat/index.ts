@@ -1,10 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// ============================================================================
+// 1. CORS
+// ============================================================================
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// ============================================================================
+// 2. SYSTEM PROMPT
+// ============================================================================
 
 const SYSTEM_PROMPT = `Sos "Alan", un asistente de IA profesional y amigable para agentes inmobiliarios de RE/MAX Docta de Córdoba.
 
@@ -242,878 +250,905 @@ Plano y regularización: Para escriturar, la propiedad debe estar regularizada a
 
 Respecto a preguntas generales, legales o del mercado: Respondé siempre con tu conocimiento pero aclarando cuando algo requiere consulta con un profesional (escribano, contador, abogado) para una situación específica del cliente.`;
 
+// ============================================================================
+// 3. TOOL DEFINITIONS
+// ============================================================================
 
+const toolDefinitions = [
+  {
+    type: "function",
+    function: {
+      name: "search_properties",
+      description: "Buscar propiedades en la base de datos. Puede filtrar por localidad, zona de Córdoba Capital, tipo de operación (venta/alquiler), tipo de propiedad, rango de precio, cantidad de ambientes, etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          locality: { type: "string", description: "Localidad o barrio (ej: Nueva Córdoba, Alto Alberdi)" },
+          zone: { type: "string", description: "Zona de Córdoba Capital: Ruta 20, Nueva Córdoba, Centro, Alberdi, Alta Córdoba, General Paz, Zona Sur, Zona Norte" },
+          operation: { type: "string", description: "Tipo de operación: Venta o Alquiler" },
+          property_type: { type: "string", description: "Tipo de propiedad: Departamento, Casa, Terreno, Local, Oficina, etc." },
+          min_price: { type: "number", description: "Precio mínimo" },
+          max_price: { type: "number", description: "Precio máximo" },
+          currency: { type: "string", description: "Moneda: USD o ARS" },
+          min_ambientes: { type: "integer", description: "Cantidad mínima de ambientes" },
+          max_ambientes: { type: "integer", description: "Cantidad máxima de ambientes" },
+          limit: { type: "integer", description: "Cantidad máxima de resultados (default 5)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "compare_properties",
+      description: "Comparar propiedades por sus IDs. Devuelve una tabla comparativa.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_ids: { type: "array", items: { type: "string" }, description: "Array de IDs de propiedades a comparar" },
+        },
+        required: ["property_ids"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_favorites",
+      description: "Obtener las propiedades favoritas del agente actual.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_favorite",
+      description: "Agregar una propiedad a los favoritos del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_id: { type: "string", description: "ID de la propiedad a agregar a favoritos" },
+        },
+        required: ["property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_favorite",
+      description: "Eliminar una propiedad de los favoritos del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_id: { type: "string", description: "ID de la propiedad a eliminar de favoritos" },
+        },
+        required: ["property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_client",
+      description: "Crear un nuevo perfil de cliente para el agente. Usar cuando el agente quiera guardar datos de un cliente potencial o activo.",
+      parameters: {
+        type: "object",
+        properties: {
+          full_name: { type: "string", description: "Nombre completo del cliente (requerido)" },
+          phone: { type: "string", description: "Teléfono del cliente" },
+          email: { type: "string", description: "Email del cliente" },
+          notes: { type: "string", description: "Notas libres sobre el cliente" },
+          status: { type: "string", description: "Estado: prospect (default), active, closed" },
+        },
+        required: ["full_name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_client",
+      description: "Actualizar datos de un cliente existente. Usar cuando el agente quiera modificar información de un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente a actualizar" },
+          full_name: { type: "string", description: "Nuevo nombre completo" },
+          phone: { type: "string", description: "Nuevo teléfono" },
+          email: { type: "string", description: "Nuevo email" },
+          notes: { type: "string", description: "Nuevas notas" },
+          status: { type: "string", description: "Nuevo estado: prospect, active, closed" },
+        },
+        required: ["client_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_clients",
+      description: "Listar los clientes del agente. Permite filtrar por estado o buscar por nombre parcial.",
+      parameters: {
+        type: "object",
+        properties: {
+          search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
+          status: { type: "string", description: "Filtrar por estado: prospect, active, closed" },
+          limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_client",
+      description: "Obtener el perfil completo de un cliente con su historial de conversaciones vinculadas.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+        },
+        required: ["client_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "link_conversation",
+      description: "Vincular la conversación actual a un cliente y/o asignarle un tipo. Usar automáticamente cuando se identifica un cliente o el tipo de conversación.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente a vincular (opcional)" },
+          conversation_type: { type: "string", description: "Tipo: search, email, followup, general" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_report",
+      description: "Generar una ficha/reporte detallado de una propiedad para compartir con clientes.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_id: { type: "string", description: "ID de la propiedad" },
+        },
+        required: ["property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_calendar_event",
+      description: "Crear un evento en el Google Calendar del agente. Usar para recordatorios de visitas, reuniones presenciales, seguimientos, vencimientos, etc. Para reuniones con Meet usar create_meet_event.",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: { type: "string", description: "Título del evento (ej: 'Visita propiedad con María González')" },
+          description: { type: "string", description: "Descripción o detalle del evento (opcional)" },
+          start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601 (ej: '2025-03-15T10:00:00'). Asumir zona horaria de Argentina (UTC-3)." },
+          end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
+          location: { type: "string", description: "Ubicación del evento (dirección de la propiedad, oficina, etc.) (opcional)" },
+          add_meet_link: { type: "boolean", description: "Si es true, agrega un enlace de Google Meet al evento (opcional, default false)" },
+        },
+        required: ["summary", "start_datetime"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_meet_event",
+      description: "Crear un evento en Google Calendar con enlace de Google Meet incluido. Usar cuando el agente quiere agendar una videollamada, reunión virtual o Meet con un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: { type: "string", description: "Título del evento (ej: 'Reunión por Meet con María González')" },
+          description: { type: "string", description: "Descripción del evento (opcional)" },
+          start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601. Asumir zona horaria Argentina (UTC-3)." },
+          end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
+          attendees: { type: "array", items: { type: "string" }, description: "Lista de emails de los participantes (opcional)" },
+        },
+        required: ["summary", "start_datetime"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_email",
+      description: "Enviar un email desde la cuenta Gmail del agente. SOLO usar después de mostrar el borrador y recibir confirmación explícita del agente ('sí', 'envialo', 'mandalo'). NUNCA enviar sin confirmación.",
+      parameters: {
+        type: "object",
+        properties: {
+          to: { type: "string", description: "Email del destinatario" },
+          subject: { type: "string", description: "Asunto del email" },
+          body: { type: "string", description: "Cuerpo del email (texto plano o HTML básico)" },
+          cc: { type: "string", description: "Email para copia (CC), opcional" },
+        },
+        required: ["to", "subject", "body"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_calendar_events",
+      description: "Listar los próximos eventos del Google Calendar del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          days_ahead: { type: "integer", description: "Cuántos días hacia adelante buscar (default 7, máximo 30)" },
+          max_results: { type: "integer", description: "Cantidad máxima de eventos (default 10, máximo 20)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_calendar_event",
+      description: "Actualizar un evento existente en el Google Calendar del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID del evento a actualizar" },
+          summary: { type: "string", description: "Nuevo título del evento (opcional)" },
+          description: { type: "string", description: "Nueva descripción (opcional)" },
+          start_datetime: { type: "string", description: "Nueva fecha y hora de inicio ISO 8601 (opcional)" },
+          end_datetime: { type: "string", description: "Nueva fecha y hora de fin ISO 8601 (opcional)" },
+          location: { type: "string", description: "Nueva ubicación (opcional)" },
+        },
+        required: ["event_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_calendar_event",
+      description: "Eliminar un evento del Google Calendar del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID del evento a eliminar" },
+        },
+        required: ["event_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+];
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+// ============================================================================
+// 4. VALIDATION HELPERS
+// ============================================================================
 
-  try {
-    const { messages, conversationId } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_CLIENT_STATUSES = ["prospect", "active", "closed"];
+const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+/** Sanitize ILIKE patterns – escape wildcards and limit length */
+function sanitizePattern(val: unknown): string | null {
+  if (typeof val !== "string" || val.trim() === "") return null;
+  return val.replace(/[%_\\]/g, "\\$&").slice(0, 100);
+}
 
-    // Build tools
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "search_properties",
-          description: "Buscar propiedades en la base de datos. Puede filtrar por localidad, zona de Córdoba Capital, tipo de operación (venta/alquiler), tipo de propiedad, rango de precio, cantidad de ambientes, etc.",
-          parameters: {
-            type: "object",
-            properties: {
-              locality: { type: "string", description: "Localidad o barrio (ej: Nueva Córdoba, Alto Alberdi)" },
-              zone: { type: "string", description: "Zona de Córdoba Capital: Ruta 20, Nueva Córdoba, Centro, Alberdi, Alta Córdoba, General Paz, Zona Sur, Zona Norte" },
-              operation: { type: "string", description: "Tipo de operación: Venta o Alquiler" },
-              property_type: { type: "string", description: "Tipo de propiedad: Departamento, Casa, Terreno, Local, Oficina, etc." },
-              min_price: { type: "number", description: "Precio mínimo" },
-              max_price: { type: "number", description: "Precio máximo" },
-              currency: { type: "string", description: "Moneda: USD o ARS" },
-              min_ambientes: { type: "integer", description: "Cantidad mínima de ambientes" },
-              max_ambientes: { type: "integer", description: "Cantidad máxima de ambientes" },
-              limit: { type: "integer", description: "Cantidad máxima de resultados (default 5)" },
-            },
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "compare_properties",
-          description: "Comparar propiedades por sus IDs. Devuelve una tabla comparativa.",
-          parameters: {
-            type: "object",
-            properties: {
-              property_ids: { type: "array", items: { type: "string" }, description: "Array de IDs de propiedades a comparar" },
-            },
-            required: ["property_ids"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_favorites",
-          description: "Obtener las propiedades favoritas del agente actual.",
-          parameters: { type: "object", properties: {}, additionalProperties: false },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "add_favorite",
-          description: "Agregar una propiedad a los favoritos del agente.",
-          parameters: {
-            type: "object",
-            properties: {
-              property_id: { type: "string", description: "ID de la propiedad a agregar a favoritos" },
-            },
-            required: ["property_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "remove_favorite",
-          description: "Eliminar una propiedad de los favoritos del agente.",
-          parameters: {
-            type: "object",
-            properties: {
-              property_id: { type: "string", description: "ID de la propiedad a eliminar de favoritos" },
-            },
-            required: ["property_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "create_client",
-          description: "Crear un nuevo perfil de cliente para el agente. Usar cuando el agente quiera guardar datos de un cliente potencial o activo.",
-          parameters: {
-            type: "object",
-            properties: {
-              full_name: { type: "string", description: "Nombre completo del cliente (requerido)" },
-              phone: { type: "string", description: "Teléfono del cliente" },
-              email: { type: "string", description: "Email del cliente" },
-              notes: { type: "string", description: "Notas libres sobre el cliente" },
-              status: { type: "string", description: "Estado: prospect (default), active, closed" },
-            },
-            required: ["full_name"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "update_client",
-          description: "Actualizar datos de un cliente existente. Usar cuando el agente quiera modificar información de un cliente.",
-          parameters: {
-            type: "object",
-            properties: {
-              client_id: { type: "string", description: "ID del cliente a actualizar" },
-              full_name: { type: "string", description: "Nuevo nombre completo" },
-              phone: { type: "string", description: "Nuevo teléfono" },
-              email: { type: "string", description: "Nuevo email" },
-              notes: { type: "string", description: "Nuevas notas" },
-              status: { type: "string", description: "Nuevo estado: prospect, active, closed" },
-            },
-            required: ["client_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "list_clients",
-          description: "Listar los clientes del agente. Permite filtrar por estado o buscar por nombre parcial.",
-          parameters: {
-            type: "object",
-            properties: {
-              search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
-              status: { type: "string", description: "Filtrar por estado: prospect, active, closed" },
-              limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
-            },
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_client",
-          description: "Obtener el perfil completo de un cliente con su historial de conversaciones vinculadas.",
-          parameters: {
-            type: "object",
-            properties: {
-              client_id: { type: "string", description: "ID del cliente" },
-            },
-            required: ["client_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "link_conversation",
-          description: "Vincular la conversación actual a un cliente y/o asignarle un tipo. Usar automáticamente cuando se identifica un cliente o el tipo de conversación.",
-          parameters: {
-            type: "object",
-            properties: {
-              client_id: { type: "string", description: "ID del cliente a vincular (opcional)" },
-              conversation_type: { type: "string", description: "Tipo: search, email, followup, general" },
-            },
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "generate_report",
-          description: "Generar una ficha/reporte detallado de una propiedad para compartir con clientes.",
-          parameters: {
-            type: "object",
-            properties: {
-              property_id: { type: "string", description: "ID de la propiedad" },
-            },
-            required: ["property_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "create_calendar_event",
-          description: "Crear un evento en el Google Calendar del agente. Usar para recordatorios de visitas, reuniones presenciales, seguimientos, vencimientos, etc. Para reuniones con Meet usar create_meet_event.",
-          parameters: {
-            type: "object",
-            properties: {
-              summary: { type: "string", description: "Título del evento (ej: 'Visita propiedad con María González')" },
-              description: { type: "string", description: "Descripción o detalle del evento (opcional)" },
-              start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601 (ej: '2025-03-15T10:00:00'). Asumir zona horaria de Argentina (UTC-3)." },
-              end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
-              location: { type: "string", description: "Ubicación del evento (dirección de la propiedad, oficina, etc.) (opcional)" },
-              add_meet_link: { type: "boolean", description: "Si es true, agrega un enlace de Google Meet al evento (opcional, default false)" },
-            },
-            required: ["summary", "start_datetime"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "create_meet_event",
-          description: "Crear un evento en Google Calendar con enlace de Google Meet incluido. Usar cuando el agente quiere agendar una videollamada, reunión virtual o Meet con un cliente.",
-          parameters: {
-            type: "object",
-            properties: {
-              summary: { type: "string", description: "Título del evento (ej: 'Reunión por Meet con María González')" },
-              description: { type: "string", description: "Descripción del evento (opcional)" },
-              start_datetime: { type: "string", description: "Fecha y hora de inicio en formato ISO 8601. Asumir zona horaria Argentina (UTC-3)." },
-              end_datetime: { type: "string", description: "Fecha y hora de fin en formato ISO 8601. Si no se especifica, asumir 1 hora después del inicio." },
-              attendees: { type: "array", items: { type: "string" }, description: "Lista de emails de los participantes (opcional)" },
-            },
-            required: ["summary", "start_datetime"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "send_email",
-          description: "Enviar un email desde la cuenta Gmail del agente. SOLO usar después de mostrar el borrador y recibir confirmación explícita del agente ('sí', 'envialo', 'mandalo'). NUNCA enviar sin confirmación.",
-          parameters: {
-            type: "object",
-            properties: {
-              to: { type: "string", description: "Email del destinatario" },
-              subject: { type: "string", description: "Asunto del email" },
-              body: { type: "string", description: "Cuerpo del email (texto plano o HTML básico)" },
-              cc: { type: "string", description: "Email para copia (CC), opcional" },
-            },
-            required: ["to", "subject", "body"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "list_calendar_events",
-          description: "Listar los próximos eventos del Google Calendar del agente.",
-          parameters: {
-            type: "object",
-            properties: {
-              days_ahead: { type: "integer", description: "Cuántos días hacia adelante buscar (default 7, máximo 30)" },
-              max_results: { type: "integer", description: "Cantidad máxima de eventos (default 10, máximo 20)" },
-            },
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "update_calendar_event",
-          description: "Actualizar un evento existente en el Google Calendar del agente.",
-          parameters: {
-            type: "object",
-            properties: {
-              event_id: { type: "string", description: "ID del evento a actualizar" },
-              summary: { type: "string", description: "Nuevo título del evento (opcional)" },
-              description: { type: "string", description: "Nueva descripción (opcional)" },
-              start_datetime: { type: "string", description: "Nueva fecha y hora de inicio ISO 8601 (opcional)" },
-              end_datetime: { type: "string", description: "Nueva fecha y hora de fin ISO 8601 (opcional)" },
-              location: { type: "string", description: "Nueva ubicación (opcional)" },
-            },
-            required: ["event_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "delete_calendar_event",
-          description: "Eliminar un evento del Google Calendar del agente.",
-          parameters: {
-            type: "object",
-            properties: {
-              event_id: { type: "string", description: "ID del evento a eliminar" },
-            },
-            required: ["event_id"],
-            additionalProperties: false,
-          },
-        },
-      },
-    ];
+/** Safe positive number validation */
+function safePositiveNumber(val: unknown): number | null {
+  const n = Number(val);
+  return typeof val === "number" && isFinite(n) && n >= 0 ? n : null;
+}
 
-    // Authenticate user - require valid JWT
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Authentication required" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+/** Safe positive integer validation */
+function safePositiveInt(val: unknown): number | null {
+  const n = parseInt(String(val));
+  return !isNaN(n) && n >= 0 ? n : null;
+}
+
+/** Map DB errors to safe user-facing messages */
+function safeDbError(error: any): string {
+  console.error("Tool DB error:", error?.code, error?.message);
+  if (error?.code === "23505") return "Registro duplicado";
+  if (error?.code === "23503") return "Referencia inválida";
+  if (error?.code?.startsWith("23")) return "Error de validación";
+  return "Error al procesar la solicitud";
+}
+
+/** Normalize a datetime string to full ISO format in Argentina time (UTC-3) */
+function normalizeDatetime(raw: string): Date | null {
+  if (!raw) return null;
+  // Already has timezone info
+  if (raw.includes("+") || raw.endsWith("Z")) {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Has date and time (e.g. "2026-02-20T16:00" or "2026-02-20 16:00")
+  const withTz = raw.replace(" ", "T") + "-03:00";
+  const d = new Date(withTz);
+  if (!isNaN(d.getTime())) return d;
+  // Only time provided (e.g. "16:00") — combine with today in Argentina
+  const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const dateStr = nowArg.toISOString().slice(0, 10);
+  const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeMatch) {
+    const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}:00-03:00`);
+    return isNaN(d2.getTime()) ? null : d2;
+  }
+  return null;
+}
+
+// ============================================================================
+// 5. GOOGLE CALENDAR / GMAIL HELPERS
+// ============================================================================
+
+/** Get a valid Google Calendar access token, refreshing if expired */
+async function getValidCalendarToken(
+  supabase: any,
+  userId: string,
+  clientId: string,
+  clientSecret: string
+): Promise<string | null> {
+  const { data: tokenRow } = await supabase
+    .from("google_calendar_tokens")
+    .select("access_token, refresh_token, expires_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!tokenRow) return null;
+
+  // Check if token is still valid (with 60s buffer)
+  const expiresAt = new Date(tokenRow.expires_at).getTime();
+  if (Date.now() < expiresAt - 60_000) return tokenRow.access_token;
+
+  // Refresh the token
+  const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: tokenRow.refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!refreshRes.ok) return null;
+  const refreshData = await refreshRes.json();
+  const newAccessToken = refreshData.access_token;
+  const newExpiresAt = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString();
+  await supabase
+    .from("google_calendar_tokens")
+    .update({ access_token: newAccessToken, expires_at: newExpiresAt })
+    .eq("user_id", userId);
+  return newAccessToken;
+}
+
+/** Extract Meet link from a Google Calendar event response */
+function extractMeetLink(event: any): string | null {
+  return event.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri ?? null;
+}
+
+/** Build a Google Calendar event body */
+function buildCalendarEvent(args: {
+  summary: string;
+  startDate: Date;
+  endDate: Date;
+  description?: string;
+  location?: string;
+  addMeet?: boolean;
+  attendees?: string[];
+}): any {
+  const body: any = {
+    summary: args.summary,
+    start: { dateTime: args.startDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+    end: { dateTime: args.endDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
+  };
+  if (args.description) body.description = String(args.description).slice(0, 2000);
+  if (args.location) body.location = String(args.location).slice(0, 500);
+  if (args.addMeet) {
+    body.conferenceData = {
+      createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
+    };
+  }
+  if (args.attendees?.length) {
+    body.attendees = args.attendees
+      .filter((e: string) => typeof e === "string" && e.includes("@"))
+      .slice(0, 20)
+      .map((e: string) => ({ email: e.trim().slice(0, 200) }));
+  }
+  return body;
+}
+
+/** Parse and validate start/end datetimes for calendar events */
+function parseEventDates(args: any): { startDate: Date; endDate: Date } | { error: string } {
+  const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
+  if (!startStr) return { error: "La fecha de inicio es requerida" };
+  const startDate = normalizeDatetime(startStr);
+  if (!startDate) return { error: `Fecha de inicio inválida: '${startStr}'. Usá formato ISO como '2026-02-20T16:00'.` };
+  const endDateRaw = args.end_datetime ? normalizeDatetime(String(args.end_datetime)) : null;
+  const endDate = endDateRaw ?? new Date(startDate.getTime() + 60 * 60 * 1000);
+  return { startDate, endDate };
+}
+
+/** Build a MIME email message and base64url-encode it */
+function buildMimeEmail(to: string, subject: string, body: string, cc?: string | null): string {
+  const mimeLines = [`To: ${to}`, `Subject: ${subject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8"];
+  if (cc) mimeLines.push(`Cc: ${cc}`);
+  mimeLines.push("", body);
+  const mimeMessage = mimeLines.join("\r\n");
+  return btoa(unescape(encodeURIComponent(mimeMessage))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// ============================================================================
+// 6. AUTHENTICATION
+// ============================================================================
+
+interface AuthResult {
+  userId: string;
+  agentName: string | null;
+  agentCode: string | null;
+}
+
+async function authenticateRequest(
+  req: Request,
+  supabaseUrl: string,
+  supabase: any
+): Promise<AuthResult | Response> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+  const {
+    data: { user },
+    error: authError,
+  } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, agent_code")
+    .eq("user_id", user.id)
+    .single();
+
+  return {
+    userId: user.id,
+    agentName: profile?.full_name ?? null,
+    agentCode: profile?.agent_code ?? null,
+  };
+}
+
+// ============================================================================
+// 7. TOOL EXECUTOR
+// ============================================================================
+
+async function executeTool(
+  name: string,
+  args: any,
+  ctx: {
+    supabase: any;
+    userId: string;
+    conversationId: string;
+    getCalendarToken: () => Promise<string | null>;
+  }
+): Promise<string> {
+  const { supabase, userId, conversationId, getCalendarToken } = ctx;
+
+  switch (name) {
+    // ---- Properties ----
+    case "search_properties": {
+      const zone = sanitizePattern(args.zone);
+      const locality = sanitizePattern(args.locality);
+      const operation = sanitizePattern(args.operation);
+      const property_type = sanitizePattern(args.property_type);
+      const currency = sanitizePattern(args.currency);
+      const min_price = safePositiveNumber(args.min_price);
+      const max_price = safePositiveNumber(args.max_price);
+      const min_ambientes = safePositiveInt(args.min_ambientes);
+      const max_ambientes = safePositiveInt(args.max_ambientes);
+      const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
+
+      let baseQuery = supabase.from("properties").select("*", { count: "exact", head: true });
+      let dataQuery = supabase.from("properties").select("*");
+
+      const applyFilters = (q: any) => {
+        if (zone) q = q.ilike("zone", `%${zone}%`);
+        if (locality) q = q.ilike("locality", `%${locality}%`);
+        if (operation) q = q.ilike("operation", `%${operation}%`);
+        if (property_type) q = q.ilike("property_type", `%${property_type}%`);
+        if (min_price !== null) q = q.gte("price", min_price);
+        if (max_price !== null) q = q.lte("price", max_price);
+        if (currency) q = q.ilike("currency", `%${currency}%`);
+        if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
+        if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
+        return q;
+      };
+
+      baseQuery = applyFilters(baseQuery);
+      dataQuery = applyFilters(dataQuery);
+      dataQuery = dataQuery.limit(limit);
+
+      const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
+      const totalCount = countResult.count ?? 0;
+      const { data, error } = dataResult;
+
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
+
+      // Sort: RE/MAX Docta properties first
+      data.sort((a: any, b: any) => {
+        const aDocta = a.office?.toLowerCase().includes("docta") ? 0 : 1;
+        const bDocta = b.office?.toLowerCase().includes("docta") ? 0 : 1;
+        return aDocta - bDocta;
       });
+
+      return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
     }
 
-    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const userId: string = user.id;
-    let agentName: string | null = null;
-    let agentCode: string | null = null;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name, agent_code")
-      .eq("user_id", userId)
-      .single();
-    agentName = profile?.full_name ?? null;
-    agentCode = profile?.agent_code ?? null;
-
-    // --- Google Calendar helpers ---
-    const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
-    const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-
-    async function getValidCalendarToken(uid: string): Promise<string | null> {
-      const { data: tokenRow } = await supabase
-        .from("google_calendar_tokens")
-        .select("access_token, refresh_token, expires_at")
-        .eq("user_id", uid)
-        .maybeSingle();
-      if (!tokenRow) return null;
-
-      // Check if token is still valid (with 60s buffer)
-      const expiresAt = new Date(tokenRow.expires_at).getTime();
-      if (Date.now() < expiresAt - 60_000) return tokenRow.access_token;
-
-      // Refresh the token
-      const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID,
-          client_secret: GOOGLE_CLIENT_SECRET,
-          refresh_token: tokenRow.refresh_token,
-          grant_type: "refresh_token",
-        }),
-      });
-      if (!refreshRes.ok) return null;
-      const refreshData = await refreshRes.json();
-      const newAccessToken = refreshData.access_token;
-      const newExpiresAt = new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString();
-      await supabase.from("google_calendar_tokens").update({
-        access_token: newAccessToken,
-        expires_at: newExpiresAt,
-      }).eq("user_id", uid);
-      return newAccessToken;
-    }
-
-    // UUID validation regex
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-    // Sanitize ILIKE patterns - escape wildcards and limit length
-    const sanitizePattern = (val: unknown): string | null => {
-      if (typeof val !== "string" || val.trim() === "") return null;
-      return val.replace(/[%_\\]/g, "\\$&").slice(0, 100);
-    };
-
-    // Safe numeric validation
-    const safePositiveNumber = (val: unknown): number | null => {
-      const n = Number(val);
-      return typeof val === "number" && isFinite(n) && n >= 0 ? n : null;
-    };
-
-    // Safe integer validation
-    const safePositiveInt = (val: unknown): number | null => {
-      const n = parseInt(String(val));
-      return !isNaN(n) && n >= 0 ? n : null;
-    };
-
-    // Map DB errors to safe messages
-    const safeDbError = (error: any): string => {
-      console.error("Tool DB error:", error?.code, error?.message);
-      if (error?.code === "23505") return "Registro duplicado";
-      if (error?.code === "23503") return "Referencia inválida";
-      if (error?.code?.startsWith("23")) return "Error de validación";
-      return "Error al procesar la solicitud";
-    };
-
-    // Execute tool calls
-    async function executeTool(name: string, args: any): Promise<string> {
-      switch (name) {
-        case "search_properties": {
-          // Validate and sanitize all inputs
-          const zone = sanitizePattern(args.zone);
-          const locality = sanitizePattern(args.locality);
-          const operation = sanitizePattern(args.operation);
-          const property_type = sanitizePattern(args.property_type);
-          const currency = sanitizePattern(args.currency);
-          const min_price = safePositiveNumber(args.min_price);
-          const max_price = safePositiveNumber(args.max_price);
-          const min_ambientes = safePositiveInt(args.min_ambientes);
-          const max_ambientes = safePositiveInt(args.max_ambientes);
-          const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
-
-          let baseQuery = supabase.from("properties").select("*", { count: "exact", head: true });
-          let dataQuery = supabase.from("properties").select("*");
-
-          const applyFilters = (q: any) => {
-            if (zone) q = q.ilike("zone", `%${zone}%`);
-            if (locality) q = q.ilike("locality", `%${locality}%`);
-            if (operation) q = q.ilike("operation", `%${operation}%`);
-            if (property_type) q = q.ilike("property_type", `%${property_type}%`);
-            if (min_price !== null) q = q.gte("price", min_price);
-            if (max_price !== null) q = q.lte("price", max_price);
-            if (currency) q = q.ilike("currency", `%${currency}%`);
-            if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
-            if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
-            return q;
-          };
-
-          baseQuery = applyFilters(baseQuery);
-          dataQuery = applyFilters(dataQuery);
-          dataQuery = dataQuery.limit(limit);
-
-          const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
-          const totalCount = countResult.count ?? 0;
-          const { data, error } = dataResult;
-
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
-
-          // Sort: RE/MAX Docta properties first
-          data.sort((a: any, b: any) => {
-            const aDocta = a.office?.toLowerCase().includes("docta") ? 0 : 1;
-            const bDocta = b.office?.toLowerCase().includes("docta") ? 0 : 1;
-            return aDocta - bDocta;
-          });
-
-          return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
-        }
-        case "compare_properties": {
-          if (!Array.isArray(args.property_ids) || args.property_ids.length === 0) {
-            return JSON.stringify({ error: "IDs de propiedades inválidos" });
-          }
-          const validIds = args.property_ids.filter((id: unknown) => typeof id === "string" && uuidRegex.test(id));
-          if (validIds.length === 0) return JSON.stringify({ error: "IDs de propiedades inválidos" });
-          const { data, error } = await supabase.from("properties").select("*").in("id", validIds);
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ properties: data });
-        }
-        case "get_favorites": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const { data, error } = await supabase
-            .from("favorites")
-            .select("property_id, properties(*)")
-            .eq("user_id", userId);
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ favorites: data });
-        }
-        case "add_favorite": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          if (!args.property_id || !uuidRegex.test(args.property_id)) {
-            return JSON.stringify({ error: "ID de propiedad inválido" });
-          }
-          const { error } = await supabase.from("favorites").insert({ user_id: userId, property_id: args.property_id });
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ success: true, message: "Propiedad agregada a favoritos" });
-        }
-        case "remove_favorite": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          if (!args.property_id || !uuidRegex.test(args.property_id)) {
-            return JSON.stringify({ error: "ID de propiedad inválido" });
-          }
-          const { error } = await supabase.from("favorites").delete().eq("user_id", userId).eq("property_id", args.property_id);
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ success: true, message: "Propiedad eliminada de favoritos" });
-        }
-        case "generate_report": {
-          if (!args.property_id || !uuidRegex.test(args.property_id)) {
-            return JSON.stringify({ error: "ID de propiedad inválido" });
-          }
-          const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con clientes. Incluí todos los datos relevantes de forma organizada." });
-        }
-        case "create_client": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const full_name = typeof args.full_name === "string" ? args.full_name.trim().slice(0, 200) : null;
-          if (!full_name) return JSON.stringify({ error: "El nombre es requerido" });
-          const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
-          const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
-          const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
-          const validStatuses = ["prospect", "active", "closed"];
-          const status = validStatuses.includes(args.status) ? args.status : "prospect";
-          const { data, error } = await supabase
-            .from("clients")
-            .insert({ user_id: userId, full_name, phone, email, notes, status })
-            .select("id, full_name, status")
-            .single();
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
-        }
-        case "update_client": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          if (!args.client_id || !uuidRegex.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
-          const updates: Record<string, any> = {};
-          if (typeof args.full_name === "string") updates.full_name = args.full_name.trim().slice(0, 200);
-          if (typeof args.phone === "string") updates.phone = args.phone.trim().slice(0, 50);
-          if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
-          if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
-          const validStatuses = ["prospect", "active", "closed"];
-          if (validStatuses.includes(args.status)) updates.status = args.status;
-          if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
-          const { data, error } = await supabase
-            .from("clients")
-            .update(updates)
-            .eq("id", args.client_id)
-            .eq("user_id", userId)
-            .select("id, full_name, status")
-            .single();
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
-        }
-        case "list_clients": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const search = sanitizePattern(args.search);
-          const validStatuses = ["prospect", "active", "closed"];
-          const status = validStatuses.includes(args.status) ? args.status : null;
-          const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
-          let query = supabase
-            .from("clients")
-            .select("id, full_name, phone, email, status, notes, created_at, updated_at")
-            .eq("user_id", userId)
-            .order("updated_at", { ascending: false })
-            .limit(limit);
-          if (search) query = query.ilike("full_name", `%${search}%`);
-          if (status) query = query.eq("status", status);
-          const { data, error } = await query;
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0 });
-        }
-        case "get_client": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          if (!args.client_id || !uuidRegex.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
-          const { data: client, error: clientError } = await supabase
-            .from("clients")
-            .select("*")
-            .eq("id", args.client_id)
-            .eq("user_id", userId)
-            .single();
-          if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
-          const { data: convs } = await supabase
-            .from("conversations")
-            .select("id, title, conversation_type, updated_at")
-            .eq("client_id", args.client_id)
-            .order("updated_at", { ascending: false });
-          return JSON.stringify({ client, conversations: convs ?? [] });
-        }
-        case "link_conversation": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          if (!conversationId || !uuidRegex.test(conversationId)) return JSON.stringify({ error: "ID de conversación inválido" });
-          const updates: Record<string, any> = {};
-          if (args.client_id && uuidRegex.test(args.client_id)) {
-            // Verify the client belongs to this user
-            const { data: client } = await supabase
-              .from("clients")
-              .select("id")
-              .eq("id", args.client_id)
-              .eq("user_id", userId)
-              .single();
-            if (client) updates.client_id = args.client_id;
-          }
-          const validTypes = ["search", "email", "followup", "general"];
-          if (validTypes.includes(args.conversation_type)) updates.conversation_type = args.conversation_type;
-          if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay datos para vincular" });
-          const { error } = await supabase
-            .from("conversations")
-            .update(updates)
-            .eq("id", conversationId)
-            .eq("user_id", userId);
-          if (error) return JSON.stringify({ error: safeDbError(error) });
-          return JSON.stringify({ success: true, message: "Conversación vinculada correctamente." });
-        }
-        case "create_calendar_event": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
-
-          const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
-          if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
-          const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
-          if (!startStr) return JSON.stringify({ error: "La fecha de inicio es requerida" });
-
-          // Normalize a datetime string to full ISO format in Argentina time (UTC-3)
-          const normalizeDatetime = (raw: string): Date | null => {
-            if (!raw) return null;
-            // Already has timezone info
-            if (raw.includes("+") || raw.endsWith("Z")) {
-              const d = new Date(raw);
-              return isNaN(d.getTime()) ? null : d;
-            }
-            // Has date and time (e.g. "2026-02-20T16:00" or "2026-02-20 16:00")
-            const withTz = raw.replace(" ", "T") + "-03:00";
-            const d = new Date(withTz);
-            if (!isNaN(d.getTime())) return d;
-            // Only time provided (e.g. "16:00") — combine with today in Argentina
-            const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
-            const dateStr = nowArg.toISOString().slice(0, 10);
-            const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-            if (timeMatch) {
-              const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2,"0")}:${timeMatch[2]}:00-03:00`);
-              return isNaN(d2.getTime()) ? null : d2;
-            }
-            return null;
-          };
-
-          // Parse start and compute end (+1h if not provided)
-          const startDate = normalizeDatetime(startStr);
-          if (!startDate) return JSON.stringify({ error: `Fecha de inicio inválida: '${startStr}'. Usá formato ISO como '2026-02-20T16:00'.` });
-
-          const endDateRaw = args.end_datetime ? normalizeDatetime(String(args.end_datetime)) : null;
-          const endDate = endDateRaw ?? new Date(startDate.getTime() + 60 * 60 * 1000);
-
-          const eventBody: any = {
-            summary,
-            start: { dateTime: startDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
-            end: { dateTime: endDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
-          };
-          if (args.description) eventBody.description = String(args.description).slice(0, 2000);
-          if (args.location) eventBody.location = String(args.location).slice(0, 500);
-
-          // Add Meet link if requested
-          if (args.add_meet_link === true) {
-            eventBody.conferenceData = {
-              createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
-            };
-          }
-
-          const calUrl = args.add_meet_link === true
-            ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
-            : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
-
-          const calRes = await fetch(calUrl, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify(eventBody),
-          });
-          if (!calRes.ok) {
-            const err = await calRes.text();
-            console.error("Calendar create error:", err);
-            return JSON.stringify({ error: "Error al crear el evento en Google Calendar" });
-          }
-          const event = await calRes.json();
-          const meetLink = event.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri ?? null;
-          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: meetLink, message: `Evento "${summary}" creado correctamente en Google Calendar.` });
-        }
-        case "create_meet_event": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
-
-          const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
-          if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
-          const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
-          if (!startStr) return JSON.stringify({ error: "La fecha de inicio es requerida" });
-
-          const normDt = (raw: string): Date | null => {
-            if (!raw) return null;
-            if (raw.includes("+") || raw.endsWith("Z")) {
-              const d = new Date(raw); return isNaN(d.getTime()) ? null : d;
-            }
-            const withTz = raw.replace(" ", "T") + "-03:00";
-            const d = new Date(withTz);
-            if (!isNaN(d.getTime())) return d;
-            const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
-            const dateStr = nowArg.toISOString().slice(0, 10);
-            const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-            if (timeMatch) {
-              const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2,"0")}:${timeMatch[2]}:00-03:00`);
-              return isNaN(d2.getTime()) ? null : d2;
-            }
-            return null;
-          };
-
-          const startDate = normDt(startStr);
-          if (!startDate) return JSON.stringify({ error: `Fecha de inicio inválida: '${startStr}'.` });
-          const endDateRaw = args.end_datetime ? normDt(String(args.end_datetime)) : null;
-          const endDate = endDateRaw ?? new Date(startDate.getTime() + 60 * 60 * 1000);
-
-          const eventBody: any = {
-            summary,
-            start: { dateTime: startDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
-            end: { dateTime: endDate.toISOString(), timeZone: "America/Argentina/Cordoba" },
-            conferenceData: {
-              createRequest: { requestId: `meet-${Date.now()}`, conferenceSolutionKey: { type: "hangoutsMeet" } },
-            },
-          };
-          if (args.description) eventBody.description = String(args.description).slice(0, 2000);
-          if (Array.isArray(args.attendees) && args.attendees.length > 0) {
-            eventBody.attendees = args.attendees
-              .filter((e: unknown) => typeof e === "string" && e.includes("@"))
-              .slice(0, 20)
-              .map((e: string) => ({ email: e.trim().slice(0, 200) }));
-          }
-
-          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify(eventBody),
-          });
-          if (!calRes.ok) {
-            const err = await calRes.text();
-            console.error("Meet event create error:", err);
-            return JSON.stringify({ error: "Error al crear el evento con Google Meet" });
-          }
-          const event = await calRes.json();
-          const meetLink = event.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === "video")?.uri ?? null;
-          return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: meetLink, start: startDate.toISOString(), end: endDate.toISOString(), message: `Reunión por Meet "${summary}" creada correctamente.` });
-        }
-        case "send_email": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Gmail no conectado. El agente debe reconectar su cuenta desde el perfil para activar el envío de emails." });
-
-          const to = typeof args.to === "string" ? args.to.trim().slice(0, 500) : null;
-          if (!to || !to.includes("@")) return JSON.stringify({ error: "Email de destinatario inválido" });
-          const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 500) : null;
-          if (!subject) return JSON.stringify({ error: "El asunto es requerido" });
-          const body = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
-          if (!body) return JSON.stringify({ error: "El cuerpo del email es requerido" });
-          const cc = typeof args.cc === "string" ? args.cc.trim().slice(0, 500) : null;
-
-          // Build MIME message
-          let mimeLines = [
-            `To: ${to}`,
-            `Subject: ${subject}`,
-            "MIME-Version: 1.0",
-            "Content-Type: text/plain; charset=UTF-8",
-          ];
-          if (cc) mimeLines.push(`Cc: ${cc}`);
-          mimeLines.push("", body);
-          const mimeMessage = mimeLines.join("\r\n");
-
-          // Base64url encode
-          const encoded = btoa(unescape(encodeURIComponent(mimeMessage)))
-            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-          const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ raw: encoded }),
-          });
-
-          if (!gmailRes.ok) {
-            const err = await gmailRes.text();
-            console.error("Gmail send error:", err);
-            if (gmailRes.status === 403) return JSON.stringify({ error: "Sin permisos para enviar emails. El agente debe reconectar su cuenta desde el perfil para activar Gmail." });
-            return JSON.stringify({ error: "Error al enviar el email" });
-          }
-          const gmailData = await gmailRes.json();
-          return JSON.stringify({ success: true, message_id: gmailData.id, message: `Email enviado correctamente a ${to}.` });
-        }
-        case "list_calendar_events": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
-
-          const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 7, 1), 30);
-          const maxResults = Math.min(Math.max(safePositiveInt(args.max_results) ?? 10, 1), 20);
-          const timeMin = new Date().toISOString();
-          const timeMax = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
-
-          const params = new URLSearchParams({
-            timeMin,
-            timeMax,
-            maxResults: String(maxResults),
-            singleEvents: "true",
-            orderBy: "startTime",
-          });
-          const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (!calRes.ok) return JSON.stringify({ error: "Error al obtener eventos de Google Calendar" });
-          const data = await calRes.json();
-          const events = (data.items ?? []).map((e: any) => ({
-            id: e.id,
-            summary: e.summary,
-            description: e.description,
-            location: e.location,
-            start: e.start?.dateTime ?? e.start?.date,
-            end: e.end?.dateTime ?? e.end?.date,
-            html_link: e.htmlLink,
-          }));
-          return JSON.stringify({ events, total: events.length });
-        }
-        case "update_calendar_event": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
-
-          const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
-          if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
-
-          // Fetch existing event first
-          const getRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (!getRes.ok) return JSON.stringify({ error: "Evento no encontrado" });
-          const existingEvent = await getRes.json();
-
-          const patch: any = {};
-          if (args.summary) patch.summary = String(args.summary).slice(0, 500);
-          if (args.description !== undefined) patch.description = String(args.description).slice(0, 2000);
-          if (args.location !== undefined) patch.location = String(args.location).slice(0, 500);
-          if (args.start_datetime) {
-            const sd = normalizeDatetime(String(args.start_datetime));
-            if (sd) patch.start = { dateTime: sd.toISOString(), timeZone: "America/Argentina/Cordoba" };
-          }
-          if (args.end_datetime) {
-            const ed = normalizeDatetime(String(args.end_datetime));
-            if (ed) patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
-          }
-
-          const patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
-            method: "PATCH",
-            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify(patch),
-          });
-          if (!patchRes.ok) return JSON.stringify({ error: "Error al actualizar el evento" });
-          const updated = await patchRes.json();
-          return JSON.stringify({ success: true, event_id: updated.id, html_link: updated.htmlLink, message: `Evento actualizado correctamente.` });
-        }
-        case "delete_calendar_event": {
-          if (!userId) return JSON.stringify({ error: "Usuario no autenticado" });
-          const accessToken = await getValidCalendarToken(userId);
-          if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
-
-          const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
-          if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
-
-          const delRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (!delRes.ok && delRes.status !== 410) return JSON.stringify({ error: "Error al eliminar el evento" });
-          return JSON.stringify({ success: true, message: "Evento eliminado del calendario." });
-        }
-        default:
-          return JSON.stringify({ error: "Tool not found" });
+    case "compare_properties": {
+      if (!Array.isArray(args.property_ids) || args.property_ids.length === 0) {
+        return JSON.stringify({ error: "IDs de propiedades inválidos" });
       }
+      const validIds = args.property_ids.filter((id: unknown) => typeof id === "string" && UUID_REGEX.test(id));
+      if (validIds.length === 0) return JSON.stringify({ error: "IDs de propiedades inválidos" });
+      const { data, error } = await supabase.from("properties").select("*").in("id", validIds);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ properties: data });
     }
 
-    // Current date/time in Argentina (UTC-3)
-    const now = new Date();
-    const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
-    const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
-    const agentContext = agentName
-      ? `\n\n## IDENTIDAD DEL AGENTE HUMANO — LEER CON ATENCIÓN
+    // ---- Favorites ----
+    case "get_favorites": {
+      const { data, error } = await supabase
+        .from("favorites")
+        .select("property_id, properties(*)")
+        .eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ favorites: data });
+    }
+
+    case "add_favorite": {
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) {
+        return JSON.stringify({ error: "ID de propiedad inválido" });
+      }
+      const { error } = await supabase.from("favorites").insert({ user_id: userId, property_id: args.property_id });
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: "Propiedad agregada a favoritos" });
+    }
+
+    case "remove_favorite": {
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) {
+        return JSON.stringify({ error: "ID de propiedad inválido" });
+      }
+      const { error } = await supabase.from("favorites").delete().eq("user_id", userId).eq("property_id", args.property_id);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: "Propiedad eliminada de favoritos" });
+    }
+
+    case "generate_report": {
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) {
+        return JSON.stringify({ error: "ID de propiedad inválido" });
+      }
+      const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con clientes. Incluí todos los datos relevantes de forma organizada." });
+    }
+
+    // ---- Clients ----
+    case "create_client": {
+      const full_name = typeof args.full_name === "string" ? args.full_name.trim().slice(0, 200) : null;
+      if (!full_name) return JSON.stringify({ error: "El nombre es requerido" });
+      const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
+      const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
+      const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
+      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "prospect";
+      const { data, error } = await supabase
+        .from("clients")
+        .insert({ user_id: userId, full_name, phone, email, notes, status })
+        .select("id, full_name, status")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
+    }
+
+    case "update_client": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      const updates: Record<string, any> = {};
+      if (typeof args.full_name === "string") updates.full_name = args.full_name.trim().slice(0, 200);
+      if (typeof args.phone === "string") updates.phone = args.phone.trim().slice(0, 50);
+      if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
+      if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
+      if (VALID_CLIENT_STATUSES.includes(args.status)) updates.status = args.status;
+      if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
+      const { data, error } = await supabase
+        .from("clients")
+        .update(updates)
+        .eq("id", args.client_id)
+        .eq("user_id", userId)
+        .select("id, full_name, status")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
+    }
+
+    case "list_clients": {
+      const search = sanitizePattern(args.search);
+      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : null;
+      const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
+      let query = supabase
+        .from("clients")
+        .select("id, full_name, phone, email, status, notes, created_at, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+      if (search) query = query.ilike("full_name", `%${search}%`);
+      if (status) query = query.eq("status", status);
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0 });
+    }
+
+    case "get_client": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      const { data: client, error: clientError } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("id", args.client_id)
+        .eq("user_id", userId)
+        .single();
+      if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
+      const { data: convs } = await supabase
+        .from("conversations")
+        .select("id, title, conversation_type, updated_at")
+        .eq("client_id", args.client_id)
+        .order("updated_at", { ascending: false });
+      return JSON.stringify({ client, conversations: convs ?? [] });
+    }
+
+    case "link_conversation": {
+      if (!conversationId || !UUID_REGEX.test(conversationId)) return JSON.stringify({ error: "ID de conversación inválido" });
+      const updates: Record<string, any> = {};
+      if (args.client_id && UUID_REGEX.test(args.client_id)) {
+        const { data: client } = await supabase.from("clients").select("id").eq("id", args.client_id).eq("user_id", userId).single();
+        if (client) updates.client_id = args.client_id;
+      }
+      if (VALID_CONVERSATION_TYPES.includes(args.conversation_type)) updates.conversation_type = args.conversation_type;
+      if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay datos para vincular" });
+      const { error } = await supabase.from("conversations").update(updates).eq("id", conversationId).eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: "Conversación vinculada correctamente." });
+    }
+
+    // ---- Calendar ----
+    case "create_calendar_event": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
+
+      const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
+      if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
+
+      const dates = parseEventDates(args);
+      if ("error" in dates) return JSON.stringify({ error: dates.error });
+
+      const eventBody = buildCalendarEvent({
+        summary,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        description: args.description,
+        location: args.location,
+        addMeet: args.add_meet_link === true,
+      });
+
+      const calUrl = args.add_meet_link === true
+        ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
+        : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+      const calRes = await fetch(calUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(eventBody),
+      });
+      if (!calRes.ok) {
+        const err = await calRes.text();
+        console.error("Calendar create error:", err);
+        return JSON.stringify({ error: "Error al crear el evento en Google Calendar" });
+      }
+      const event = await calRes.json();
+      return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: extractMeetLink(event), message: `Evento "${summary}" creado correctamente en Google Calendar.` });
+    }
+
+    case "create_meet_event": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado. El agente debe ir a su perfil y conectar el calendario." });
+
+      const summary = typeof args.summary === "string" ? args.summary.trim().slice(0, 500) : null;
+      if (!summary) return JSON.stringify({ error: "El título del evento es requerido" });
+
+      const dates = parseEventDates(args);
+      if ("error" in dates) return JSON.stringify({ error: dates.error });
+
+      const eventBody = buildCalendarEvent({
+        summary,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        description: args.description,
+        addMeet: true,
+        attendees: Array.isArray(args.attendees) ? args.attendees : undefined,
+      });
+
+      const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(eventBody),
+      });
+      if (!calRes.ok) {
+        const err = await calRes.text();
+        console.error("Meet event create error:", err);
+        return JSON.stringify({ error: "Error al crear el evento con Google Meet" });
+      }
+      const event = await calRes.json();
+      return JSON.stringify({ success: true, event_id: event.id, html_link: event.htmlLink, meet_link: extractMeetLink(event), start: dates.startDate.toISOString(), end: dates.endDate.toISOString(), message: `Reunión por Meet "${summary}" creada correctamente.` });
+    }
+
+    // ---- Gmail ----
+    case "send_email": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Gmail no conectado. El agente debe reconectar su cuenta desde el perfil para activar el envío de emails." });
+
+      const to = typeof args.to === "string" ? args.to.trim().slice(0, 500) : null;
+      if (!to || !to.includes("@")) return JSON.stringify({ error: "Email de destinatario inválido" });
+      const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 500) : null;
+      if (!subject) return JSON.stringify({ error: "El asunto es requerido" });
+      const body = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
+      if (!body) return JSON.stringify({ error: "El cuerpo del email es requerido" });
+      const cc = typeof args.cc === "string" ? args.cc.trim().slice(0, 500) : null;
+
+      const encoded = buildMimeEmail(to, subject, body, cc);
+
+      const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ raw: encoded }),
+      });
+
+      if (!gmailRes.ok) {
+        const err = await gmailRes.text();
+        console.error("Gmail send error:", err);
+        if (gmailRes.status === 403) return JSON.stringify({ error: "Sin permisos para enviar emails. El agente debe reconectar su cuenta desde el perfil para activar Gmail." });
+        return JSON.stringify({ error: "Error al enviar el email" });
+      }
+      const gmailData = await gmailRes.json();
+      return JSON.stringify({ success: true, message_id: gmailData.id, message: `Email enviado correctamente a ${to}.` });
+    }
+
+    case "list_calendar_events": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+      const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 7, 1), 30);
+      const maxResults = Math.min(Math.max(safePositiveInt(args.max_results) ?? 10, 1), 20);
+      const params = new URLSearchParams({
+        timeMin: new Date().toISOString(),
+        timeMax: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString(),
+        maxResults: String(maxResults),
+        singleEvents: "true",
+        orderBy: "startTime",
+      });
+
+      const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!calRes.ok) return JSON.stringify({ error: "Error al obtener eventos de Google Calendar" });
+      const data = await calRes.json();
+      const events = (data.items ?? []).map((e: any) => ({
+        id: e.id,
+        summary: e.summary,
+        description: e.description,
+        location: e.location,
+        start: e.start?.dateTime ?? e.start?.date,
+        end: e.end?.dateTime ?? e.end?.date,
+        html_link: e.htmlLink,
+      }));
+      return JSON.stringify({ events, total: events.length });
+    }
+
+    case "update_calendar_event": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+      const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
+      if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
+
+      const getRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!getRes.ok) return JSON.stringify({ error: "Evento no encontrado" });
+      await getRes.json(); // consume body
+
+      const patch: any = {};
+      if (args.summary) patch.summary = String(args.summary).slice(0, 500);
+      if (args.description !== undefined) patch.description = String(args.description).slice(0, 2000);
+      if (args.location !== undefined) patch.location = String(args.location).slice(0, 500);
+      if (args.start_datetime) {
+        const sd = normalizeDatetime(String(args.start_datetime));
+        if (sd) patch.start = { dateTime: sd.toISOString(), timeZone: "America/Argentina/Cordoba" };
+      }
+      if (args.end_datetime) {
+        const ed = normalizeDatetime(String(args.end_datetime));
+        if (ed) patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
+      }
+
+      const patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!patchRes.ok) return JSON.stringify({ error: "Error al actualizar el evento" });
+      const updated = await patchRes.json();
+      return JSON.stringify({ success: true, event_id: updated.id, html_link: updated.htmlLink, message: `Evento actualizado correctamente.` });
+    }
+
+    case "delete_calendar_event": {
+      const accessToken = await getCalendarToken();
+      if (!accessToken) return JSON.stringify({ error: "Google Calendar no conectado." });
+
+      const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
+      if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
+
+      const delRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!delRes.ok && delRes.status !== 410) return JSON.stringify({ error: "Error al eliminar el evento" });
+      return JSON.stringify({ success: true, message: "Evento eliminado del calendario." });
+    }
+
+    default:
+      return JSON.stringify({ error: "Tool not found" });
+  }
+}
+
+// ============================================================================
+// 8. MESSAGE BUILDING
+// ============================================================================
+
+/** Build the contextual system prompt with agent identity */
+function buildContextualPrompt(agentName: string | null, agentCode: string | null): string {
+  const now = new Date();
+  const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+  const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+
+  const agentContext = agentName
+    ? `\n\n## IDENTIDAD DEL AGENTE HUMANO — LEER CON ATENCIÓN
 El agente inmobiliario que usa esta app se llama **${agentName}**${agentCode ? ` y su código de asociado RE/MAX es **${agentCode}**` : ""}.
 Vos sos "Alan", el asistente de IA. ${agentName} es el humano real.
 
@@ -1145,51 +1180,148 @@ Hola [cliente], soy ${agentName} de RE/MAX Docta. ...
 <<<DRAFT_END>>>
 
 ¿Querés que ajuste algo?`
-      : "";
-    const contextualPrompt = `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+    : "";
 
-    // Build messages for AI, converting attachments to multimodal content
-    const buildAIMessages = (msgs: any[]) => {
-      return msgs.map((m: any) => {
-        if (m.role === "user" && m.attachments?.length) {
-          const content: any[] = [];
-          for (const att of m.attachments) {
-            if (att.type === "image") {
-              content.push({
-                type: "image_url",
-                image_url: { url: `data:${att.mimeType};base64,${att.base64}` },
-              });
-            }
-          }
-          if (m.content) {
-            content.push({ type: "text", text: m.content });
-          } else if (content.length > 0) {
-            content.push({ type: "text", text: "Analizá esta imagen y describí lo que ves." });
-          }
-          return { role: "user", content };
+  return `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+}
+
+/** Convert user messages with attachments to multimodal AI format */
+function buildAIMessages(msgs: any[]): any[] {
+  return msgs.map((m: any) => {
+    if (m.role === "user" && m.attachments?.length) {
+      const content: any[] = [];
+      for (const att of m.attachments) {
+        if (att.type === "image") {
+          content.push({ type: "image_url", image_url: { url: `data:${att.mimeType};base64,${att.base64}` } });
         }
-        return { role: m.role, content: m.content };
-      });
+      }
+      if (m.content) {
+        content.push({ type: "text", text: m.content });
+      } else if (content.length > 0) {
+        content.push({ type: "text", text: "Analizá esta imagen y describí lo que ves." });
+      }
+      return { role: "user", content };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
+// ============================================================================
+// 9. TITLE GENERATION
+// ============================================================================
+
+async function generateTitle(
+  messages: any[],
+  assistantContent: string,
+  conversationId: string,
+  supabase: any,
+  apiKey: string
+): Promise<void> {
+  try {
+    const userText =
+      typeof messages[0].content === "string"
+        ? messages[0].content
+        : Array.isArray(messages[0].content)
+          ? messages[0].content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
+          : "";
+
+    const titleRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
+          { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
+        ],
+        stream: false,
+      }),
+    });
+    if (titleRes.ok) {
+      const titleData = await titleRes.json();
+      const generatedTitle = titleData.choices?.[0]?.message?.content?.trim();
+      if (generatedTitle) {
+        await supabase.from("conversations").update({ title: generatedTitle }).eq("id", conversationId);
+      }
+    }
+  } catch (e) {
+    console.error("Title generation error:", e);
+  }
+}
+
+// ============================================================================
+// 10. SSE RESPONSE BUILDER
+// ============================================================================
+
+const MSG_BREAK = "===MSG_BREAK===";
+
+function buildSSEResponse(content: string): Response {
+  const encoder = new TextEncoder();
+  const segments = content.split(MSG_BREAK).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+
+  const stream = new ReadableStream({
+    start(controller) {
+      for (let i = 0; i < segments.length; i++) {
+        const chunk = JSON.stringify({ choices: [{ delta: { content: segments[i] }, finish_reason: null }] });
+        controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+        if (i < segments.length - 1) {
+          const breakChunk = JSON.stringify({ choices: [{ delta: { content: MSG_BREAK }, finish_reason: null }] });
+          controller.enqueue(encoder.encode(`data: ${breakChunk}\n\n`));
+        }
+      }
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+}
+
+// ============================================================================
+// 11. MAIN HANDLER
+// ============================================================================
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { messages, conversationId } = await req.json();
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Authenticate
+    const authResult = await authenticateRequest(req, supabaseUrl, supabase);
+    if (authResult instanceof Response) return authResult;
+    const { userId, agentName, agentCode } = authResult;
+
+    // Google credentials
+    const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+    const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+
+    // Tool execution context
+    const toolCtx = {
+      supabase,
+      userId,
+      conversationId,
+      getCalendarToken: () => getValidCalendarToken(supabase, userId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
     };
 
-    let currentMessages = [
+    // Build prompt and messages
+    const contextualPrompt = buildContextualPrompt(agentName, agentCode);
+    let currentMessages: any[] = [
       { role: "system", content: contextualPrompt },
       ...buildAIMessages(messages),
     ];
 
-    // First call - non-streaming to handle tool calls
+    // First call – non-streaming to handle tool calls
     let aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: currentMessages,
-        tools,
-        stream: false,
-      }),
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, tools: toolDefinitions, stream: false }),
     });
 
     if (!aiResponse.ok) {
@@ -1210,27 +1342,14 @@ Hola [cliente], soy ${agentName} de RE/MAX Docta. ...
       currentMessages.push(choice.message);
 
       for (const tc of toolCalls) {
-        const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments));
-        currentMessages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: result,
-        });
+        const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments), toolCtx);
+        currentMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
 
-      // Call AI again with tool results - stream the final response
       aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: currentMessages,
-          tools,
-          stream: false,
-        }),
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, tools: toolDefinitions, stream: false }),
       });
 
       if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
@@ -1238,96 +1357,25 @@ Hola [cliente], soy ${agentName} de RE/MAX Docta. ...
       choice = aiData.choices?.[0];
     }
 
-    // Auto-generate a descriptive title after the first user message
+    // Auto-generate title after first user message
     if (conversationId && messages.length === 1 && userId) {
-      try {
-        const userText = typeof messages[0].content === "string"
-          ? messages[0].content
-          : (Array.isArray(messages[0].content)
-              ? messages[0].content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
-              : "");
-        const assistantText = choice?.message?.content ?? "";
-        const titleRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              {
-                role: "system",
-                content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal.",
-              },
-              {
-                role: "user",
-                content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantText.slice(0, 300)}`,
-              },
-            ],
-            stream: false,
-          }),
-        });
-        if (titleRes.ok) {
-          const titleData = await titleRes.json();
-          const generatedTitle = titleData.choices?.[0]?.message?.content?.trim();
-          if (generatedTitle) {
-            await supabase.from("conversations").update({ title: generatedTitle }).eq("id", conversationId);
-          }
-        }
-      } catch (e) {
-        console.error("Title generation error:", e);
-      }
+      generateTitle(messages, choice?.message?.content ?? "", conversationId, supabase, LOVABLE_API_KEY);
     }
 
-    // If we have a complete response (no tool calls or after tool calls), convert to SSE
-    // Split by MSG_BREAK and send each segment as a separate SSE event with a special separator event
+    // Return SSE response
     if (choice?.message?.content) {
-      const content = choice.message.content;
-      const encoder = new TextEncoder();
-      const MSG_BREAK = "===MSG_BREAK===";
-      const segments = content.split(MSG_BREAK).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-      const stream = new ReadableStream({
-        start(controller) {
-          for (let i = 0; i < segments.length; i++) {
-            // Send content chunk for this segment
-            const chunk = JSON.stringify({
-              choices: [{ delta: { content: segments[i] }, finish_reason: null }],
-            });
-            controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-            // If not the last segment, send a MSG_BREAK marker
-            if (i < segments.length - 1) {
-              const breakChunk = JSON.stringify({
-                choices: [{ delta: { content: MSG_BREAK }, finish_reason: null }],
-              });
-              controller.enqueue(encoder.encode(`data: ${breakChunk}\n\n`));
-            }
-          }
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        },
-      });
-      return new Response(stream, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-      });
+      return buildSSEResponse(choice.message.content);
     }
 
-    // Fallback: stream from AI directly (no tool calls path)
+    // Fallback: stream from AI directly
     const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: currentMessages,
-        stream: true,
-      }),
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, stream: true }),
     });
 
     if (!streamResponse.ok) throw new Error(`Stream error: ${streamResponse.status}`);
-
-    return new Response(streamResponse.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-    });
+    return new Response(streamResponse.body, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
   } catch (e) {
     console.error("chat error:", e);
     return new Response(JSON.stringify({ error: "Error al procesar la solicitud" }), {
