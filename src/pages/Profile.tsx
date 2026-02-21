@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle } from "lucide-react";
+import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -191,6 +191,16 @@ const Profile = () => {
             Clientes
           </Button>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => navigate("/dashboard")}
+        >
+          <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+          Dashboard
+        </Button>
 
         {/* Google Calendar */}
         <div className="rounded-lg border bg-card p-4 space-y-2">
