@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X, Search } from "lucide-react";
 import SwipeableConversationItem from "@/components/SwipeableConversationItem";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -40,7 +40,18 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [search, setSearch] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(
+    () => search.trim()
+      ? conversations.filter((c) =>
+          c.title.toLowerCase().includes(search.toLowerCase()) ||
+          c.client_name?.toLowerCase().includes(search.toLowerCase())
+        )
+      : conversations,
+    [conversations, search]
+  );
 
   useEffect(() => {
     if (editingId) editInputRef.current?.focus();
@@ -75,9 +86,22 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
         </Button>
       </div>
 
+      {/* Search */}
+      <div className="px-3 py-2 border-b border-border">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar conversación..."
+            className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
+
       {/* Conversations */}
       <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 ? (
+        {filtered.length === 0 && !search ? (
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
             <MessageSquare className="h-8 w-8 opacity-40" />
             <p>No hay conversaciones aún</p>
@@ -85,8 +109,10 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
               Iniciar nueva conversación
             </Button>
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">Sin resultados</p>
         ) : (
-          conversations.map((c) => (
+          filtered.map((c) => (
             <SwipeableConversationItem
               key={c.id}
               onDelete={onDelete ? () => setDeleteTarget(c) : undefined}
