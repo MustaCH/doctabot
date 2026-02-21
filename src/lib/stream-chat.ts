@@ -34,7 +34,10 @@ export async function streamChat({
 }) {
   // Get the current user's session token so the edge function can identify them
   const { data: { session } } = await supabase.auth.getSession();
-  const authToken = session?.access_token ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!session?.access_token) {
+    throw new Error("auth_required");
+  }
+  const authToken = session.access_token;
 
   const resp = await fetch(CHAT_URL, {
     method: "POST",

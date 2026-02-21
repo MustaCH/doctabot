@@ -543,25 +543,37 @@ serve(async (req) => {
       },
     ];
 
-    // Get user_id and profile from auth header
+    // Authenticate user - require valid JWT
     const authHeader = req.headers.get("Authorization");
-    let userId: string | null = null;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: { user }, error: authError } = await anonClient.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userId: string = user.id;
     let agentName: string | null = null;
     let agentCode: string | null = null;
-    if (authHeader) {
-      const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
-      const { data: { user } } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-      userId = user?.id ?? null;
-      if (userId) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("full_name, agent_code")
-          .eq("user_id", userId)
-          .single();
-        agentName = profile?.full_name ?? null;
-        agentCode = profile?.agent_code ?? null;
-      }
-    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, agent_code")
+      .eq("user_id", userId)
+      .single();
+    agentName = profile?.full_name ?? null;
+    agentCode = profile?.agent_code ?? null;
 
     // --- Google Calendar helpers ---
     const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
