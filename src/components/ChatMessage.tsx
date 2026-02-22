@@ -67,9 +67,9 @@ const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscr
   };
 
   return (
-    <div className="flex items-center gap-2 min-w-[180px]">
-      <button onClick={toggle} className="h-8 w-8 shrink-0 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-        {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+    <div className="flex items-center gap-2.5 min-w-[180px]">
+      <button onClick={toggle} className="h-10 w-10 shrink-0 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+        {playing ? <Pause className="h-4.5 w-4.5 fill-current" /> : <Play className="h-4.5 w-4.5 fill-current" />}
       </button>
       <div className="flex-1 flex flex-col gap-1">
         <div className="h-1 rounded-full bg-muted-foreground/20 overflow-hidden">
