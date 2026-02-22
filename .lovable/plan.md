@@ -1,132 +1,72 @@
 
-# Integración Google Meet + Gmail en Alan
 
-## Contexto actual
+# Mensajes de Audio estilo WhatsApp
 
-Alan ya tiene control total sobre Google Calendar del agente (crear, listar, actualizar, eliminar eventos). La conexión OAuth está en `supabase/functions/google-calendar-auth/index.ts` y los tokens se guardan en la tabla `google_calendar_tokens`.
+## Resumen
 
-El scope actual es solo: `https://www.googleapis.com/auth/calendar`
+Agregar grabacion de audio al chat con reproductor inline en las burbujas de mensaje (como WhatsApp). El usuario graba, el audio queda visible y reproducible en el chat, y Alan recibe la transcripcion para responder.
 
----
+## Flujo del usuario
 
-## Qué se va a construir
+1. El usuario mantiene presionado (o toca) el boton de microfono que reemplaza al boton de enviar cuando no hay texto
+2. Se graba audio usando MediaRecorder API del navegador
+3. Al soltar/detener, el audio se muestra como burbuja de mensaje con reproductor inline
+4. En paralelo, se envia el audio a la edge function `transcribe` existente
+5. El texto transcripto se envia a Alan como mensaje (invisible para el usuario, que ve solo su burbuja de audio)
+6. Alan responde normalmente
 
-### 1. Nuevos scopes de Google OAuth
+## Cambios planificados
 
-La primera vez que el agente conecte (o al reconectar), se pedirán los tres scopes necesarios:
+### 1. Ampliar tipos de mensaje (`src/lib/stream-chat.ts`)
 
-```text
-https://www.googleapis.com/auth/calendar         (ya existe)
-https://www.googleapis.com/auth/meet.readonly     (para crear conferencias via Calendar)
-https://www.googleapis.com/auth/gmail.send        (para enviar emails)
-```
+- Agregar campo opcional `audioUrl?: string` al tipo `Msg` para almacenar la URL del blob de audio en mensajes del usuario
 
-**Nota importante sobre Google Meet**: La API de Google Meet no requiere un scope separado para crear *conference links* dentro de un evento de Calendar. Se agrega el campo `conferenceData` al crear/actualizar el evento con `conferenceDataVersion=1`. El link de Meet aparece automáticamente. Solo se necesita `gmail.send` como scope adicional.
+### 2. Hook de grabacion de audio (`src/hooks/use-audio-recorder.ts`) - NUEVO
 
-Para Gmail, el scope `gmail.send` es el de menor privilegio — solo permite enviar, nunca leer el buzón del usuario.
+- Usa `navigator.mediaDevices.getUserMedia` para acceder al microfono
+- `MediaRecorder` para grabar en formato `audio/webm` (compatible con navegadores)
+- Estados: `idle`, `recording`, `processing`
+- Expone: `startRecording()`, `stopRecording()`, `isRecording`, `isTranscribing`
+- Al detener, devuelve `{ audioBlob, audioUrl }` via callback
+- Funcion `transcribeAudio(blob)` que envia al edge function `/functions/v1/transcribe` y retorna el texto
 
----
+### 3. Modificar ChatInput (`src/components/ChatInput.tsx`)
 
-### 2. Actualización del flujo OAuth (`google-calendar-auth/index.ts`)
+- Importar el hook `useAudioRecorder`
+- Cuando no hay texto ni adjuntos, mostrar boton de **microfono** en lugar del boton de enviar
+- Al presionar el microfono: iniciar grabacion, cambiar UI a estado "grabando" (indicador rojo pulsante + duracion + boton cancelar/enviar)
+- Al soltar/confirmar: detener grabacion y llamar `onSendAudio(audioBlob, audioUrl)`
+- Nueva prop `onSendAudio` en la interfaz
 
-- Ampliar el string `scope` en el paso "init" para incluir `gmail.send`
-- El resto del flujo (intercambio de código, guardado de token, refresh) funciona igual
+### 4. Modificar use-chat-messages (`src/hooks/use-chat-messages.ts`)
 
----
+- Agregar funcion `handleSendAudio(blob: Blob, localUrl: string)`
+- Agrega inmediatamente un mensaje de usuario con `audioUrl` y content placeholder `"(mensaje de voz)"`
+- Llama a la edge function `transcribe` para obtener el texto
+- Actualiza el contenido del mensaje del usuario con el texto transcripto (prefijado con icono de microfono)
+- Envia el texto transcripto a `streamChat` para que Alan responda
+- Guarda en la DB el texto transcripto (no el audio)
 
-### 3. Nuevas herramientas para Alan (`chat/index.ts`)
+### 5. Componente de reproductor de audio en ChatMessage (`src/components/ChatMessage.tsx`)
 
-**`create_meet_event`** — Crea un evento en Calendar con enlace de Google Meet incluido:
-- Parámetros: `summary`, `start_datetime`, `end_datetime`, `description`, `attendees` (lista de emails, opcional)
-- Internamente: llama a Calendar API con `conferenceData: { createRequest: { requestId: ... } }` y `conferenceDataVersion=1`
-- Devuelve: `event_id`, `meet_link`, `html_link`, `start`, `end`
+- Nuevo sub-componente `AudioBubble` que renderiza:
+  - Boton play/pause
+  - Barra de progreso animada (estilo WhatsApp)
+  - Duracion del audio
+  - Indicador de "transcribiendo..." mientras se procesa
+- Se muestra cuando `msg.audioUrl` existe
+- Usa `HTMLAudioElement` para reproduccion
 
-**`send_email`** — Envía un email desde la cuenta Gmail del agente:
-- Parámetros: `to` (email del destinatario), `subject`, `body` (texto plano o HTML), `cc` (opcional)
-- Internamente: construye un mensaje MIME en base64url y lo envía via `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`
-- **NUNCA se envía sin confirmación previa del agente** — esto se maneja en el prompt del sistema
-- Devuelve: `message_id`, confirmación de envío
+### 6. Pasar datos de audio por Chat.tsx
 
----
+- Conectar `onSendAudio` del ChatInput con `handleSendAudio` del hook
+- Agregar estado `isTranscribing` al indicador de procesamiento
 
-### 4. Actualización de `create_calendar_event`
+## Detalles tecnicos
 
-Se agrega un parámetro opcional `add_meet_link: boolean`. Si es `true`, se añade `conferenceData` al evento (esto permite que Alan cree un Meet desde la misma herramienta de Calendar cuando el agente lo pide sin necesidad de una herramienta separada).
+- **Formato de audio**: `audio/webm;codecs=opus` (nativo del navegador), se convierte a WAV antes de enviar al transcribe function si es necesario, o se envia como webm ya que Gemini lo soporta
+- **Almacenamiento**: El audio NO se persiste en la DB/storage; solo se mantiene como blob URL en la sesion actual. Al recargar, se ve el texto transcripto
+- **Permisos**: Se solicita permiso de microfono al primer uso; si se deniega se muestra toast de error
+- **Limite**: Maximo 2 minutos de grabacion (auto-stop)
+- **Edge function transcribe**: Ya existe y funciona con Gemini, solo hay que asegurarse de que acepte webm ademas de wav (el formato se pasa como parametro)
 
----
-
-### 5. Prompt del sistema — nuevas instrucciones
-
-Se agrega una sección `## GOOGLE MEET Y GMAIL` con las reglas:
-
-**Google Meet:**
-- Si el agente dice "reunión por Meet", "videollamada", "llamada de Google" → usar `create_meet_event`
-- Al crear el evento, mostrar el link de Meet de forma clara al agente para que lo comparta
-- Si Alan ya creó un evento con Meet y el agente quiere enviar el link por email → usar `send_email` con previa confirmación
-
-**Gmail:**
-- Alan NUNCA envía un email sin mostrar primero el borrador y recibir confirmación explícita del agente (ej: "envialo" o "sí, mandalo")
-- El flujo es: 1) Redactar borrador en formato `<<<DRAFT_START>>>` habitual → 2) Preguntar "¿Lo envío?" → 3) Si el agente confirma, ejecutar `send_email`
-- Si el calendario no está conectado con los nuevos permisos, indicar que debe reconectar desde el perfil
-
----
-
-### 6. UI — Indicador de permisos insuficientes
-
-En `src/pages/Profile.tsx`, si el token existente no tiene el scope `gmail.send` (detectable porque el campo `scope` guardado en `google_calendar_tokens` no lo incluye), mostrar un badge/aviso de "Permisos insuficientes — Reconectá para activar Gmail y Meet" con un botón que inicia el flujo OAuth de nuevo.
-
----
-
-## Archivos a modificar
-
-| Archivo | Cambio |
-|---|---|
-| `supabase/functions/google-calendar-auth/index.ts` | Agregar `gmail.send` al scope |
-| `supabase/functions/chat/index.ts` | Agregar tools `create_meet_event` y `send_email`, actualizar `create_calendar_event` con `add_meet_link`, actualizar prompt del sistema |
-| `src/pages/Profile.tsx` | Detectar scope insuficiente y mostrar aviso de reconexión |
-
----
-
-## Seguridad
-
-- `send_email` usa el access token del agente obtenido desde `google_calendar_tokens` — nunca un token genérico
-- El scope `gmail.send` es el de menor privilegio posible para Gmail: no permite leer, listar ni acceder al buzón
-- Todas las validaciones de `userId` ya existentes aplican igual a las nuevas herramientas
-- El prompt obliga confirmación antes de enviar cualquier email — es una barrera soft pero efectiva
-- El scope del token guardado se verifica en el perfil para detectar tokens que necesitan actualización
-
----
-
-## Flujo completo de ejemplo
-
-```text
-Agente: "Agendá un Meet con María González para el lunes 24 a las 11am"
-
-Alan: [ejecuta create_meet_event]
-→ "Reunión creada ✅
-   📅 Lunes 24 de febrero, 11:00 - 12:00
-   🔗 Meet: https://meet.google.com/xxx-yyy-zzz
-   ¿Querés que le mande el link por email a María?"
-
-Agente: "Sí, mandáselo a maria@gmail.com"
-
-Alan: [redacta borrador con DRAFT_START/DRAFT_END, incluye el link de Meet]
-→ "Te preparé este email:
-   <<<DRAFT_START>>>
-   Hola María, ...
-   Podés unirte desde: https://meet.google.com/xxx-yyy-zzz
-   ¡Saludos! Juan Pérez
-   <<<DRAFT_END>>>
-   ¿Lo envío?"
-
-Agente: "Sí"
-
-Alan: [ejecuta send_email]
-→ "Email enviado a maria@gmail.com ✉️"
-```
-
----
-
-## Nota sobre la verificación de Google
-
-Agregar `gmail.send` es un scope **sensible** según Google. Esto implica que antes de que usuarios externos puedan usarlo, Google requiere verificación de la app (el proceso que ya estás iniciando). Durante el proceso de verificación, el agente podrá seguir usándolo en modo de prueba (máximo 100 usuarios de prueba configurados en Google Cloud Console).
