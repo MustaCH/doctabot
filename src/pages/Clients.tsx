@@ -5,7 +5,12 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, Phone, Mail, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Client {
@@ -38,6 +43,15 @@ const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Edit state
+  const [editClient, setEditClient] = useState<Client | null>(null);
+  const [editForm, setEditForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+  const [saving, setSaving] = useState(false);
+
+  // Delete state
+  const [deleteClient, setDeleteClient] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const loadClients = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -60,6 +74,63 @@ const Clients = () => {
   useEffect(() => {
     loadClients();
   }, [loadClients]);
+
+  const openEdit = (client: Client) => {
+    setEditClient(client);
+    setEditForm({
+      full_name: client.full_name,
+      phone: client.phone ?? "",
+      email: client.email ?? "",
+      notes: client.notes ?? "",
+      status: client.status,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editClient) return;
+    const name = editForm.full_name.trim();
+    if (!name) {
+      toast.error("El nombre no puede estar vacío");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("clients")
+        .update({
+          full_name: name,
+          phone: editForm.phone.trim() || null,
+          email: editForm.email.trim() || null,
+          notes: editForm.notes.trim() || null,
+          status: editForm.status,
+        })
+        .eq("id", editClient.id);
+      if (error) throw error;
+      toast.success("Cliente actualizado");
+      setEditClient(null);
+      loadClients();
+    } catch {
+      toast.error("Error al guardar los cambios");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteClient) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("clients").delete().eq("id", deleteClient.id);
+      if (error) throw error;
+      toast.success("Cliente eliminado");
+      setDeleteClient(null);
+      loadClients();
+    } catch {
+      toast.error("Error al eliminar el cliente");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
@@ -109,9 +180,17 @@ const Clients = () => {
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
-                  <Badge variant={statusVariant[client.status] ?? "secondary"}>
-                    {statusLabel[client.status] ?? client.status}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant={statusVariant[client.status] ?? "secondary"}>
+                      {statusLabel[client.status] ?? client.status}
+                    </Badge>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
 
                 {client.phone && (
@@ -139,6 +218,91 @@ const Clients = () => {
           </div>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editClient} onOpenChange={(open) => !open && setEditClient(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
+              <Input
+                value={editForm.full_name}
+                onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))}
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+              <Input
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                maxLength={30}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+              <Input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                maxLength={255}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Estado</label>
+              <Select value={editForm.status} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="prospect">Prospecto</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="inactive">Inactivo</SelectItem>
+                  <SelectItem value="closed">Cerrado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas</label>
+              <Textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                rows={3}
+                maxLength={1000}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditClient(null)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteClient} onOpenChange={(open) => !open && setDeleteClient(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará permanentemente a <strong>{deleteClient?.full_name}</strong>. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
