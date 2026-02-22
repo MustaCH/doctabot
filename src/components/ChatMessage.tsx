@@ -80,24 +80,24 @@ const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscr
 
   return (
     <div className="flex items-center gap-3 min-w-[200px] py-0.5">
-      <button onClick={toggle} className="h-10 w-10 shrink-0 rounded-full bg-primary/20 flex items-center justify-center text-primary active:scale-95 transition-transform">
+      <button onClick={toggle} className="h-10 w-10 shrink-0 rounded-full bg-current/20 flex items-center justify-center active:scale-95 transition-transform" style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}>
         {playing ? <Pause className="h-4.5 w-4.5 fill-current" /> : <Play className="h-4.5 w-4.5 fill-current ml-0.5" />}
       </button>
       <div className="flex-1 flex flex-col gap-1.5 min-w-0">
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full bg-muted-foreground/20 overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all duration-200" style={{ width: `${progress * 100}%` }} />
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.3)' }}>
+            <div className="h-full rounded-full transition-all duration-200" style={{ width: `${progress * 100}%`, backgroundColor: 'rgba(255,255,255,0.8)' }} />
           </div>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Mic className="h-3 w-3 text-primary/60" />
-            <span className="text-[11px] text-muted-foreground font-medium">
+          <div className="flex items-center gap-1.5 opacity-80">
+            <Mic className="h-3 w-3" />
+            <span className="text-[11px] font-medium">
               {duration > 0 ? formatDur(playing ? progress * duration : duration) : "0:00"}
             </span>
           </div>
           {isTranscribing && (
-            <span className="text-[10px] text-muted-foreground animate-pulse flex items-center gap-1">
+            <span className="text-[10px] opacity-70 animate-pulse flex items-center gap-1">
               Transcribiendo...
             </span>
           )}
