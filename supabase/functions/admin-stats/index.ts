@@ -143,6 +143,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "trigger-scraping") {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const scrapeRes = await fetch(`${supabaseUrl}/functions/v1/scrape-properties`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const scrapeData = await scrapeRes.json();
+      return new Response(JSON.stringify(scrapeData), {
+        status: scrapeRes.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Unknown action" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

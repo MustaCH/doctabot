@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table";
 import {
   Shield, Database, Users, Heart, MessageSquare, Home,
-  RefreshCw, Search, ChevronLeft, ChevronRight, Loader2,
+  RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play,
 } from "lucide-react";
 
 const ADMIN_PIN = "7742";
@@ -195,13 +195,30 @@ function AdminDashboard({ pin }: { pin: string }) {
 function ScrapingStatus({ pin }: { pin: string }) {
   const [lastProperty, setLastProperty] = useState<{ created_at: string; updated_at: string } | null>(null);
   const [totalToday, setTotalToday] = useState(0);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadStatus = useCallback(() => {
     adminFetch(pin, "scraping-status").then((data) => {
       setLastProperty(data.lastProperty);
       setTotalToday(data.totalToday);
     }).catch(() => {});
   }, [pin]);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const triggerScraping = async () => {
+    setScraping(true);
+    setScrapeResult(null);
+    try {
+      const res = await adminFetch(pin, "trigger-scraping");
+      setScrapeResult(`✅ Scraping completado: ${res.upserted ?? 0} propiedades actualizadas, ${res.errors ?? 0} errores`);
+      loadStatus();
+    } catch {
+      setScrapeResult("❌ Error al ejecutar el scraping");
+    }
+    setScraping(false);
+  };
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString("es-AR", {
@@ -211,9 +228,15 @@ function ScrapingStatus({ pin }: { pin: string }) {
 
   return (
     <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        <Database className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Estado del Scraping</h2>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Estado del Scraping</h2>
+        </div>
+        <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping}>
+          {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+          {scraping ? "Ejecutando..." : "Ejecutar ahora"}
+        </Button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div>
@@ -225,6 +248,9 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <span className="font-medium">{totalToday.toLocaleString("es-AR")}</span>
         </div>
       </div>
+      {scrapeResult && (
+        <p className="text-xs font-medium">{scrapeResult}</p>
+      )}
       <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente a las 00:30hs de forma automática.</p>
     </div>
   );
