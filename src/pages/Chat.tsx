@@ -33,9 +33,11 @@ const Chat = () => {
     messages,
     isStreaming,
     isProcessingPdf,
+    isTranscribing,
     quotedText,
     setQuotedText,
     handleSend,
+    handleSendAudio,
   } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations);
 
   // Load conversations on mount
@@ -158,6 +160,8 @@ const Chat = () => {
               role={msg.role}
               content={msg.content}
               attachments={msg.attachments}
+              audioUrl={msg.audioUrl}
+              isTranscribing={isTranscribing && i === messages.length - 1 && !!msg.audioUrl}
               userAvatar={userAvatar}
               userName={userName}
               onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
@@ -189,6 +193,14 @@ const Chat = () => {
           </button>
         </div>
 
+        {/* Transcribing indicator */}
+        {isTranscribing && (
+          <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2 text-xs text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Transcribiendo audio...
+          </div>
+        )}
+
         {/* PDF processing indicator */}
         {isProcessingPdf && (
           <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2 text-xs text-muted-foreground animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -200,7 +212,8 @@ const Chat = () => {
         {/* Input */}
         <ChatInput
           onSend={(text, atts) => handleSend(text, atts)}
-          disabled={isStreaming || isProcessingPdf}
+          onSendAudio={handleSendAudio}
+          disabled={isStreaming || isProcessingPdf || isTranscribing}
           quotedText={quotedText}
           onClearQuote={() => setQuotedText(null)}
         />

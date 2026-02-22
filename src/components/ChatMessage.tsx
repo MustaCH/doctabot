@@ -1,10 +1,10 @@
-import React, { memo, useMemo, useState } from "react";
+import React, { memo, useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check, Reply } from "lucide-react";
+import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
 /** Inject ?associate=agentCode into any property URL that doesn't already have it */
@@ -29,10 +29,64 @@ interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   attachments?: MsgAttachment[];
+  audioUrl?: string;
+  isTranscribing?: boolean;
   userAvatar?: string;
   userName?: string;
   onReply?: (content: string) => void;
 }
+
+const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscribing?: boolean }) => {
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
+    audio.addEventListener("timeupdate", () => {
+      if (audio.duration) setProgress(audio.currentTime / audio.duration);
+    });
+    audio.addEventListener("ended", () => { setPlaying(false); setProgress(0); });
+    return () => { audio.pause(); audio.src = ""; };
+  }, [audioUrl]);
+
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) { audio.pause(); } else { audio.play(); }
+    setPlaying(!playing);
+  };
+
+  const formatDur = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="flex items-center gap-2 min-w-[180px]">
+      <button onClick={toggle} className="h-8 w-8 shrink-0 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+        {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-1">
+        <div className="h-1 rounded-full bg-muted-foreground/20 overflow-hidden">
+          <div className="h-full bg-primary rounded-full transition-all duration-200" style={{ width: `${progress * 100}%` }} />
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground">{duration ? formatDur(playing ? progress * duration : duration) : "0:00"}</span>
+          {isTranscribing && (
+            <span className="text-[10px] text-muted-foreground animate-pulse flex items-center gap-1">
+              <Mic className="h-2.5 w-2.5" /> Transcribiendo...
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CopyButton = ({ content }: { content: string }) => {
   const [copied, setCopied] = useState(false);
@@ -52,7 +106,7 @@ const CopyButton = ({ content }: { content: string }) => {
   );
 };
 
-const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, onReply }: ChatMessageProps) => {
+const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -100,8 +154,10 @@ const ChatMessage = memo(({ role, content, attachments, userAvatar, userName, on
               )}
             </div>
           )}
-          {isUser ? (
-            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
+          {audioUrl ? (
+            <AudioBubble audioUrl={audioUrl} isTranscribing={isTranscribing} />
+          ) : isUser ? (
+            content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && content !== "(mensaje de voz)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
           ) : (
             <AssistantContent content={content} />
           )}

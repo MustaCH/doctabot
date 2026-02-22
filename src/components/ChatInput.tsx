@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { feedbackSend, feedbackAttach, feedbackRemove } from "@/hooks/use-feedback";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 
 export interface ChatAttachment {
   file: File;
@@ -11,16 +12,18 @@ export interface ChatAttachment {
 
 interface ChatInputProps {
   onSend: (message: string, attachments?: ChatAttachment[]) => void;
+  onSendAudio?: (blob: Blob, localUrl: string) => void;
   disabled?: boolean;
   quotedText?: string | null;
   onClearQuote?: () => void;
 }
 
-const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProps) => {
+const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: ChatInputProps) => {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { recordingState, elapsed, startRecording, stopRecording, cancelRecording } = useAudioRecorder();
 
   // Focus textarea when a quote is set
   useEffect(() => {
@@ -82,6 +85,27 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
       URL.revokeObjectURL(removed.previewUrl);
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  const isRecording = recordingState === "recording";
+
+  const handleMicPress = async () => {
+    if (isRecording) {
+      const result = await stopRecording();
+      if (result && onSendAudio) {
+        feedbackSend();
+        onSendAudio(result.blob, result.url);
+      }
+    } else {
+      await startRecording();
+    }
+  };
+
+  const formatElapsed = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
@@ -153,44 +177,81 @@ const ChatInput = ({ onSend, disabled, quotedText, onClearQuote }: ChatInputProp
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-10 w-10 shrink-0 rounded-xl"
-          disabled={disabled || attachments.length >= 4}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Paperclip className="h-4.5 w-4.5" />
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          placeholder="Escribí tu mensaje..."
-          rows={1}
-          disabled={disabled}
-          className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-        />
-        <Button
-          size="icon"
-          onClick={handleSend}
-          disabled={!hasContent || disabled}
-          className="h-10 w-10 shrink-0 rounded-xl"
-        >
-          <SendHorizontal className="h-4.5 w-4.5" />
-        </Button>
-      </div>
+      {isRecording ? (
+        <div className="flex items-center gap-3 py-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-10 w-10 shrink-0 rounded-xl text-destructive"
+            onClick={() => cancelRecording()}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <div className="flex-1 flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-destructive animate-pulse" />
+            <span className="text-sm font-medium text-destructive">{formatElapsed(elapsed)}</span>
+            <span className="text-xs text-muted-foreground">Grabando...</span>
+          </div>
+          <Button
+            size="icon"
+            onClick={handleMicPress}
+            className="h-10 w-10 shrink-0 rounded-xl"
+          >
+            <Square className="h-4 w-4 fill-current" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-end gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-10 w-10 shrink-0 rounded-xl"
+            disabled={disabled || attachments.length >= 4}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip className="h-4.5 w-4.5" />
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx"
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            placeholder="Escribí tu mensaje..."
+            rows={1}
+            disabled={disabled}
+            className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+          {hasContent ? (
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={!hasContent || disabled}
+              className="h-10 w-10 shrink-0 rounded-xl"
+            >
+              <SendHorizontal className="h-4.5 w-4.5" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleMicPress}
+              disabled={disabled}
+              className="h-10 w-10 shrink-0 rounded-xl"
+            >
+              <Mic className="h-4.5 w-4.5" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -12,6 +12,8 @@ serve(async (req) => {
   try {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File;
+    const fileName = audioFile?.name || "";
+    const audioFormat = fileName.endsWith(".webm") ? "webm" : fileName.endsWith(".mp3") ? "mp3" : "wav";
     if (!audioFile) throw new Error("No audio file provided");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -44,7 +46,7 @@ serve(async (req) => {
                 type: "input_audio",
                 input_audio: {
                   data: base64Audio,
-                  format: "wav",
+                  format: audioFormat,
                 },
               },
               {
