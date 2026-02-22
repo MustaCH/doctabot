@@ -4,10 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3 } from "lucide-react";
+import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
+import { useSwUpdate } from "@/hooks/use-sw-update";
 
 const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
 
@@ -22,6 +23,8 @@ const Profile = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [hasGmailScope, setHasGmailScope] = useState(true);
+  const { updateAvailable, applyUpdate } = useSwUpdate();
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -170,6 +173,25 @@ const Profile = () => {
             <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
           </div>
         </div>
+
+        {updateAvailable && (
+          <Button
+            type="button"
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={async () => {
+              setUpdating(true);
+              await applyUpdate();
+            }}
+            disabled={updating}
+          >
+            {updating ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            {updating ? "Actualizando..." : "🆕 Nueva versión disponible — Actualizar"}
+          </Button>
+        )}
 
         <div className="flex gap-2">
           <Button
