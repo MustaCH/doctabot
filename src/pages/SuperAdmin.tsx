@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -12,6 +11,17 @@ import {
 } from "lucide-react";
 
 const ADMIN_PIN = "7742";
+const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`;
+
+async function adminFetch(pin: string, action: string, extra: Record<string, unknown> = {}) {
+  const res = await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin, action, ...extra }),
+  });
+  if (!res.ok) throw new Error("Request failed");
+  return res.json();
+}
 
 interface PlatformStats {
   properties: number;
@@ -93,34 +103,24 @@ const SuperAdmin = () => {
     );
   }
 
-  return <AdminDashboard />;
+  return <AdminDashboard pin={pin} />;
 };
 
-function AdminDashboard() {
+function AdminDashboard({ pin }: { pin: string }) {
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
 
   const loadStats = useCallback(async () => {
     setLoading(true);
-    const [props, profiles, convs, msgs, favs, clients] = await Promise.all([
-      supabase.from("properties").select("id", { count: "exact", head: true }),
-      supabase.from("profiles").select("id", { count: "exact", head: true }),
-      supabase.from("conversations").select("id", { count: "exact", head: true }),
-      supabase.from("messages").select("id", { count: "exact", head: true }),
-      supabase.from("favorites").select("id", { count: "exact", head: true }),
-      supabase.from("clients").select("id", { count: "exact", head: true }),
-    ]);
-    setStats({
-      properties: props.count ?? 0,
-      users: profiles.count ?? 0,
-      conversations: convs.count ?? 0,
-      messages: msgs.count ?? 0,
-      favorites: favs.count ?? 0,
-      clients: clients.count ?? 0,
-    });
+    try {
+      const data = await adminFetch(pin, "stats");
+      setStats(data);
+    } catch {
+      // ignore
+    }
     setLoading(false);
-  }, []);
+  }, [pin]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
@@ -172,19 +172,19 @@ function AdminDashboard() {
                 ))}
               </div>
             )}
-            <ScrapingStatus />
+            <ScrapingStatus pin={pin} />
           </TabsContent>
 
           <TabsContent value="properties">
-            <PropertiesTable />
+            <PropertiesTable pin={pin} />
           </TabsContent>
 
           <TabsContent value="users">
-            <UsersTable />
+            <UsersTable pin={pin} />
           </TabsContent>
 
           <TabsContent value="conversations">
-            <ConversationsTable />
+            <ConversationsTable pin={pin} />
           </TabsContent>
         </Tabs>
       </div>
@@ -192,30 +192,16 @@ function AdminDashboard() {
   );
 }
 
-function ScrapingStatus() {
+function ScrapingStatus({ pin }: { pin: string }) {
   const [lastProperty, setLastProperty] = useState<{ created_at: string; updated_at: string } | null>(null);
   const [totalToday, setTotalToday] = useState(0);
 
   useEffect(() => {
-    const load = async () => {
-      const { data: latest } = await supabase
-        .from("properties")
-        .select("created_at, updated_at")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .single();
-      setLastProperty(latest);
-
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const { count } = await supabase
-        .from("properties")
-        .select("id", { count: "exact", head: true })
-        .gte("updated_at", todayStart.toISOString());
-      setTotalToday(count ?? 0);
-    };
-    load();
-  }, []);
+    adminFetch(pin, "scraping-status").then((data) => {
+      setLastProperty(data.lastProperty);
+      setTotalToday(data.totalToday);
+    }).catch(() => {});
+  }, [pin]);
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString("es-AR", {
@@ -244,7 +230,7 @@ function ScrapingStatus() {
   );
 }
 
-function PropertiesTable() {
+function PropertiesTable({ pin }: { pin: string }) {
   const [data, setData] = useState<PropertyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -253,21 +239,13 @@ function PropertiesTable() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from("properties")
-      .select("id, title, operation, price, currency, zone, property_type, address, created_at, updated_at", { count: "exact" })
-      .order("updated_at", { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-
-    if (search.trim()) {
-      query = query.or(`title.ilike.%${search}%,address.ilike.%${search}%,zone.ilike.%${search}%`);
-    }
-
-    const { data: rows, count } = await query;
-    setData(rows ?? []);
-    setTotal(count ?? 0);
+    try {
+      const res = await adminFetch(pin, "properties", { page, pageSize: PAGE_SIZE, search });
+      setData(res.data);
+      setTotal(res.total);
+    } catch {}
     setLoading(false);
-  }, [page, search]);
+  }, [pin, page, search]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -322,53 +300,62 @@ function PropertiesTable() {
   );
 }
 
-function UsersTable() {
+function UsersTable({ pin }: { pin: string }) {
   const [data, setData] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     const load = async () => {
-      const { data: rows } = await supabase
-        .from("profiles")
-        .select("id, user_id, full_name, agent_code, created_at")
-        .order("created_at", { ascending: false });
-      setData(rows ?? []);
+      setLoading(true);
+      try {
+        const res = await adminFetch(pin, "users", { page, pageSize: PAGE_SIZE });
+        setData(res.data);
+        setTotal(res.total);
+      } catch {}
       setLoading(false);
     };
     load();
-  }, []);
+  }, [pin, page]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 space-y-3">
+      <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} usuarios</span>
       {loading ? <LoadingSpinner /> : (
-        <div className="rounded-lg border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Código Agente</TableHead>
-                <TableHead>User ID</TableHead>
-                <TableHead>Registrado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="text-xs font-medium">{u.full_name}</TableCell>
-                  <TableCell className="text-xs">{u.agent_code}</TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
-                  <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>
+        <>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Código Agente</TableHead>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>Registrado</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {data.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="text-xs font-medium">{u.full_name}</TableCell>
+                    <TableCell className="text-xs">{u.agent_code}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
+                    <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        </>
       )}
     </div>
   );
 }
 
-function ConversationsTable() {
+function ConversationsTable({ pin }: { pin: string }) {
   const [data, setData] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -377,17 +364,15 @@ function ConversationsTable() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const { data: rows, count } = await supabase
-        .from("conversations")
-        .select("id, title, user_id, conversation_type, created_at, updated_at", { count: "exact" })
-        .order("updated_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-      setData(rows ?? []);
-      setTotal(count ?? 0);
+      try {
+        const res = await adminFetch(pin, "conversations", { page, pageSize: PAGE_SIZE });
+        setData(res.data);
+        setTotal(res.total);
+      } catch {}
       setLoading(false);
     };
     load();
-  }, [page]);
+  }, [pin, page]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
