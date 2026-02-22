@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, UserCircle, ChevronDown, Loader2, Search, CalendarDays, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import alanAvatar from "@/assets/alan-avatar.png";
+import { useSwUpdate } from "@/hooks/use-sw-update";
 
 const Chat = () => {
   const { user } = useAuth();
@@ -17,6 +18,7 @@ const Chat = () => {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { updateAvailable } = useSwUpdate();
 
   const {
     conversations,
@@ -120,10 +122,13 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8"
+            className="h-8 w-8 relative"
             onClick={() => navigate("/profile")}
           >
             <UserCircle className="h-5 w-5" />
+            {updateAvailable && (
+              <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-destructive border-2 border-card" />
+            )}
           </Button>
         </div>
 
