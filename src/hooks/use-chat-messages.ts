@@ -18,12 +18,17 @@ export function useChatMessages(
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const skipNextLoadRef = useRef(false);
   const { isProcessingPdf, processAttachments } = useFileProcessing();
 
   // Load messages when active conversation changes
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
+      return;
+    }
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
       return;
     }
     (async () => {
@@ -56,6 +61,7 @@ export function useChatMessages(
     if (!convId) {
       try {
         convId = await createConversation();
+        skipNextLoadRef.current = true;
         setActiveConvId(convId);
       } catch {
         toast.error("Error al crear conversación");
@@ -179,6 +185,7 @@ export function useChatMessages(
     if (!convId) {
       try {
         convId = await createConversation();
+        skipNextLoadRef.current = true;
         setActiveConvId(convId);
       } catch {
         toast.error("Error al crear conversación");
