@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table";
 import {
   Shield, Database, Users, Heart, MessageSquare, Home,
-  RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play,
+  RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
 } from "lucide-react";
 
 const ADMIN_PIN = "7742";
@@ -381,11 +381,21 @@ function UsersTable({ pin }: { pin: string }) {
   );
 }
 
+interface MessageRow {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
 function ConversationsTable({ pin }: { pin: string }) {
   const [data, setData] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [selectedConv, setSelectedConv] = useState<string | null>(null);
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -400,11 +410,63 @@ function ConversationsTable({ pin }: { pin: string }) {
     load();
   }, [pin, page]);
 
+  const openMessages = async (convId: string) => {
+    setSelectedConv(convId);
+    setLoadingMessages(true);
+    try {
+      const res = await adminFetch(pin, "messages", { conversationId: convId });
+      setMessages(res.data);
+    } catch {
+      setMessages([]);
+    }
+    setLoadingMessages(false);
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="mt-4 space-y-3">
       <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} conversaciones</span>
+
+      {selectedConv && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              Mensajes — {data.find(c => c.id === selectedConv)?.title ?? "Conversación"}
+            </h3>
+            <Button variant="ghost" size="icon" onClick={() => { setSelectedConv(null); setMessages([]); }}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          {loadingMessages ? <LoadingSpinner /> : (
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {messages.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">Sin mensajes</p>
+              ) : messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`rounded-lg p-3 text-xs ${
+                    m.role === "user"
+                      ? "bg-primary/10 ml-8"
+                      : "bg-muted mr-8"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold capitalize">{m.role === "user" ? "Usuario" : "Alan"}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {new Date(m.created_at).toLocaleString("es-AR", {
+                        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? <LoadingSpinner /> : (
         <>
           <div className="rounded-lg border border-border overflow-hidden">
@@ -415,15 +477,21 @@ function ConversationsTable({ pin }: { pin: string }) {
                   <TableHead>Tipo</TableHead>
                   <TableHead>User ID</TableHead>
                   <TableHead>Última actividad</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.map((c) => (
-                  <TableRow key={c.id}>
+                  <TableRow key={c.id} className={selectedConv === c.id ? "bg-muted/50" : ""}>
                     <TableCell className="max-w-[200px] truncate text-xs">{c.title}</TableCell>
                     <TableCell className="text-xs">{c.conversation_type ?? "general"}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">{c.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(c.updated_at).toLocaleDateString("es-AR")}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => openMessages(c.id)} className="h-7 w-7">
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

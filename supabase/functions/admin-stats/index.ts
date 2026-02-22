@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
 
   try {
     // Validate PIN from request body
-    const { pin, action, page, pageSize, search } = await req.json();
+    const { pin, action, page, pageSize, search, ...extra } = await req.json();
 
     if (pin !== ADMIN_PIN) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -139,6 +139,25 @@ Deno.serve(async (req) => {
         .range(pg * ps, (pg + 1) * ps - 1);
 
       return new Response(JSON.stringify({ data: data ?? [], total: count ?? 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "messages") {
+      const { conversationId } = extra as any;
+      if (!conversationId) {
+        return new Response(JSON.stringify({ error: "conversationId required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data } = await supabaseAdmin
+        .from("messages")
+        .select("id, role, content, created_at")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      return new Response(JSON.stringify({ data: data ?? [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
