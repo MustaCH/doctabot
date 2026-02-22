@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -88,18 +88,58 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
   };
 
   const isRecording = recordingState === "recording";
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didHoldRef = useRef(false);
 
-  const handleMicPress = async () => {
-    if (isRecording) {
-      const result = await stopRecording();
-      if (result && onSendAudio) {
-        feedbackSend();
-        onSendAudio(result.blob, result.url);
-      }
-    } else {
-      await startRecording();
+  const sendRecording = useCallback(async () => {
+    const result = await stopRecording();
+    if (result && onSendAudio) {
+      feedbackSend();
+      onSendAudio(result.blob, result.url);
     }
-  };
+  }, [stopRecording, onSendAudio]);
+
+  // Hold-to-record: on pointer down start a short timer, if held long enough start recording
+  const handleMicPointerDown = useCallback(async () => {
+    if (disabled || isRecording) return;
+    didHoldRef.current = false;
+    holdTimerRef.current = setTimeout(async () => {
+      didHoldRef.current = true;
+      await startRecording();
+    }, 200); // 200ms threshold to distinguish tap from hold
+  }, [disabled, isRecording, startRecording]);
+
+  const handleMicPointerUp = useCallback(async () => {
+    // If timer hasn't fired yet, it was a tap → start recording normally (tap-to-record fallback)
+    if (holdTimerRef.current && !didHoldRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      await startRecording();
+      return;
+    }
+    holdTimerRef.current = null;
+
+    // If we were hold-recording, stop and send
+    if (isRecording && didHoldRef.current) {
+      await sendRecording();
+    }
+  }, [isRecording, startRecording, sendRecording]);
+
+  const handleMicPointerLeave = useCallback(() => {
+    // If pointer leaves while holding, cancel
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    if (isRecording && didHoldRef.current) {
+      cancelRecording();
+    }
+  }, [isRecording, cancelRecording]);
+
+  // Tap-mode stop button handler
+  const handleStopTap = useCallback(async () => {
+    await sendRecording();
+  }, [sendRecording]);
 
   const formatElapsed = (ms: number) => {
     const s = Math.floor(ms / 1000);
@@ -194,10 +234,10 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
           </div>
           <Button
             size="icon"
-            onClick={handleMicPress}
+            onClick={handleStopTap}
             className="h-10 w-10 shrink-0 rounded-xl"
           >
-            <Square className="h-4 w-4 fill-current" />
+            <SendHorizontal className="h-4.5 w-4.5" />
           </Button>
         </div>
       ) : (
@@ -243,9 +283,12 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
             <Button
               size="icon"
               variant="ghost"
-              onClick={handleMicPress}
               disabled={disabled}
-              className="h-10 w-10 shrink-0 rounded-xl"
+              className="h-10 w-10 shrink-0 rounded-xl select-none touch-none"
+              onPointerDown={handleMicPointerDown}
+              onPointerUp={handleMicPointerUp}
+              onPointerLeave={handleMicPointerLeave}
+              onContextMenu={(e) => e.preventDefault()}
             >
               <Mic className="h-4.5 w-4.5" />
             </Button>
