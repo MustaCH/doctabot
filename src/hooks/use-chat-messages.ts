@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { feedbackReceive } from "@/hooks/use-feedback";
 import type { ChatAttachment } from "@/components/ChatInput";
 import { useFileProcessing } from "@/hooks/use-file-processing";
+import { transcribeAudio } from "@/hooks/use-audio-recorder";
 
 export function useChatMessages(
   activeConvId: string | null,
@@ -14,6 +15,7 @@ export function useChatMessages(
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { isProcessingPdf, processAttachments } = useFileProcessing();
@@ -170,12 +172,117 @@ export function useChatMessages(
     }
   };
 
+  const handleSendAudio = async (blob: Blob, localUrl: string) => {
+    if (isStreaming || isTranscribing) return;
+
+    let convId = activeConvId;
+    if (!convId) {
+      try {
+        convId = await createConversation();
+        setActiveConvId(convId);
+      } catch {
+        toast.error("Error al crear conversación");
+        return;
+      }
+    }
+
+    // Add audio message immediately
+    const audioMsg: Msg = { role: "user", content: "(mensaje de voz)", audioUrl: localUrl };
+    setMessages((prev) => [...prev, audioMsg]);
+    setIsTranscribing(true);
+
+    try {
+      const transcript = await transcribeAudio(blob);
+      if (!transcript) {
+        toast.error("No se pudo transcribir el audio.");
+        setIsTranscribing(false);
+        return;
+      }
+
+      const displayContent = `🎙️ ${transcript}`;
+
+      // Update the audio message with transcribed text
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 && m.audioUrl === localUrl
+            ? { ...m, content: displayContent }
+            : m
+        )
+      );
+      setIsTranscribing(false);
+
+      // Save to DB
+      await supabase.from("messages").insert({
+        conversation_id: convId!,
+        role: "user",
+        content: displayContent,
+      });
+
+      // Now send to Alan
+      const msgsForAI: Msg[] = [...messages, { role: "user", content: transcript }];
+      setIsStreaming(true);
+
+      let assistantContent = "";
+      let allAssistantMessages: string[] = [];
+      let needsNewBubble = false;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      await streamChat({
+        messages: msgsForAI,
+        conversationId: convId!,
+        signal: controller.signal,
+        onDelta: (chunk) => {
+          assistantContent += chunk;
+          const snapshot = assistantContent;
+          const startNew = needsNewBubble;
+          if (startNew) needsNewBubble = false;
+          setMessages((prev) => {
+            if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
+            return [...prev, { role: "assistant" as const, content: snapshot }];
+          });
+        },
+        onNewMessage: () => {
+          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
+          assistantContent = "";
+          needsNewBubble = true;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
+            return prev;
+          });
+        },
+        onDone: async () => {
+          setIsStreaming(false);
+          feedbackReceive();
+          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
+          const fullContent = allAssistantMessages.join("\n\n---\n\n");
+          if (fullContent) {
+            await supabase.from("messages").insert({ conversation_id: convId!, role: "assistant", content: fullContent });
+            await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
+            loadConversations();
+          }
+        },
+      });
+    } catch (err: any) {
+      setIsStreaming(false);
+      setIsTranscribing(false);
+      if (err.name !== "AbortError") {
+        toast.error("Error al procesar el audio. Intentá de nuevo.");
+      }
+    }
+  };
+
   return {
     messages,
     isStreaming,
     isProcessingPdf,
+    isTranscribing,
     quotedText,
     setQuotedText,
     handleSend,
+    handleSendAudio,
   };
 }
