@@ -34,11 +34,14 @@ export function useAudioRecorder() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
+      // Safari/iOS doesn't support webm – detect best available format
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac", "audio/ogg"].find(
+        (t) => MediaRecorder.isTypeSupported(t)
+      );
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream); // fallback: let browser choose
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -108,7 +111,8 @@ export async function transcribeAudio(blob: Blob): Promise<string> {
   if (!session?.access_token) throw new Error("auth_required");
 
   const formData = new FormData();
-  formData.append("audio", blob, "recording.webm");
+  const ext = blob.type.includes("mp4") ? "recording.mp4" : blob.type.includes("ogg") ? "recording.ogg" : "recording.webm";
+  formData.append("audio", blob, ext);
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe`;
   const resp = await fetch(url, {
