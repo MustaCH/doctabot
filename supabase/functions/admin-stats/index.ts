@@ -146,7 +146,6 @@ Deno.serve(async (req) => {
 
     if (action === "messages") {
       if (!conversationId) {
-      if (!conversationId) {
         return new Response(JSON.stringify({ error: "conversationId required" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
