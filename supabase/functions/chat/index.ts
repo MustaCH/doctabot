@@ -689,9 +689,20 @@ function parseEventDates(args: any): { startDate: Date; endDate: Date } | { erro
   return { startDate, endDate };
 }
 
+/** Encode a header value as RFC 2047 Base64 UTF-8 if it contains non-ASCII */
+function encodeHeaderValue(value: string): string {
+  // Check if value contains non-ASCII characters
+  if (/[^\x00-\x7F]/.test(value)) {
+    const encoded = btoa(unescape(encodeURIComponent(value)));
+    return `=?UTF-8?B?${encoded}?=`;
+  }
+  return value;
+}
+
 /** Build a MIME email message and base64url-encode it */
 function buildMimeEmail(to: string, subject: string, body: string, cc?: string | null): string {
-  const mimeLines = [`To: ${to}`, `Subject: ${subject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8"];
+  const encodedSubject = encodeHeaderValue(subject);
+  const mimeLines = [`To: ${to}`, `Subject: ${encodedSubject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit"];
   if (cc) mimeLines.push(`Cc: ${cc}`);
   mimeLines.push("", body);
   const mimeMessage = mimeLines.join("\r\n");
