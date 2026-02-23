@@ -41,8 +41,8 @@ serve(async (req) => {
     const audioFormat = fileName.endsWith(".webm") ? "webm" : fileName.endsWith(".mp3") ? "mp3" : "wav";
     if (!audioFile) throw new Error("No audio file provided");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
     // Convert audio to base64 in chunks to avoid stack overflow
     const arrayBuffer = await audioFile.arrayBuffer();
@@ -55,14 +55,14 @@ serve(async (req) => {
     const base64Audio = btoa(binary);
 
     // Use Gemini to transcribe the audio
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           {
             role: "user",
@@ -91,8 +91,8 @@ serve(async (req) => {
       throw new Error(`Transcription failed: ${response.status}`);
     }
 
-    const data = await response.json();
-    const transcript = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const aiData = await response.json();
+    const transcript = aiData.choices?.[0]?.message?.content?.trim() ?? "";
 
     return new Response(JSON.stringify({ text: transcript }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
