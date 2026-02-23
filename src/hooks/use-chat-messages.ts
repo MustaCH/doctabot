@@ -74,6 +74,7 @@ export function useChatMessages(
 
     // Build message content with PDF text and quoted text inline
     let messageContent = text;
+    let msgQuotedText: string | undefined;
     if (quotedText) {
       let cleanQuote = quotedText
         .replace(/!\[.*?\]\(.*?\)/g, "[imagen]")
@@ -81,6 +82,8 @@ export function useChatMessages(
         .replace(/\*\*/g, "")
         .trim();
       if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
+      msgQuotedText = cleanQuote;
+      // Still prepend quote for AI context
       messageContent = `> ${cleanQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
       setQuotedText(null);
     }
@@ -96,6 +99,7 @@ export function useChatMessages(
       role: "user",
       content: messageContent || fallbackText,
       attachments: msgAttachments,
+      quotedText: msgQuotedText,
     };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
