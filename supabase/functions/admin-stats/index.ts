@@ -15,7 +15,8 @@ Deno.serve(async (req) => {
 
   try {
     // Validate PIN from request body
-    const { pin, action, page, pageSize, search, ...extra } = await req.json();
+    const body = await req.json();
+    const { pin, action, page, pageSize, search, conversationId } = body;
 
     if (pin !== ADMIN_PIN) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -144,7 +145,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "messages") {
-      const { conversationId } = extra as any;
+      if (!conversationId) {
       if (!conversationId) {
         return new Response(JSON.stringify({ error: "conversationId required" }), {
           status: 400,
