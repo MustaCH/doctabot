@@ -1225,11 +1225,11 @@ async function generateTitle(
           ? messages[0].content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
           : "";
 
-    const titleRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const titleRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
           { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
@@ -1286,8 +1286,8 @@ serve(async (req) => {
 
   try {
     const { messages, conversationId } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1318,10 +1318,10 @@ serve(async (req) => {
     ];
 
     // First call – non-streaming to handle tool calls
-    let aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    let aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, tools: toolDefinitions, stream: false }),
+      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gemini-2.5-flash", messages: currentMessages, tools: toolDefinitions, stream: false }),
     });
 
     if (!aiResponse.ok) {
@@ -1346,10 +1346,10 @@ serve(async (req) => {
         currentMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
 
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, tools: toolDefinitions, stream: false }),
+        headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gemini-2.5-flash", messages: currentMessages, tools: toolDefinitions, stream: false }),
       });
 
       if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
@@ -1359,7 +1359,7 @@ serve(async (req) => {
 
     // Auto-generate title after first user message
     if (conversationId && messages.length === 1 && userId) {
-      generateTitle(messages, choice?.message?.content ?? "", conversationId, supabase, LOVABLE_API_KEY);
+      generateTitle(messages, choice?.message?.content ?? "", conversationId, supabase, GEMINI_API_KEY);
     }
 
     // Return SSE response
@@ -1368,10 +1368,10 @@ serve(async (req) => {
     }
 
     // Fallback: stream from AI directly
-    const streamResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const streamResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages: currentMessages, stream: true }),
+      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gemini-2.5-flash", messages: currentMessages, stream: true }),
     });
 
     if (!streamResponse.ok) throw new Error(`Stream error: ${streamResponse.status}`);
