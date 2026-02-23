@@ -57,6 +57,7 @@ interface ConversationRow {
   id: string;
   title: string;
   user_id: string;
+  user_name: string;
   conversation_type: string | null;
   created_at: string;
   updated_at: string;
@@ -396,19 +397,39 @@ function ConversationsTable({ pin }: { pin: string }) {
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await adminFetch(pin, "conversations", { page, pageSize: PAGE_SIZE });
-        setData(res.data);
-        setTotal(res.total);
-      } catch {}
-      setLoading(false);
-    };
-    load();
-  }, [pin, page]);
+  // Collect unique users from data for the filter dropdown
+  const uniqueUsers = Array.from(
+    new Map(data.map(c => [c.user_id, c.user_name])).entries()
+  ).map(([id, name]) => ({ id, name }));
+
+  // Also keep a master user list from all loaded conversations
+  const [allUsers, setAllUsers] = useState<{ id: string; name: string }[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch(pin, "conversations", {
+        page,
+        pageSize: PAGE_SIZE,
+        ...(filterUserId ? { userId: filterUserId } : {}),
+      });
+      setData(res.data);
+      setTotal(res.total);
+
+      // Build master user list
+      const newUsers = (res.data as ConversationRow[]).map(c => ({ id: c.user_id, name: c.user_name }));
+      setAllUsers(prev => {
+        const map = new Map(prev.map(u => [u.id, u.name]));
+        newUsers.forEach(u => map.set(u.id, u.name));
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+      });
+    } catch {}
+    setLoading(false);
+  }, [pin, page, filterUserId]);
+
+  useEffect(() => { load(); }, [load]);
 
   const openMessages = async (convId: string) => {
     setSelectedConv(convId);
@@ -426,7 +447,22 @@ function ConversationsTable({ pin }: { pin: string }) {
 
   return (
     <div className="mt-4 space-y-3">
-      <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} conversaciones</span>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} conversaciones</span>
+        <div className="flex items-center gap-2 ml-auto">
+          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+          <select
+            className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
+            value={filterUserId ?? ""}
+            onChange={(e) => { setFilterUserId(e.target.value || null); setPage(0); }}
+          >
+            <option value="">Todos los usuarios</option>
+            {allUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {selectedConv && (
         <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
@@ -474,8 +510,8 @@ function ConversationsTable({ pin }: { pin: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Título</TableHead>
+                  <TableHead>Usuario</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>User ID</TableHead>
                   <TableHead>Última actividad</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
@@ -484,8 +520,8 @@ function ConversationsTable({ pin }: { pin: string }) {
                 {data.map((c) => (
                   <TableRow key={c.id} className={selectedConv === c.id ? "bg-muted/50" : ""}>
                     <TableCell className="max-w-[200px] truncate text-xs">{c.title}</TableCell>
+                    <TableCell className="text-xs font-medium">{c.user_name}</TableCell>
                     <TableCell className="text-xs">{c.conversation_type ?? "general"}</TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">{c.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(c.updated_at).toLocaleDateString("es-AR")}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => openMessages(c.id)} className="h-7 w-7">
