@@ -123,6 +123,7 @@ const Onboarding = () => {
 
   const handleFinish = async () => {
     await refreshProfile();
+    // Tutorial will be shown via route logic after profile is set
   };
 
   const deviceOptions: { key: Exclude<Device, null>; label: string; icon: React.ReactNode }[] = [
