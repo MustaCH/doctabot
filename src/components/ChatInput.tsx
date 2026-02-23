@@ -153,6 +153,12 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
   // Clean and truncate quoted text for preview
   const quotePreview = quotedText
     ? (() => {
+        // Detect property card content and summarize it
+        if (quotedText.includes("🏠")) {
+          const titleMatch = quotedText.match(/🏠\s*(.+)/);
+          const title = titleMatch?.[1]?.replace(/\*\*/g, "").trim();
+          return title ? `🏠 ${title.length > 60 ? title.slice(0, 60) + "…" : title}` : "🏠 Propiedad";
+        }
         let cleaned = quotedText
           .replace(/!\[.*?\]\(.*?\)/g, "[imagen]")
           .replace(/https?:\/\/\S{40,}/g, "[enlace]")
