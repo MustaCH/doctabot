@@ -69,13 +69,33 @@ Deno.serve(async (req) => {
     }
 
     if (action === "conversations") {
-      const { data, count } = await supabaseAdmin
+      let query = supabaseAdmin
         .from("conversations")
         .select("id, title, user_id, conversation_type, created_at, updated_at", { count: "exact" })
-        .order("updated_at", { ascending: false })
-        .range(pg * ps, (pg + 1) * ps - 1);
+        .order("updated_at", { ascending: false });
 
-      return new Response(JSON.stringify({ data: data ?? [], total: count ?? 0 }), {
+      if (body.userId) {
+        query = query.eq("user_id", body.userId);
+      }
+
+      query = query.range(pg * ps, (pg + 1) * ps - 1);
+      const { data, count } = await query;
+
+      // Enrich with user names
+      const userIds = [...new Set((data ?? []).map((c: any) => c.user_id))];
+      const { data: profiles } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds);
+      const nameMap: Record<string, string> = {};
+      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+
+      const enriched = (data ?? []).map((c: any) => ({
+        ...c,
+        user_name: nameMap[c.user_id] ?? "Desconocido",
+      }));
+
+      return new Response(JSON.stringify({ data: enriched, total: count ?? 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
