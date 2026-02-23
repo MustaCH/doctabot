@@ -12,6 +12,7 @@ import Favorites from "./pages/Favorites";
 import Clients from "./pages/Clients";
 import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
+import Tutorial from "./pages/Tutorial";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" replace />;
   if (!hasProfile) return <Navigate to="/onboarding" replace />;
+  // Show tutorial once after onboarding
+  const tutorialDone = localStorage.getItem("alan_tutorial_done");
+  if (!tutorialDone && window.location.pathname === "/") {
+    return <Navigate to="/tutorial" replace />;
+  }
+  return <>{children}</>;
+}
+
+function TutorialRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading, hasProfile } = useAuth();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!hasProfile) return <Navigate to="/onboarding" replace />;
+  const tutorialDone = localStorage.getItem("alan_tutorial_done");
+  if (tutorialDone) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -56,6 +72,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
+            <Route path="/tutorial" element={<TutorialRoute><Tutorial /></TutorialRoute>} />
             <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
