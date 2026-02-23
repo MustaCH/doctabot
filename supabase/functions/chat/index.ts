@@ -43,6 +43,8 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 15. **update_calendar_event**: Modificar un evento existente del calendario
 16. **delete_calendar_event**: Eliminar un evento del calendario
 17. **send_email**: Enviar un email desde la cuenta Gmail del agente (SOLO con confirmación explícita del agente)
+18. **web_search**: Buscar información en internet (noticias, regulaciones, datos del mercado, cualquier consulta que requiera info actualizada)
+19. **scrape_url**: Leer y extraer el contenido de una página web específica (útil para resumir artículos, leer publicaciones, etc.)
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -540,6 +542,37 @@ const toolDefinitions = [
           event_id: { type: "string", description: "ID del evento a eliminar" },
         },
         required: ["event_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Buscar información en internet usando un buscador web. Usar cuando el agente pregunte algo que requiere información actualizada de internet, noticias, regulaciones, datos del mercado, tendencias, o cualquier cosa que no esté en la base de datos interna.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "La consulta de búsqueda (en español o inglés según convenga)" },
+          limit: { type: "integer", description: "Cantidad máxima de resultados (default 5, máximo 10)" },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "scrape_url",
+      description: "Leer y extraer el contenido de una página web específica. Usar cuando el agente comparta una URL y quiera que Alan la lea, resuma, o extraiga información.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "La URL de la página a leer" },
+        },
+        required: ["url"],
         additionalProperties: false,
       },
     },
@@ -1146,6 +1179,69 @@ async function executeTool(
       });
       if (!delRes.ok && delRes.status !== 410) return JSON.stringify({ error: "Error al eliminar el evento" });
       return JSON.stringify({ success: true, message: "Evento eliminado del calendario." });
+    }
+
+    // ---- Web Search & Scraping (Firecrawl) ----
+    case "web_search": {
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (!firecrawlKey) return JSON.stringify({ error: "Búsqueda web no configurada." });
+      const query = typeof args.query === "string" ? args.query.trim().slice(0, 500) : null;
+      if (!query) return JSON.stringify({ error: "La consulta de búsqueda es requerida" });
+      const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 10);
+      try {
+        const res = await fetch("https://api.firecrawl.dev/v1/search", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ query, limit, scrapeOptions: { formats: ["markdown"] } }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("Firecrawl search error:", err);
+          return JSON.stringify({ error: "Error al buscar en internet" });
+        }
+        const data = await res.json();
+        const results = (data.data ?? []).map((r: any) => ({
+          title: r.title,
+          url: r.url,
+          description: r.description,
+          content: r.markdown?.slice(0, 2000),
+        }));
+        return JSON.stringify({ results, total: results.length });
+      } catch (e) {
+        console.error("Web search error:", e);
+        return JSON.stringify({ error: "Error al buscar en internet" });
+      }
+    }
+
+    case "scrape_url": {
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (!firecrawlKey) return JSON.stringify({ error: "Scraping web no configurado." });
+      let url = typeof args.url === "string" ? args.url.trim() : null;
+      if (!url) return JSON.stringify({ error: "La URL es requerida" });
+      if (!url.startsWith("http://") && !url.startsWith("https://")) url = `https://${url}`;
+      try {
+        const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("Firecrawl scrape error:", err);
+          return JSON.stringify({ error: "Error al leer la página web" });
+        }
+        const data = await res.json();
+        const content = data.data?.markdown || data.markdown || "";
+        const metadata = data.data?.metadata || data.metadata || {};
+        return JSON.stringify({
+          title: metadata.title || "",
+          url: metadata.sourceURL || url,
+          content: content.slice(0, 8000),
+        });
+      } catch (e) {
+        console.error("Scrape error:", e);
+        return JSON.stringify({ error: "Error al leer la página web" });
+      }
     }
 
     default:
