@@ -8,7 +8,11 @@ import {
 import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
+  Download, UserCheck, TrendingUp,
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
 
 const ADMIN_PIN = "7742";
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`;
@@ -23,44 +27,60 @@ async function adminFetch(pin: string, action: string, extra: Record<string, unk
   return res.json();
 }
 
+function downloadCSV(rows: Record<string, unknown>[] | unknown[], filename: string) {
+  const typedRows = rows as Record<string, unknown>[];
+  if (!typedRows.length) return;
+  const keys = Object.keys(typedRows[0]);
+  const csv = [
+    keys.join(","),
+    ...typedRows.map((r) => keys.map((k) => `"${String(r[k] ?? "").replace(/"/g, '""')}"`).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 interface PlatformStats {
-  properties: number;
-  users: number;
-  conversations: number;
-  messages: number;
-  favorites: number;
-  clients: number;
+  properties: number; users: number; conversations: number;
+  messages: number; favorites: number; clients: number;
 }
 
 interface PropertyRow {
-  id: string;
-  title: string | null;
-  operation: string | null;
-  price: number | null;
-  currency: string | null;
-  zone: string | null;
-  property_type: string | null;
-  address: string | null;
-  created_at: string;
-  updated_at: string;
+  id: string; title: string | null; operation: string | null;
+  price: number | null; currency: string | null; zone: string | null;
+  property_type: string | null; address: string | null;
+  created_at: string; updated_at: string;
 }
 
 interface ProfileRow {
-  id: string;
-  user_id: string;
-  full_name: string;
-  agent_code: string;
-  created_at: string;
+  id: string; user_id: string; full_name: string;
+  agent_code: string; created_at: string;
 }
 
 interface ConversationRow {
-  id: string;
-  title: string;
-  user_id: string;
-  user_name: string;
-  conversation_type: string | null;
+  id: string; title: string; user_id: string; user_name: string;
+  conversation_type: string | null; created_at: string; updated_at: string;
+}
+
+interface FavoriteRow {
+  id: string; user_id: string; property_id: string; user_name: string;
+  property_title: string; property_zone: string | null;
+  property_price: number | null; property_currency: string | null;
   created_at: string;
-  updated_at: string;
+}
+
+interface ClientRow {
+  id: string; full_name: string; email: string | null; phone: string | null;
+  status: string; notes: string | null; user_id: string; agent_name: string;
+  created_at: string;
+}
+
+interface MessageRow {
+  id: string; role: string; content: string; created_at: string;
 }
 
 const PAGE_SIZE = 25;
@@ -71,12 +91,8 @@ const SuperAdmin = () => {
   const [pinError, setPinError] = useState(false);
 
   const handlePin = () => {
-    if (pin === ADMIN_PIN) {
-      setAuthed(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
-    }
+    if (pin === ADMIN_PIN) { setAuthed(true); setPinError(false); }
+    else setPinError(true);
   };
 
   if (!authed) {
@@ -89,13 +105,10 @@ const SuperAdmin = () => {
           </div>
           <p className="text-xs text-center text-muted-foreground">Ingresá el PIN de acceso</p>
           <Input
-            type="password"
-            placeholder="PIN"
-            value={pin}
+            type="password" placeholder="PIN" value={pin}
             onChange={(e) => { setPin(e.target.value); setPinError(false); }}
             onKeyDown={(e) => e.key === "Enter" && handlePin()}
-            className={pinError ? "border-destructive" : ""}
-            autoFocus
+            className={pinError ? "border-destructive" : ""} autoFocus
           />
           {pinError && <p className="text-xs text-destructive text-center">PIN incorrecto</p>}
           <Button className="w-full" onClick={handlePin}>Acceder</Button>
@@ -114,16 +127,18 @@ function AdminDashboard({ pin }: { pin: string }) {
 
   const loadStats = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await adminFetch(pin, "stats");
-      setStats(data);
-    } catch {
-      // ignore
-    }
+    try { setStats(await adminFetch(pin, "stats")); } catch {}
     setLoading(false);
   }, [pin]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  // Helper to navigate to conversations filtered by user
+  const [prefilterUserId, setPrefilterUserId] = useState<string | null>(null);
+  const goToUserConversations = (userId: string) => {
+    setPrefilterUserId(userId);
+    setTab("conversations");
+  };
 
   const statCards = stats
     ? [
@@ -132,7 +147,7 @@ function AdminDashboard({ pin }: { pin: string }) {
         { label: "Conversaciones", value: stats.conversations, icon: MessageSquare, color: "text-violet-500" },
         { label: "Mensajes", value: stats.messages, icon: MessageSquare, color: "text-amber-500" },
         { label: "Favoritos", value: stats.favorites, icon: Heart, color: "text-rose-500" },
-        { label: "Clientes", value: stats.clients, icon: Users, color: "text-cyan-500" },
+        { label: "Clientes", value: stats.clients, icon: UserCheck, color: "text-cyan-500" },
       ]
     : [];
 
@@ -149,18 +164,18 @@ function AdminDashboard({ pin }: { pin: string }) {
       </header>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="w-full grid grid-cols-4">
+        <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "conversations") setPrefilterUserId(null); }}>
+          <TabsList className="w-full grid grid-cols-6">
             <TabsTrigger value="overview">Resumen</TabsTrigger>
             <TabsTrigger value="properties">Propiedades</TabsTrigger>
             <TabsTrigger value="users">Usuarios</TabsTrigger>
             <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
+            <TabsTrigger value="favorites">Favoritos</TabsTrigger>
+            <TabsTrigger value="clients">Clientes</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
-            {loading ? (
-              <LoadingSpinner />
-            ) : (
+            {loading ? <LoadingSpinner /> : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
                 {statCards.map((c) => (
                   <div key={c.label} className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
@@ -173,26 +188,76 @@ function AdminDashboard({ pin }: { pin: string }) {
                 ))}
               </div>
             )}
+            <ActivityCharts pin={pin} />
             <ScrapingStatus pin={pin} />
           </TabsContent>
 
-          <TabsContent value="properties">
-            <PropertiesTable pin={pin} />
-          </TabsContent>
-
-          <TabsContent value="users">
-            <UsersTable pin={pin} />
-          </TabsContent>
-
-          <TabsContent value="conversations">
-            <ConversationsTable pin={pin} />
-          </TabsContent>
+          <TabsContent value="properties"><PropertiesTable pin={pin} /></TabsContent>
+          <TabsContent value="users"><UsersTable pin={pin} onViewConversations={goToUserConversations} /></TabsContent>
+          <TabsContent value="conversations"><ConversationsTable pin={pin} initialUserId={prefilterUserId} /></TabsContent>
+          <TabsContent value="favorites"><FavoritesTable pin={pin} /></TabsContent>
+          <TabsContent value="clients"><ClientsTable pin={pin} /></TabsContent>
         </Tabs>
       </div>
     </div>
   );
 }
 
+/* ==================== ACTIVITY CHARTS ==================== */
+function ActivityCharts({ pin }: { pin: string }) {
+  const [data, setData] = useState<{ date: string; usuarios: number; mensajes: number; conversaciones: number; propiedades: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await adminFetch(pin, "time-stats");
+        // Build 30-day array
+        const days: typeof data = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const key = d.toISOString().slice(0, 10);
+          days.push({
+            date: key.slice(5), // MM-DD
+            usuarios: res.users[key] ?? 0,
+            mensajes: res.messages[key] ?? 0,
+            conversaciones: res.conversations[key] ?? 0,
+            propiedades: res.properties[key] ?? 0,
+          });
+        }
+        setData(days);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [pin]);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+      <div className="flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">Actividad (últimos 30 días)</h2>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Line type="monotone" dataKey="mensajes" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="conversaciones" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="usuarios" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="propiedades" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ==================== SCRAPING STATUS ==================== */
 function ScrapingStatus({ pin }: { pin: string }) {
   const [lastProperty, setLastProperty] = useState<{ created_at: string; updated_at: string } | null>(null);
   const [totalToday, setTotalToday] = useState(0);
@@ -201,31 +266,24 @@ function ScrapingStatus({ pin }: { pin: string }) {
 
   const loadStatus = useCallback(() => {
     adminFetch(pin, "scraping-status").then((data) => {
-      setLastProperty(data.lastProperty);
-      setTotalToday(data.totalToday);
+      setLastProperty(data.lastProperty); setTotalToday(data.totalToday);
     }).catch(() => {});
   }, [pin]);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
   const triggerScraping = async () => {
-    setScraping(true);
-    setScrapeResult(null);
+    setScraping(true); setScrapeResult(null);
     try {
       const res = await adminFetch(pin, "trigger-scraping");
       setScrapeResult(`✅ Scraping completado: ${res.upserted ?? 0} propiedades actualizadas, ${res.errors ?? 0} errores`);
       loadStatus();
-    } catch {
-      setScrapeResult("❌ Error al ejecutar el scraping");
-    }
+    } catch { setScrapeResult("❌ Error al ejecutar el scraping"); }
     setScraping(false);
   };
 
   const fmt = (iso: string) =>
-    new Date(iso).toLocaleString("es-AR", {
-      day: "2-digit", month: "2-digit", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
+    new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return (
     <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
@@ -249,14 +307,13 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <span className="font-medium">{totalToday.toLocaleString("es-AR")}</span>
         </div>
       </div>
-      {scrapeResult && (
-        <p className="text-xs font-medium">{scrapeResult}</p>
-      )}
+      {scrapeResult && <p className="text-xs font-medium">{scrapeResult}</p>}
       <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente a las 00:30hs de forma automática.</p>
     </div>
   );
 }
 
+/* ==================== PROPERTIES TABLE ==================== */
 function PropertiesTable({ pin }: { pin: string }) {
   const [data, setData] = useState<PropertyRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -268,27 +325,24 @@ function PropertiesTable({ pin }: { pin: string }) {
     setLoading(true);
     try {
       const res = await adminFetch(pin, "properties", { page, pageSize: PAGE_SIZE, search });
-      setData(res.data);
-      setTotal(res.total);
+      setData(res.data); setTotal(res.total);
     } catch {}
     setLoading(false);
   }, [pin, page, search]);
 
   useEffect(() => { load(); }, [load]);
-
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por título, dirección o zona..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-          className="max-w-sm"
-        />
+        <Input placeholder="Buscar por título, dirección o zona..." value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="max-w-sm" />
         <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} resultados</span>
+        <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "propiedades")}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+        </Button>
       </div>
       {loading ? <LoadingSpinner /> : (
         <>
@@ -296,12 +350,9 @@ function PropertiesTable({ pin }: { pin: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Operación</TableHead>
-                  <TableHead>Precio</TableHead>
-                  <TableHead>Zona</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Actualizado</TableHead>
+                  <TableHead>Título</TableHead><TableHead>Operación</TableHead>
+                  <TableHead>Precio</TableHead><TableHead>Zona</TableHead>
+                  <TableHead>Tipo</TableHead><TableHead>Actualizado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -327,40 +378,46 @@ function PropertiesTable({ pin }: { pin: string }) {
   );
 }
 
-function UsersTable({ pin }: { pin: string }) {
+/* ==================== USERS TABLE ==================== */
+function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversations: (userId: string) => void }) {
   const [data, setData] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await adminFetch(pin, "users", { page, pageSize: PAGE_SIZE });
-        setData(res.data);
-        setTotal(res.total);
-      } catch {}
-      setLoading(false);
-    };
-    load();
-  }, [pin, page]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch(pin, "users", { page, pageSize: PAGE_SIZE, search });
+      setData(res.data); setTotal(res.total);
+    } catch {}
+    setLoading(false);
+  }, [pin, page, search]);
 
+  useEffect(() => { load(); }, [load]);
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="mt-4 space-y-3">
-      <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} usuarios</span>
+      <div className="flex items-center gap-2">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Buscar por nombre o código de agente..." value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="max-w-sm" />
+        <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} usuarios</span>
+        <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "usuarios")}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+        </Button>
+      </div>
       {loading ? <LoadingSpinner /> : (
         <>
           <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Código Agente</TableHead>
-                  <TableHead>User ID</TableHead>
-                  <TableHead>Registrado</TableHead>
+                  <TableHead>Nombre</TableHead><TableHead>Código Agente</TableHead>
+                  <TableHead>User ID</TableHead><TableHead>Registrado</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -370,6 +427,12 @@ function UsersTable({ pin }: { pin: string }) {
                     <TableCell className="text-xs">{u.agent_code}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-7 w-7"
+                        title="Ver conversaciones" onClick={() => onViewConversations(u.user_id)}>
+                        <MessageSquare className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -382,14 +445,8 @@ function UsersTable({ pin }: { pin: string }) {
   );
 }
 
-interface MessageRow {
-  id: string;
-  role: string;
-  content: string;
-  created_at: string;
-}
-
-function ConversationsTable({ pin }: { pin: string }) {
+/* ==================== CONVERSATIONS TABLE ==================== */
+function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId: string | null }) {
   const [data, setData] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -397,28 +454,20 @@ function ConversationsTable({ pin }: { pin: string }) {
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [filterUserId, setFilterUserId] = useState<string | null>(null);
-
-  // Collect unique users from data for the filter dropdown
-  const uniqueUsers = Array.from(
-    new Map(data.map(c => [c.user_id, c.user_name])).entries()
-  ).map(([id, name]) => ({ id, name }));
-
-  // Also keep a master user list from all loaded conversations
+  const [filterUserId, setFilterUserId] = useState<string | null>(initialUserId);
   const [allUsers, setAllUsers] = useState<{ id: string; name: string }[]>([]);
+
+  // Sync external filter
+  useEffect(() => { setFilterUserId(initialUserId); setPage(0); }, [initialUserId]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await adminFetch(pin, "conversations", {
-        page,
-        pageSize: PAGE_SIZE,
+        page, pageSize: PAGE_SIZE,
         ...(filterUserId ? { userId: filterUserId } : {}),
       });
-      setData(res.data);
-      setTotal(res.total);
-
-      // Build master user list
+      setData(res.data); setTotal(res.total);
       const newUsers = (res.data as ConversationRow[]).map(c => ({ id: c.user_id, name: c.user_name }));
       setAllUsers(prev => {
         const map = new Map(prev.map(u => [u.id, u.name]));
@@ -432,14 +481,11 @@ function ConversationsTable({ pin }: { pin: string }) {
   useEffect(() => { load(); }, [load]);
 
   const openMessages = async (convId: string) => {
-    setSelectedConv(convId);
-    setLoadingMessages(true);
+    setSelectedConv(convId); setLoadingMessages(true);
     try {
       const res = await adminFetch(pin, "messages", { conversationId: convId });
       setMessages(res.data);
-    } catch {
-      setMessages([]);
-    }
+    } catch { setMessages([]); }
     setLoadingMessages(false);
   };
 
@@ -451,16 +497,15 @@ function ConversationsTable({ pin }: { pin: string }) {
         <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} conversaciones</span>
         <div className="flex items-center gap-2 ml-auto">
           <Users className="h-3.5 w-3.5 text-muted-foreground" />
-          <select
-            className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
+          <select className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
             value={filterUserId ?? ""}
-            onChange={(e) => { setFilterUserId(e.target.value || null); setPage(0); }}
-          >
+            onChange={(e) => { setFilterUserId(e.target.value || null); setPage(0); }}>
             <option value="">Todos los usuarios</option>
-            {allUsers.map(u => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
+            {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
+          <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "conversaciones")}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+          </Button>
         </div>
       </div>
 
@@ -479,20 +524,11 @@ function ConversationsTable({ pin }: { pin: string }) {
               {messages.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">Sin mensajes</p>
               ) : messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`rounded-lg p-3 text-xs ${
-                    m.role === "user"
-                      ? "bg-primary/10 ml-8"
-                      : "bg-muted mr-8"
-                  }`}
-                >
+                <div key={m.id} className={`rounded-lg p-3 text-xs ${m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted mr-8"}`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold capitalize">{m.role === "user" ? "Usuario" : "Alan"}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      {new Date(m.created_at).toLocaleString("es-AR", {
-                        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-                      })}
+                      {new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap break-words">{m.content}</p>
@@ -509,10 +545,8 @@ function ConversationsTable({ pin }: { pin: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Usuario</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Última actividad</TableHead>
+                  <TableHead>Título</TableHead><TableHead>Usuario</TableHead>
+                  <TableHead>Tipo</TableHead><TableHead>Última actividad</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -540,6 +574,128 @@ function ConversationsTable({ pin }: { pin: string }) {
   );
 }
 
+/* ==================== FAVORITES TABLE ==================== */
+function FavoritesTable({ pin }: { pin: string }) {
+  const [data, setData] = useState<FavoriteRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await adminFetch(pin, "favorites", { page, pageSize: PAGE_SIZE });
+        setData(res.data); setTotal(res.total);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [pin, page]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} favoritos</span>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(data, "favoritos")}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+        </Button>
+      </div>
+      {loading ? <LoadingSpinner /> : (
+        <>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Propiedad</TableHead><TableHead>Zona</TableHead>
+                  <TableHead>Precio</TableHead><TableHead>Agente</TableHead>
+                  <TableHead>Fecha</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((f) => (
+                  <TableRow key={f.id}>
+                    <TableCell className="max-w-[200px] truncate text-xs">{f.property_title}</TableCell>
+                    <TableCell className="text-xs">{f.property_zone ?? "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {f.property_price ? `${f.property_currency ?? "$"} ${f.property_price.toLocaleString("es-AR")}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs font-medium">{f.user_name}</TableCell>
+                    <TableCell className="text-xs">{new Date(f.created_at).toLocaleDateString("es-AR")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ==================== CLIENTS TABLE ==================== */
+function ClientsTable({ pin }: { pin: string }) {
+  const [data, setData] = useState<ClientRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await adminFetch(pin, "clients", { page, pageSize: PAGE_SIZE });
+        setData(res.data); setTotal(res.total);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [pin, page]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} clientes</span>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(data, "clientes")}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+        </Button>
+      </div>
+      {loading ? <LoadingSpinner /> : (
+        <>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead><TableHead>Email</TableHead>
+                  <TableHead>Teléfono</TableHead><TableHead>Estado</TableHead>
+                  <TableHead>Agente</TableHead><TableHead>Creado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="text-xs font-medium">{c.full_name}</TableCell>
+                    <TableCell className="text-xs">{c.email ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{c.phone ?? "—"}</TableCell>
+                    <TableCell className="text-xs capitalize">{c.status}</TableCell>
+                    <TableCell className="text-xs">{c.agent_name}</TableCell>
+                    <TableCell className="text-xs">{new Date(c.created_at).toLocaleDateString("es-AR")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ==================== SHARED ==================== */
 function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
   return (
@@ -547,9 +703,7 @@ function Pagination({ page, totalPages, onPageChange }: { page: number; totalPag
       <Button variant="ghost" size="icon" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
-      <span className="text-xs text-muted-foreground">
-        {page + 1} / {totalPages}
-      </span>
+      <span className="text-xs text-muted-foreground">{page + 1} / {totalPages}</span>
       <Button variant="ghost" size="icon" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
         <ChevronRight className="h-4 w-4" />
       </Button>
