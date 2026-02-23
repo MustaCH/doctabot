@@ -235,8 +235,19 @@ const Tutorial = () => {
               initial="enter"
               animate="center"
               exit="exit"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="rounded-xl border bg-card p-6 shadow-sm space-y-5"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.3}
+              onDragEnd={(_e, { offset, velocity }) => {
+                const swipe = Math.abs(offset.x) * velocity.x;
+                if (swipe < -5000 || offset.x < -80) {
+                  paginate(1);
+                } else if (swipe > 5000 || offset.x > 80) {
+                  paginate(-1);
+                }
+              }}
+              transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
+              className="rounded-xl border bg-card p-6 shadow-sm space-y-5 cursor-grab active:cursor-grabbing touch-pan-y"
             >
               {/* Icon */}
               <motion.div
