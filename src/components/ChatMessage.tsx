@@ -290,7 +290,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
         {draftBlock.intro && (
           <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] mb-2">
             <ReactMarkdown components={{
-              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
             }}>{draftBlock.intro}</ReactMarkdown>
           </div>
         )}
@@ -307,7 +307,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary prose-img:rounded-xl prose-img:my-2 overflow-hidden break-words [word-break:break-word]">
       <ReactMarkdown components={{
-        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
         img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
       }}>{processedContent}</ReactMarkdown>
     </div>
