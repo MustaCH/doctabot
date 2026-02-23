@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -130,20 +131,65 @@ const steps: TutorialStep[] = [
   },
 ];
 
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 200 : -200,
+    opacity: 0,
+    scale: 0.95,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? -200 : 200,
+    opacity: 0,
+    scale: 0.95,
+  }),
+};
+
+const iconVariants = {
+  hidden: { scale: 0, rotate: -20 },
+  visible: {
+    scale: 1,
+    rotate: 0,
+    transition: { type: "spring" as const, stiffness: 260, damping: 20, delay: 0.15 },
+  },
+};
+
+const staggerContainer = {
+  visible: {
+    transition: { staggerChildren: 0.06, delayChildren: 0.25 },
+  },
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
+
 const Tutorial = () => {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(0);
+  const [direction, setDirection] = useState(0);
   const total = steps.length;
   const step = steps[current];
   const progress = ((current + 1) / total) * 100;
 
-  const next = () => {
-    if (current < total - 1) setCurrent((s) => s + 1);
-    else finish();
+  const paginate = (newDirection: number) => {
+    const next = current + newDirection;
+    if (next < 0 || next >= total) {
+      if (next >= total) finish();
+      return;
+    }
+    setDirection(newDirection);
+    setCurrent(next);
   };
 
-  const prev = () => {
-    if (current > 0) setCurrent((s) => s - 1);
+  const jumpTo = (index: number) => {
+    setDirection(index > current ? 1 : -1);
+    setCurrent(index);
   };
 
   const finish = () => {
@@ -152,98 +198,157 @@ const Tutorial = () => {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 overflow-hidden">
       {/* Skip */}
-      <button
+      <motion.button
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
         onClick={finish}
-        className="absolute right-4 top-4 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="absolute right-4 top-4 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors z-10"
       >
         Omitir <X className="h-3.5 w-3.5" />
-      </button>
+      </motion.button>
 
       <div className="w-full max-w-md space-y-6">
         {/* Progress */}
-        <div className="space-y-2">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="space-y-2"
+        >
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {current + 1} de {total}
-            </span>
+            <span>{current + 1} de {total}</span>
             <span>{Math.round(progress)}%</span>
           </div>
           <Progress value={progress} className="h-1.5" />
-        </div>
+        </motion.div>
 
-        {/* Card */}
-        <div
-          key={current}
-          className="animate-in fade-in slide-in-from-right-4 duration-300 rounded-xl border bg-card p-6 shadow-sm space-y-5"
-        >
-          {/* Icon */}
-          <div className="flex justify-center">{step.icon}</div>
+        {/* Card with AnimatePresence */}
+        <div className="relative min-h-[380px]">
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={current}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="rounded-xl border bg-card p-6 shadow-sm space-y-5"
+            >
+              {/* Icon */}
+              <motion.div
+                className="flex justify-center"
+                variants={iconVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                {step.icon}
+              </motion.div>
 
-          {/* Text */}
-          <div className="space-y-2 text-center">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              {step.title}
-            </h1>
-            <p className="text-sm font-medium text-primary">{step.subtitle}</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {step.description}
-            </p>
-          </div>
-
-          {/* Example */}
-          {step.example && (
-            <div className="rounded-lg bg-muted/60 px-4 py-3 text-sm italic text-foreground border border-border">
-              {step.example}
-            </div>
-          )}
-
-          {/* Tips */}
-          {step.tips && step.tips.length > 0 && (
-            <ul className="space-y-2">
-              {step.tips.map((tip, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-muted-foreground"
+              {/* Text */}
+              <motion.div
+                className="space-y-2 text-center"
+                variants={staggerContainer}
+                initial="hidden"
+                animate="visible"
+              >
+                <motion.h1
+                  variants={staggerItem}
+                  className="text-xl font-bold tracking-tight text-foreground"
                 >
-                  <span className="mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
-                  {tip}
-                </li>
-              ))}
-            </ul>
-          )}
+                  {step.title}
+                </motion.h1>
+                <motion.p
+                  variants={staggerItem}
+                  className="text-sm font-medium text-primary"
+                >
+                  {step.subtitle}
+                </motion.p>
+                <motion.p
+                  variants={staggerItem}
+                  className="text-sm text-muted-foreground leading-relaxed"
+                >
+                  {step.description}
+                </motion.p>
+              </motion.div>
+
+              {/* Example */}
+              {step.example && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4, duration: 0.3 }}
+                  className="rounded-lg bg-muted/60 px-4 py-3 text-sm italic text-foreground border border-border"
+                >
+                  {step.example}
+                </motion.div>
+              )}
+
+              {/* Tips */}
+              {step.tips && step.tips.length > 0 && (
+                <motion.ul
+                  className="space-y-2"
+                  variants={staggerContainer}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  {step.tips.map((tip, i) => (
+                    <motion.li
+                      key={i}
+                      variants={staggerItem}
+                      className="flex items-start gap-2 text-sm text-muted-foreground"
+                    >
+                      <span className="mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+                      {tip}
+                    </motion.li>
+                  ))}
+                </motion.ul>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center gap-3">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="flex items-center gap-3"
+        >
           {current > 0 ? (
-            <Button variant="ghost" size="sm" onClick={prev}>
+            <Button variant="ghost" size="sm" onClick={() => paginate(-1)}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Atrás
             </Button>
           ) : (
             <div />
           )}
 
-          <Button onClick={next} className="ml-auto">
+          <Button onClick={() => paginate(1)} className="ml-auto">
             {current === total - 1 ? "Comenzar" : "Siguiente"}
             {current < total - 1 && <ChevronRight className="ml-1 h-4 w-4" />}
           </Button>
-        </div>
+        </motion.div>
 
         {/* Dots */}
         <div className="flex justify-center gap-1.5">
           {steps.map((_, i) => (
-            <button
+            <motion.button
               key={i}
-              onClick={() => setCurrent(i)}
-              className={`h-2 w-2 rounded-full transition-all ${
-                i === current
-                  ? "bg-primary w-4"
-                  : i < current
-                  ? "bg-primary/50"
-                  : "bg-border"
-              }`}
+              onClick={() => jumpTo(i)}
+              animate={{
+                width: i === current ? 16 : 8,
+                backgroundColor:
+                  i === current
+                    ? "hsl(var(--primary))"
+                    : i < current
+                    ? "hsl(var(--primary) / 0.5)"
+                    : "hsl(var(--border))",
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="h-2 rounded-full"
             />
           ))}
         </div>
