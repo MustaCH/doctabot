@@ -163,12 +163,13 @@ const Chat = () => {
             <ChatMessage
               key={i}
               role={msg.role}
-              content={msg.content}
+              content={msg.quotedText ? msg.content.replace(/^>.*\n?/gm, "").trim() : msg.content}
               attachments={msg.attachments}
               audioUrl={msg.audioUrl}
               isTranscribing={isTranscribing && i === messages.length - 1 && !!msg.audioUrl}
               userAvatar={userAvatar}
               userName={userName}
+              quotedText={msg.quotedText}
               onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
             />
           ))}

@@ -12,6 +12,7 @@ export type Msg = {
   content: string;
   attachments?: MsgAttachment[];
   audioUrl?: string;
+  quotedText?: string;
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;

@@ -33,6 +33,7 @@ interface ChatMessageProps {
   isTranscribing?: boolean;
   userAvatar?: string;
   userName?: string;
+  quotedText?: string;
   onReply?: (content: string) => void;
 }
 
@@ -125,7 +126,32 @@ const CopyButton = ({ content }: { content: string }) => {
   );
 };
 
-const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, onReply }: ChatMessageProps) => {
+const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
+  // Summarize property cards
+  let display = text;
+  if (text.includes("🏠")) {
+    const titleMatch = text.match(/🏠\s*(.+)/);
+    const title = titleMatch?.[1]?.trim();
+    display = title ? `🏠 ${title.length > 60 ? title.slice(0, 60) + "…" : title}` : "🏠 Propiedad";
+  } else if (display.length > 120) {
+    display = display.slice(0, 120) + "…";
+  }
+
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 mb-1.5 border-l-[3px] ${
+        isUser
+          ? "border-white/60 bg-white/15"
+          : "border-primary/60 bg-primary/10"
+      }`}
+    >
+      <p className={`text-[11px] font-semibold mb-0.5 ${isUser ? "text-white/80" : "text-primary"}`}>Alan</p>
+      <p className={`text-xs leading-relaxed line-clamp-2 ${isUser ? "text-white/70" : "text-muted-foreground"}`}>{display}</p>
+    </div>
+  );
+};
+
+const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -153,6 +179,8 @@ const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing
               : "bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))] rounded-tl-md"
           }`}
         >
+          {/* Quoted message */}
+          {quotedText && <QuotedBlock text={quotedText} isUser={isUser} />}
           {/* Attached images */}
           {attachments && attachments.length > 0 && (
             <div className={`flex flex-wrap gap-1.5 ${content && content !== "(imagen adjunta)" && content !== "(archivo adjunto)" ? "mb-2" : ""}`}>
