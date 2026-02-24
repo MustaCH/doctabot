@@ -83,8 +83,8 @@ export function useChatMessages(
         .trim();
       if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
       msgQuotedText = cleanQuote;
-      // Still prepend quote for AI context
-      messageContent = `> ${cleanQuote.split("\n").join("\n> ")}\n\n${messageContent}`;
+      // Wrap quote explicitly so AI treats it as reference context, not content to re-render
+      messageContent = `[CONTEXTO CITADO - NO re-mostrar como tarjeta, usar como referencia para la acción solicitada]\n${cleanQuote}\n[FIN CONTEXTO CITADO]\n\n${messageContent}`;
       setQuotedText(null);
     }
     if (pdfTexts.length > 0) {
