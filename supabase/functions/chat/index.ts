@@ -179,6 +179,12 @@ REGLAS:
 - Los marcadores <<<DRAFT_START>>> y <<<DRAFT_END>>> deben estar solos en su línea.
 - NUNCA uses *** o --- o ===== como separadores del borrador. SOLO los marcadores.
 - El texto dentro del borrador debe estar listo para copiar y pegar directamente, sin markdown extra.
+- PROHIBIDO incluir una tarjeta de propiedad (con 🏠, 💰, 📍, 📐, 🏢, 🔗) junto al borrador. Si el agente pide redactar un email/texto sobre una propiedad, redactá SOLO el borrador. No repitas la propiedad en formato tarjeta.
+
+## REGLA GENERAL SOBRE TARJETAS DE PROPIEDAD
+
+SOLO mostrá propiedades con formato de tarjeta (🏠, 💰, 📍, etc.) cuando el agente EXPLÍCITAMENTE pide BUSCAR, VER o LISTAR propiedades. 
+En CUALQUIER otro contexto (redactar emails, textos, borradores, agendar visitas, agregar a favoritos, etc.), NUNCA uses el formato de tarjeta. Usá los datos de la propiedad como texto plano dentro de la acción solicitada.
 
 ## CONOCIMIENTO ESPECIALIZADO: MERCADO INMOBILIARIO DE CORDOBA Y OPERATORIA REMAX
 
