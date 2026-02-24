@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { toast } from "sonner";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft, KeyRound, CalendarCheck } from "lucide-react";
 
 type Device = "iphone" | "android" | "desktop" | null;
@@ -45,14 +46,37 @@ const installInstructions: Record<Exclude<Device, null>, { title: string; steps:
 const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
 
 const Onboarding = () => {
-  const { user, refreshProfile, signOut } = useAuth();
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const { user, hasProfile, refreshProfile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
+    // If user already has profile (returning from OAuth), jump to step 3
+    return 1;
+  });
   const [inviteCode, setInviteCode] = useState("");
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name ?? "");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device>(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
+
+  // On mount: if user already has profile (returned from OAuth redirect), skip to step 3
+  useEffect(() => {
+    if (hasProfile) {
+      const calendarParam = searchParams.get("calendar");
+      if (calendarParam === "connected") {
+        toast.success("Google Calendar conectado correctamente ✅");
+        setSearchParams({}, { replace: true });
+        setStep(4);
+      } else if (calendarParam === "error") {
+        toast.error("Error al conectar Google Calendar. Intentá de nuevo.");
+        setSearchParams({}, { replace: true });
+        setStep(3);
+      } else {
+        setStep(3);
+      }
+    }
+  }, [hasProfile]);
 
   // Step 1: validate invitation code
   const handleCodeSubmit = async (e: React.FormEvent) => {
@@ -106,7 +130,7 @@ const Onboarding = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ returnUrl: window.location.origin + "/profile" }),
+        body: JSON.stringify({ returnUrl: window.location.origin + "/onboarding" }),
       });
       const json = await res.json();
       if (json.url) {
@@ -122,8 +146,9 @@ const Onboarding = () => {
   };
 
   const handleFinish = async () => {
+    localStorage.setItem("alan_onboarding_done", "true");
     await refreshProfile();
-    // Tutorial will be shown via route logic after profile is set
+    navigate("/");
   };
 
   const deviceOptions: { key: Exclude<Device, null>; label: string; icon: React.ReactNode }[] = [

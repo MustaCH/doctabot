@@ -28,7 +28,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" replace />;
   if (!hasProfile) return <Navigate to="/onboarding" replace />;
-  // Show tutorial once after onboarding
+  // Existing users who never went through new onboarding flow
+  if (!localStorage.getItem("alan_onboarding_done")) {
+    localStorage.setItem("alan_onboarding_done", "true");
+  }
   const tutorialDone = localStorage.getItem("alan_tutorial_done");
   if (!tutorialDone && window.location.pathname === "/") {
     return <Navigate to="/tutorial" replace />;
@@ -50,7 +53,8 @@ function OnboardingRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, hasProfile } = useAuth();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" replace />;
-  if (hasProfile) return <Navigate to="/" replace />;
+  const onboardingDone = localStorage.getItem("alan_onboarding_done");
+  if (hasProfile && onboardingDone) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
