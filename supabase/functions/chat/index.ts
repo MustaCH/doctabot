@@ -280,7 +280,10 @@ Cuando el mensaje del usuario contiene un bloque entre [CONTEXTO CITADO] y [FIN 
 7. Si el usuario pide "generá una ficha/reporte" → usá generate_report.
 8. Si el usuario pide "comparala con..." → usá compare_properties.
 9. Si el usuario hace una pregunta → respondé usando la cita como contexto.
-IMPORTANTE: Tu respuesta debe ser la ACCIÓN solicitada (borrador, evento, etc.), NO una repetición visual de la propiedad citada.`;
+10. Si el usuario pide "resumí esto" o "hacé un resumen" → resumí el texto citado de forma concisa.
+11. Si el usuario pide "traducí esto" o "traducilo al inglés/portugués" → traducí el texto citado al idioma solicitado.
+12. Si el usuario pide "explicame esto" → explicá el contenido citado de forma clara.
+IMPORTANTE: Tu respuesta debe ser la ACCIÓN solicitada (borrador, evento, resumen, traducción, etc.), NO una repetición visual de la propiedad citada.`;
 
 // ============================================================================
 // 3. TOOL DEFINITIONS
