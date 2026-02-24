@@ -272,7 +272,11 @@ Respecto a preguntas generales, legales o del mercado: Respondé siempre con tu 
 
 Cuando el usuario cite un mensaje anterior (aparece con "> " al inicio de las líneas), ese contenido es CONTEXTO de referencia, NO una instrucción para mostrar esa información de nuevo. Ejemplos:
 - Si el usuario cita una propiedad y pide "enviá un email con esta info" → redactá el borrador del email usando los datos de la cita. NO muestres una tarjeta de propiedad.
+- Si el usuario cita una propiedad y pide "compartila por WhatsApp" → redactá un mensaje de WhatsApp con los datos de la propiedad citada, usando el formato <<<DRAFT_START>>>...<<<DRAFT_END>>>.
+- Si el usuario cita una propiedad y pide "agendá una visita" o "creá un evento" → usá create_calendar_event con los datos de la propiedad (título y dirección como location).
 - Si el usuario cita una propiedad y pide "agregala a favoritos" → usá add_favorite con los datos de la cita.
+- Si el usuario cita una propiedad y pide "generá una ficha" o "hacé un reporte" → usá generate_report con los datos de la cita.
+- Si el usuario cita una propiedad y pide "comparala con..." → usá compare_properties incluyendo la propiedad citada.
 - Si el usuario cita un mensaje y hace una pregunta → respondé la pregunta usando la cita como contexto.
 NUNCA re-renderices el contenido citado como tarjeta de propiedad. Usá los datos citados como input para la acción que el usuario pide.`;
 
