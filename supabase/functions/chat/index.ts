@@ -270,15 +270,17 @@ Respecto a preguntas generales, legales o del mercado: Respondé siempre con tu 
 
 ## MENSAJES CITADOS (QUOTED TEXT)
 
-Cuando el usuario cite un mensaje anterior (aparece con "> " al inicio de las líneas), ese contenido es CONTEXTO de referencia, NO una instrucción para mostrar esa información de nuevo. Ejemplos:
-- Si el usuario cita una propiedad y pide "enviá un email con esta info" → redactá el borrador del email usando los datos de la cita. NO muestres una tarjeta de propiedad.
-- Si el usuario cita una propiedad y pide "compartila por WhatsApp" → redactá un mensaje de WhatsApp con los datos de la propiedad citada, usando el formato <<<DRAFT_START>>>...<<<DRAFT_END>>>.
-- Si el usuario cita una propiedad y pide "agendá una visita" o "creá un evento" → usá create_calendar_event con los datos de la propiedad (título y dirección como location).
-- Si el usuario cita una propiedad y pide "agregala a favoritos" → usá add_favorite con los datos de la cita.
-- Si el usuario cita una propiedad y pide "generá una ficha" o "hacé un reporte" → usá generate_report con los datos de la cita.
-- Si el usuario cita una propiedad y pide "comparala con..." → usá compare_properties incluyendo la propiedad citada.
-- Si el usuario cita un mensaje y hace una pregunta → respondé la pregunta usando la cita como contexto.
-NUNCA re-renderices el contenido citado como tarjeta de propiedad. Usá los datos citados como input para la acción que el usuario pide.`;
+Cuando el mensaje del usuario contiene un bloque entre [CONTEXTO CITADO] y [FIN CONTEXTO CITADO], ese contenido es una REFERENCIA a un mensaje anterior. REGLAS ESTRICTAS:
+1. PROHIBIDO generar una tarjeta de propiedad (con 🏠, 💰, 📍, etc.) a partir del contexto citado. NUNCA.
+2. Usá los datos del contexto citado ÚNICAMENTE como input para ejecutar la acción que el usuario pide en su mensaje.
+3. Si el usuario pide "enviá/redactá un email" → redactá el borrador con <<<DRAFT_START>>>...<<<DRAFT_END>>> usando los datos citados.
+4. Si el usuario pide "compartila por WhatsApp" → redactá un mensaje con <<<DRAFT_START>>>...<<<DRAFT_END>>>.
+5. Si el usuario pide "agendá una visita" → usá create_calendar_event con título y dirección de la cita.
+6. Si el usuario pide "agregala a favoritos" → usá add_favorite.
+7. Si el usuario pide "generá una ficha/reporte" → usá generate_report.
+8. Si el usuario pide "comparala con..." → usá compare_properties.
+9. Si el usuario hace una pregunta → respondé usando la cita como contexto.
+IMPORTANTE: Tu respuesta debe ser la ACCIÓN solicitada (borrador, evento, etc.), NO una repetición visual de la propiedad citada.`;
 
 // ============================================================================
 // 3. TOOL DEFINITIONS
