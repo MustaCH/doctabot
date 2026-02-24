@@ -56,6 +56,7 @@ serve(async (req) => {
       access_type: "offline",
       prompt: "consent",
       state: statePayload,
+      hl: "en",
     });
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
