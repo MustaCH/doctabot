@@ -72,8 +72,9 @@ export function useChatMessages(
     // Process attachments
     const { msgAttachments, pdfTexts } = await processAttachments(chatAttachments);
 
-    // Build message content with PDF text and quoted text inline
-    let messageContent = text;
+    // Build message content — separate display text from AI context
+    let displayContent = text;
+    let aiContent = text;
     let msgQuotedText: string | undefined;
     if (quotedText) {
       let cleanQuote = quotedText
@@ -83,32 +84,50 @@ export function useChatMessages(
         .trim();
       if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
       msgQuotedText = cleanQuote;
-      // Wrap quote explicitly so AI treats it as reference context, not content to re-render
-      messageContent = `[CONTEXTO CITADO - NO re-mostrar como tarjeta, usar como referencia para la acción solicitada]\n${cleanQuote}\n[FIN CONTEXTO CITADO]\n\n${messageContent}`;
+      // For AI: strip property emojis to plain text so it doesn't re-render cards
+      const plainQuote = cleanQuote
+        .replace(/🏠/g, "Propiedad:")
+        .replace(/💰/g, "Precio:")
+        .replace(/📍/g, "Ubicación:")
+        .replace(/📐/g, "Superficie:")
+        .replace(/🏢/g, "Oficina:")
+        .replace(/🔗/g, "Link:")
+        .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "");
+      aiContent = `[REFERENCIA - el usuario cita este mensaje anterior como contexto. NO repetir esta info como tarjeta de propiedad. Ejecutar la acción que pide el usuario.]\n${plainQuote}\n[FIN REFERENCIA]\n\n${aiContent}`;
       setQuotedText(null);
     }
     if (pdfTexts.length > 0) {
       const pdfContext = pdfTexts.join("\n\n");
-      messageContent = messageContent ? `${messageContent}\n\n${pdfContext}` : pdfContext;
+      displayContent = displayContent ? `${displayContent}\n\n${pdfContext}` : pdfContext;
+      aiContent = aiContent ? `${aiContent}\n\n${pdfContext}` : pdfContext;
     }
 
     const hasImages = msgAttachments && msgAttachments.length > 0;
     const hasPdfs = pdfTexts.length > 0;
-    const fallbackText = hasImages ? "(imagen adjunta)" : hasPdfs ? messageContent : "(archivo adjunto)";
+    const fallbackDisplay = hasImages ? "(imagen adjunta)" : hasPdfs ? displayContent : "(archivo adjunto)";
+    const fallbackAI = hasImages ? "(imagen adjunta)" : hasPdfs ? aiContent : "(archivo adjunto)";
     const userMsg: Msg = {
       role: "user",
-      content: messageContent || fallbackText,
+      content: aiContent || fallbackAI,
       attachments: msgAttachments,
       quotedText: msgQuotedText,
     };
-    const newMessages = [...messages, userMsg];
+    // For display, use clean text without AI context wrapper
+    const displayMsg: Msg = {
+      role: "user",
+      content: displayContent || fallbackDisplay,
+      attachments: msgAttachments,
+      quotedText: msgQuotedText,
+    };
+    const newMessages = [...messages, displayMsg];
     setMessages(newMessages);
     setIsStreaming(true);
 
+    // Save the display version to DB (no AI wrapper)
     await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
-      content: messageContent || fallbackText,
+      content: displayContent || fallbackDisplay,
     });
 
     let assistantContent = "";
@@ -118,8 +137,10 @@ export function useChatMessages(
     abortRef.current = controller;
 
     try {
+      // Send AI version of messages (with quoted context) but display version in UI
+      const aiMessages = [...messages, userMsg];
       await streamChat({
-        messages: newMessages,
+        messages: aiMessages,
         conversationId: convId!,
         signal: controller.signal,
         onDelta: (chunk) => {

@@ -270,20 +270,20 @@ Respecto a preguntas generales, legales o del mercado: Respondé siempre con tu 
 
 ## MENSAJES CITADOS (QUOTED TEXT)
 
-Cuando el mensaje del usuario contiene un bloque entre [CONTEXTO CITADO] y [FIN CONTEXTO CITADO], ese contenido es una REFERENCIA a un mensaje anterior. REGLAS ESTRICTAS:
-1. PROHIBIDO generar una tarjeta de propiedad (con 🏠, 💰, 📍, etc.) a partir del contexto citado. NUNCA.
-2. Usá los datos del contexto citado ÚNICAMENTE como input para ejecutar la acción que el usuario pide en su mensaje.
-3. Si el usuario pide "enviá/redactá un email" → redactá el borrador con <<<DRAFT_START>>>...<<<DRAFT_END>>> usando los datos citados.
-4. Si el usuario pide "compartila por WhatsApp" → redactá un mensaje con <<<DRAFT_START>>>...<<<DRAFT_END>>>.
-5. Si el usuario pide "agendá una visita" → usá create_calendar_event con título y dirección de la cita.
-6. Si el usuario pide "agregala a favoritos" → usá add_favorite.
-7. Si el usuario pide "generá una ficha/reporte" → usá generate_report.
-8. Si el usuario pide "comparala con..." → usá compare_properties.
-9. Si el usuario hace una pregunta → respondé usando la cita como contexto.
-10. Si el usuario pide "resumí esto" o "hacé un resumen" → resumí el texto citado de forma concisa.
-11. Si el usuario pide "traducí esto" o "traducilo al inglés/portugués" → traducí el texto citado al idioma solicitado.
-12. Si el usuario pide "explicame esto" → explicá el contenido citado de forma clara.
-IMPORTANTE: Tu respuesta debe ser la ACCIÓN solicitada (borrador, evento, resumen, traducción, etc.), NO una repetición visual de la propiedad citada.`;
+Cuando el mensaje del usuario contiene un bloque entre [REFERENCIA] y [FIN REFERENCIA], ese contenido es datos de un mensaje anterior que el usuario citó. REGLAS ESTRICTAS:
+1. PROHIBIDO responder con formato de tarjeta de propiedad (con 🏠, 💰, 📍, 📐, 🏢, 🔗, etc.). NUNCA. Los emojis de propiedad ya fueron removidos del contexto citado.
+2. Usá los datos de la referencia ÚNICAMENTE como input para ejecutar la acción que el usuario pide.
+3. Si pide redactar/enviar un email → redactá el borrador con <<<DRAFT_START>>>...<<<DRAFT_END>>>.
+4. Si pide compartir por WhatsApp → redactá un mensaje con <<<DRAFT_START>>>...<<<DRAFT_END>>>.
+5. Si pide agendar una visita → usá create_calendar_event.
+6. Si pide agregar a favoritos → usá add_favorite.
+7. Si pide generar ficha/reporte → usá generate_report.
+8. Si pide comparar → usá compare_properties.
+9. Si hace una pregunta → respondé usando la referencia como contexto.
+10. Si pide resumir → resumí el texto de forma concisa.
+11. Si pide traducir → traducí al idioma solicitado.
+12. Si pide "redactá un texto" o "hablando de esta propiedad" → escribí un texto descriptivo en prosa usando <<<DRAFT_START>>>...<<<DRAFT_END>>>.
+Tu respuesta SIEMPRE debe ser la ACCIÓN solicitada (borrador, evento, etc.), NUNCA una tarjeta/ficha con emojis.`;
 
 // ============================================================================
 // 3. TOOL DEFINITIONS
