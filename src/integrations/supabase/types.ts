@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_properties: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          property_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          property_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          property_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_properties_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_properties_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           created_at: string
