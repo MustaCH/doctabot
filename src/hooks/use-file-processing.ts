@@ -78,6 +78,17 @@ export function useFileProcessing() {
       } finally {
         setIsProcessingPdf(false);
       }
+
+      // Add PDF file chips for display in the chat bubble
+      if (!msgAttachments) msgAttachments = [];
+      for (const att of pdfAtts) {
+        msgAttachments.push({
+          type: "file" as const,
+          base64: "",
+          mimeType: "application/pdf",
+          fileName: att.file.name,
+        });
+      }
     }
 
     return { msgAttachments, pdfTexts };
