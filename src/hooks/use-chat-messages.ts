@@ -98,13 +98,14 @@ export function useChatMessages(
     }
     if (pdfTexts.length > 0) {
       const pdfContext = pdfTexts.join("\n\n");
-      displayContent = displayContent ? `${displayContent}\n\n${pdfContext}` : pdfContext;
+      // Only send PDF text to AI, NOT to display — UI shows file chips instead
       aiContent = aiContent ? `${aiContent}\n\n${pdfContext}` : pdfContext;
     }
 
-    const hasImages = msgAttachments && msgAttachments.length > 0;
+    const hasImages = msgAttachments && msgAttachments.some(a => a.type === "image");
     const hasPdfs = pdfTexts.length > 0;
-    const fallbackDisplay = hasImages ? "(imagen adjunta)" : hasPdfs ? displayContent : "(archivo adjunto)";
+    const hasFiles = hasImages || hasPdfs;
+    const fallbackDisplay = hasImages ? "(imagen adjunta)" : hasPdfs ? "(archivo adjunto)" : "(archivo adjunto)";
     const fallbackAI = hasImages ? "(imagen adjunta)" : hasPdfs ? aiContent : "(archivo adjunto)";
     const userMsg: Msg = {
       role: "user",
