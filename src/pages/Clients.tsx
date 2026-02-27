@@ -10,8 +10,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+
+interface ClientProperty {
+  id: string;
+  property_id: string;
+  status: string;
+  notes: string | null;
+  properties: {
+    title: string | null;
+    address: string | null;
+    price: number | null;
+    currency: string | null;
+    url: string | null;
+    photo: string | null;
+    operation: string | null;
+  } | null;
+}
 
 interface Client {
   id: string;
@@ -37,11 +54,27 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
   closed: "destructive",
 };
 
+const propStatusLabel: Record<string, string> = {
+  sugerida: "Sugerida",
+  enviada: "Enviada",
+  visitada: "Visitada",
+  descartada: "Descartada",
+};
+
+const propStatusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  sugerida: "secondary",
+  enviada: "default",
+  visitada: "outline",
+  descartada: "destructive",
+};
+
 const Clients = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clientProperties, setClientProperties] = useState<Record<string, ClientProperty[]>>({});
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
   // Edit state
   const [editClient, setEditClient] = useState<Client | null>(null);
@@ -70,6 +103,32 @@ const Clients = () => {
       setLoading(false);
     }
   }, [user]);
+
+  const loadClientProperties = useCallback(async (clientId: string) => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("client_properties")
+      .select("id, property_id, status, notes, properties(title, address, price, currency, url, photo, operation)")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    setClientProperties(prev => ({ ...prev, [clientId]: (data as unknown as ClientProperty[]) ?? [] }));
+  }, [user]);
+
+  const toggleExpand = (clientId: string) => {
+    setExpandedClients(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) {
+        next.delete(clientId);
+      } else {
+        next.add(clientId);
+        if (!clientProperties[clientId]) {
+          loadClientProperties(clientId);
+        }
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadClients();
@@ -132,6 +191,12 @@ const Clients = () => {
     }
   };
 
+  const formatPrice = (price: number | null, currency: string | null) => {
+    if (!price) return null;
+    const formatted = price.toLocaleString("es-AR");
+    return `${currency ?? "USD"} ${formatted}`;
+  };
+
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
       {/* Header */}
@@ -173,48 +238,125 @@ const Clients = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {clients.map((client) => (
-              <div
-                key={client.id}
-                className="rounded-xl border border-border bg-card p-4 space-y-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge variant={statusVariant[client.status] ?? "secondary"}>
-                      {statusLabel[client.status] ?? client.status}
-                    </Badge>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+            {clients.map((client) => {
+              const isExpanded = expandedClients.has(client.id);
+              const props = clientProperties[client.id];
 
-                {client.phone && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Phone className="h-3 w-3 shrink-0" />
-                    <span>{client.phone}</span>
-                  </div>
-                )}
+              return (
+                <Collapsible key={client.id} open={isExpanded} onOpenChange={() => toggleExpand(client.id)}>
+                  <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Badge variant={statusVariant[client.status] ?? "secondary"}>
+                          {statusLabel[client.status] ?? client.status}
+                        </Badge>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
 
-                {client.email && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Mail className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{client.email}</span>
-                  </div>
-                )}
+                    {client.phone && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span>{client.phone}</span>
+                      </div>
+                    )}
 
-                {client.notes && (
-                  <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <FileText className="h-3 w-3 shrink-0 mt-0.5" />
-                    <span className="line-clamp-2">{client.notes}</span>
+                    {client.email && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{client.email}</span>
+                      </div>
+                    )}
+
+                    {client.notes && (
+                      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <FileText className="h-3 w-3 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">{client.notes}</span>
+                      </div>
+                    )}
+
+                    {/* Properties toggle */}
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="w-full justify-between h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Home className="h-3 w-3" />
+                          Propiedades vinculadas
+                          {props && props.length > 0 && (
+                            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{props.length}</Badge>
+                          )}
+                        </span>
+                        <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </Button>
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent>
+                      {!props ? (
+                        <div className="py-2 space-y-1.5">
+                          <Skeleton className="h-12 w-full rounded-lg" />
+                          <Skeleton className="h-12 w-full rounded-lg" />
+                        </div>
+                      ) : props.length === 0 ? (
+                        <p className="text-xs text-muted-foreground/60 py-2 text-center">
+                          Sin propiedades. Pedile a Alan que guarde propiedades para este cliente.
+                        </p>
+                      ) : (
+                        <div className="space-y-2 pt-1">
+                          {props.map((cp) => (
+                            <div key={cp.id} className="flex gap-2.5 rounded-lg border border-border/50 bg-muted/30 p-2.5">
+                              {cp.properties?.photo && (
+                                <img
+                                  src={cp.properties.photo}
+                                  alt=""
+                                  className="h-12 w-12 rounded-md object-cover shrink-0"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              )}
+                              <div className="flex-1 min-w-0 space-y-0.5">
+                                <p className="text-xs font-medium leading-tight truncate">
+                                  {cp.properties?.title ?? "Propiedad"}
+                                </p>
+                                {cp.properties?.address && (
+                                  <p className="text-[11px] text-muted-foreground truncate">{cp.properties.address}</p>
+                                )}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {cp.properties?.price && (
+                                    <span className="text-[11px] font-medium text-primary">
+                                      {formatPrice(cp.properties.price, cp.properties.currency)}
+                                    </span>
+                                  )}
+                                  <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="h-4 px-1.5 text-[10px]">
+                                    {propStatusLabel[cp.status] ?? cp.status}
+                                  </Badge>
+                                </div>
+                                {cp.notes && (
+                                  <p className="text-[11px] text-muted-foreground/70 line-clamp-1">{cp.notes}</p>
+                                )}
+                              </div>
+                              {cp.properties?.url && (
+                                <a
+                                  href={cp.properties.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 self-center text-muted-foreground hover:text-primary transition-colors"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CollapsibleContent>
                   </div>
-                )}
-              </div>
-            ))}
+                </Collapsible>
+              );
+            })}
           </div>
         )}
       </div>

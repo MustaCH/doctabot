@@ -55,6 +55,10 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 17. **send_email**: Enviar un email desde la cuenta Gmail del agente (SOLO con confirmación explícita del agente)
 18. **web_search**: Buscar información en internet (noticias, regulaciones, datos del mercado, cualquier consulta que requiera info actualizada)
 19. **scrape_url**: Leer y extraer el contenido de una página web específica (útil para resumir artículos, leer publicaciones, etc.)
+20. **save_property_to_client**: Guardar una propiedad en el perfil de un cliente, con estado y nota opcional
+21. **list_client_properties**: Ver las propiedades vinculadas a un cliente con sus estados y notas
+22. **remove_client_property**: Eliminar la vinculación de una propiedad con un cliente
+23. **update_client_property**: Actualizar el estado o las notas de una propiedad vinculada a un cliente
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -119,6 +123,9 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 - Cuando el agente pida ver un cliente o su historial, usá get_client.
 - Confirmá las acciones de CRM de forma natural y concisa, sin tecnicismos. Ej: "Listo, vinculé esta búsqueda al perfil de María González 👤"
 - Si el agente pide la lista de sus clientes, mostrala de forma clara con nombre, teléfono y estado.
+- Cuando el agente mencione guardar una propiedad "para un cliente", usá save_property_to_client. Podés sugerir proactivamente guardar propiedades que se estén buscando para un cliente vinculado.
+- Los estados de propiedades vinculadas son: sugerida (default), enviada, visitada, descartada.
+- Cuando el agente pida ver las propiedades de un cliente, usá list_client_properties.
 
 **ESTADOS DE CLIENTES:**
 - prospect: Cliente potencial (default)
@@ -610,6 +617,74 @@ const toolDefinitions = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "save_property_to_client",
+      description: "Guardar/vincular una propiedad al perfil de un cliente. Útil para trackear qué propiedades se le muestran o interesan a cada cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          property_id: { type: "string", description: "ID de la propiedad a vincular" },
+          status: { type: "string", description: "Estado: sugerida (default), enviada, visitada, descartada" },
+          notes: { type: "string", description: "Nota sobre por qué esta propiedad le sirve al cliente" },
+        },
+        required: ["client_id", "property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_client_properties",
+      description: "Listar las propiedades vinculadas a un cliente con sus estados y notas.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          status: { type: "string", description: "Filtrar por estado: sugerida, enviada, visitada, descartada" },
+        },
+        required: ["client_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_client_property",
+      description: "Eliminar la vinculación de una propiedad con un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          property_id: { type: "string", description: "ID de la propiedad a desvincular" },
+        },
+        required: ["client_id", "property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_client_property",
+      description: "Actualizar el estado o las notas de una propiedad vinculada a un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          property_id: { type: "string", description: "ID de la propiedad" },
+          status: { type: "string", description: "Nuevo estado: sugerida, enviada, visitada, descartada" },
+          notes: { type: "string", description: "Nuevas notas" },
+        },
+        required: ["client_id", "property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ============================================================================
@@ -1008,12 +1083,20 @@ async function executeTool(
         .eq("user_id", userId)
         .single();
       if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
-      const { data: convs } = await supabase
-        .from("conversations")
-        .select("id, title, conversation_type, updated_at")
-        .eq("client_id", args.client_id)
-        .order("updated_at", { ascending: false });
-      return JSON.stringify({ client, conversations: convs ?? [] });
+      const [{ data: convs }, { data: clientProps }] = await Promise.all([
+        supabase
+          .from("conversations")
+          .select("id, title, conversation_type, updated_at")
+          .eq("client_id", args.client_id)
+          .order("updated_at", { ascending: false }),
+        supabase
+          .from("client_properties")
+          .select("id, property_id, status, notes, created_at, properties(title, address, price, currency, url, photo, operation, property_type)")
+          .eq("client_id", args.client_id)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+      ]);
+      return JSON.stringify({ client, conversations: convs ?? [], properties: clientProps ?? [] });
     }
 
     case "link_conversation": {
@@ -1275,6 +1358,73 @@ async function executeTool(
         console.error("Scrape error:", e);
         return JSON.stringify({ error: "Error al leer la página web" });
       }
+    }
+
+    // ---- Client Properties ----
+    case "save_property_to_client": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) return JSON.stringify({ error: "ID de propiedad inválido" });
+      const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
+      const status = validStatuses.includes(args.status) ? args.status : "sugerida";
+      const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
+      // Verify client belongs to user
+      const { data: client } = await supabase.from("clients").select("id, full_name").eq("id", args.client_id).eq("user_id", userId).single();
+      if (!client) return JSON.stringify({ error: "Cliente no encontrado" });
+      const { data, error } = await supabase
+        .from("client_properties")
+        .upsert({ user_id: userId, client_id: args.client_id, property_id: args.property_id, status, notes }, { onConflict: "client_id,property_id" })
+        .select("id")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: `Propiedad guardada en el perfil de ${client.full_name} (estado: ${status}).` });
+    }
+
+    case "list_client_properties": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
+      let query = supabase
+        .from("client_properties")
+        .select("id, property_id, status, notes, created_at, properties(*)")
+        .eq("client_id", args.client_id)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      if (args.status && validStatuses.includes(args.status)) query = query.eq("status", args.status);
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ client_properties: data ?? [], total: data?.length ?? 0 });
+    }
+
+    case "remove_client_property": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) return JSON.stringify({ error: "ID de propiedad inválido" });
+      const { error } = await supabase
+        .from("client_properties")
+        .delete()
+        .eq("client_id", args.client_id)
+        .eq("property_id", args.property_id)
+        .eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: "Propiedad desvinculada del cliente." });
+    }
+
+    case "update_client_property": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      if (!args.property_id || !UUID_REGEX.test(args.property_id)) return JSON.stringify({ error: "ID de propiedad inválido" });
+      const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
+      const updates: Record<string, any> = {};
+      if (args.status && validStatuses.includes(args.status)) updates.status = args.status;
+      if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
+      if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
+      const { data, error } = await supabase
+        .from("client_properties")
+        .update(updates)
+        .eq("client_id", args.client_id)
+        .eq("property_id", args.property_id)
+        .eq("user_id", userId)
+        .select("id, status, notes")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: "Propiedad del cliente actualizada.", data });
     }
 
     default:
