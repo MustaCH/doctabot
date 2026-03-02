@@ -625,16 +625,18 @@ const toolDefinitions = [
     type: "function",
     function: {
       name: "save_property_to_client",
-      description: "Guardar/vincular una propiedad al perfil de un cliente. Útil para trackear qué propiedades se le muestran o interesan a cada cliente.",
+      description: "Guardar/vincular una propiedad al perfil de un cliente. Podés pasar client_id/property_id si los tenés, o client_name/property_title para que se busquen automáticamente.",
       parameters: {
         type: "object",
         properties: {
-          client_id: { type: "string", description: "ID del cliente" },
-          property_id: { type: "string", description: "ID de la propiedad a vincular" },
+          client_id: { type: "string", description: "ID del cliente (opcional si pasás client_name)" },
+          client_name: { type: "string", description: "Nombre del cliente para buscar su ID automáticamente" },
+          property_id: { type: "string", description: "ID de la propiedad (opcional si pasás property_title)" },
+          property_title: { type: "string", description: "Título o dirección de la propiedad para buscar su ID automáticamente" },
           status: { type: "string", description: "Estado: sugerida (default), enviada, visitada, descartada" },
           notes: { type: "string", description: "Nota sobre por qué esta propiedad le sirve al cliente" },
         },
-        required: ["client_id", "property_id"],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -1366,19 +1368,37 @@ async function executeTool(
 
     // ---- Client Properties ----
     case "save_property_to_client": {
-      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
-      if (!args.property_id || !UUID_REGEX.test(args.property_id)) return JSON.stringify({ error: "ID de propiedad inválido" });
+      // Resolve client: accept client_id or client_name
+      let resolvedClientId = args.client_id;
+      if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) {
+        if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente." });
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(5);
+        if (!clients || clients.length === 0) return JSON.stringify({ error: `No encontré un cliente con el nombre "${args.client_name}".` });
+        if (clients.length > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map(c => c.full_name).join(", ")}. ¿Cuál querés?`, clients });
+        resolvedClientId = clients[0].id;
+      }
+      // Resolve property: accept property_id or property_title
+      let resolvedPropertyId = args.property_id;
+      if (!resolvedPropertyId || !UUID_REGEX.test(resolvedPropertyId)) {
+        if (!args.property_title) return JSON.stringify({ error: "Necesito el título/dirección o ID de la propiedad." });
+        const searchTitle = sanitizePattern(args.property_title);
+        const { data: props } = await supabase.from("properties").select("id, title, address").or(`title.ilike.%${searchTitle}%,address.ilike.%${searchTitle}%`).limit(5);
+        if (!props || props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
+        if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map(p => p.title || p.address).join(", ")}. ¿Cuál querés vincular?`, properties: props });
+        resolvedPropertyId = props[0].id;
+      }
       const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
       const status = validStatuses.includes(args.status) ? args.status : "sugerida";
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       // Verify client belongs to user
-      const { data: client } = await supabase.from("clients").select("id, full_name").eq("id", args.client_id).eq("user_id", userId).single();
-      if (!client) return JSON.stringify({ error: "Cliente no encontrado" });
+      const { data: client } = await supabase.from("clients").select("id, full_name").eq("id", resolvedClientId).eq("user_id", userId).maybeSingle();
+      if (!client) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
       const { data, error } = await supabase
         .from("client_properties")
-        .upsert({ user_id: userId, client_id: args.client_id, property_id: args.property_id, status, notes }, { onConflict: "client_id,property_id" })
+        .upsert({ user_id: userId, client_id: resolvedClientId, property_id: resolvedPropertyId, status, notes }, { onConflict: "client_id,property_id" })
         .select("id")
-        .single();
+        .maybeSingle();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, message: `Propiedad guardada en el perfil de ${client.full_name} (estado: ${status}).` });
     }
