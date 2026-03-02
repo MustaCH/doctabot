@@ -296,9 +296,11 @@ Cuando el mensaje del usuario contiene un bloque entre [REFERENCIA] y [FIN REFER
 10. Si pide resumir → resumí el texto de forma concisa.
 11. Si pide traducir → traducí al idioma solicitado.
 12. Si pide "redactá un texto" o "hablando de esta propiedad" → escribí un texto descriptivo en prosa usando <<<DRAFT_START>>>...<<<DRAFT_END>>>.
-13. Si pide vincular/guardar la propiedad a un cliente → PRIMERO usá search_properties con el título o dirección de la referencia para obtener el property_id real, luego usá save_property_to_client con ese ID. NUNCA inventes un UUID.
+13. Si pide vincular/guardar la propiedad a un cliente → usá save_property_to_client pasando client_name y property_title. La herramienta buscará los IDs automáticamente. NUNCA inventes un UUID.
 
-REGLA CRÍTICA: La referencia citada NO contiene IDs (UUIDs). Si necesitás un property_id o client_id para ejecutar una herramienta, SIEMPRE buscá primero con search_properties o list_clients para obtener el ID real. NUNCA fabricar UUIDs.
+REGLA CRÍTICA DE ACCIÓN: NUNCA digas "voy a hacer X" sin hacerlo. Si una herramienta falla, INMEDIATAMENTE llamá otra herramienta para corregirlo en la misma respuesta. No le digas al usuario que vas a hacer algo — HACELO directamente. Si necesitás buscar un ID, llamá la herramienta de búsqueda; no describas lo que harías.
+
+REGLA CRÍTICA DE IDs: La referencia citada NO contiene IDs (UUIDs). Si necesitás un property_id o client_id para ejecutar una herramienta, SIEMPRE buscá primero con search_properties o list_clients para obtener el ID real, o usá los parámetros de nombre/título que las herramientas aceptan. NUNCA fabricar UUIDs.
 
 Tu respuesta SIEMPRE debe ser la ACCIÓN solicitada (borrador, evento, etc.), NUNCA una tarjeta/ficha con emojis.`;
 
