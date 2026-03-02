@@ -152,7 +152,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6">
+    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 pt-12">
       <form onSubmit={handleSave} className="w-full max-w-sm space-y-6">
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" size="icon" onClick={() => navigate("/")}>
