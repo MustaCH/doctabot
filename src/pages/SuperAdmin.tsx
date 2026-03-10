@@ -168,12 +168,12 @@ function AdminDashboard({ pin }: { pin: string }) {
         <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "conversations") setPrefilterUserId(null); }}>
           <TabsList className="w-full grid grid-cols-7">
             <TabsTrigger value="overview">Resumen</TabsTrigger>
+            <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
             <TabsTrigger value="properties">Propiedades</TabsTrigger>
             <TabsTrigger value="users">Usuarios</TabsTrigger>
             <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
             <TabsTrigger value="favorites">Favoritos</TabsTrigger>
             <TabsTrigger value="clients">Clientes</TabsTrigger>
-            <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
