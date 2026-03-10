@@ -196,6 +196,35 @@ const Clients = () => {
     }
   };
 
+  const handleCreate = async () => {
+    if (!user) return;
+    const name = createForm.full_name.trim();
+    if (!name) {
+      toast.error("El nombre no puede estar vacío");
+      return;
+    }
+    setCreating(true);
+    try {
+      const { error } = await supabase.from("clients").insert({
+        full_name: name,
+        phone: createForm.phone.trim() || null,
+        email: createForm.email.trim() || null,
+        notes: createForm.notes.trim() || null,
+        status: createForm.status,
+        user_id: user.id,
+      });
+      if (error) throw error;
+      toast.success("Cliente creado");
+      setShowCreate(false);
+      setCreateForm({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+      loadClients();
+    } catch {
+      toast.error("Error al crear el cliente");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
     const formatted = price.toLocaleString("es-AR");
