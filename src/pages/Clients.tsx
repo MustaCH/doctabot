@@ -245,6 +245,9 @@ const Clients = () => {
             {loading ? "Cargando..." : `${clients.length} cliente${clients.length !== 1 ? "s" : ""}`}
           </p>
         </div>
+        <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Content */}
