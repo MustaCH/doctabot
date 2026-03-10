@@ -698,6 +698,197 @@ function ClientsTable({ pin }: { pin: string }) {
   );
 }
 
+/* ==================== SUPERVISOR PANEL ==================== */
+interface SupervisorLogRow {
+  id: string; conversation_id: string | null; user_id: string | null;
+  user_message: string; alan_response: string; verdict: string;
+  rejection_reason: string | null; score: number | null;
+  retry_count: number; latency_ms: number | null; created_at: string;
+  user_name: string;
+}
+
+interface SupervisorStats {
+  total: number; approved: number; rejected: number; errors: number;
+  avgScore: number; daily: Record<string, { approved: number; rejected: number; error: number }>;
+}
+
+function SupervisorPanel({ pin }: { pin: string }) {
+  const [stats, setStats] = useState<SupervisorStats | null>(null);
+  const [logs, setLogs] = useState<SupervisorLogRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [verdictFilter, setVerdictFilter] = useState("");
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    try { setStats(await adminFetch(pin, "supervisor-stats")); } catch {}
+    setLoading(false);
+  }, [pin]);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res = await adminFetch(pin, "supervisor-logs", {
+        page, pageSize: PAGE_SIZE,
+        ...(verdictFilter ? { verdict: verdictFilter } : {}),
+      });
+      setLogs(res.data); setTotal(res.total);
+    } catch {}
+    setLogsLoading(false);
+  }, [pin, page, verdictFilter]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => { loadLogs(); }, [loadLogs]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const approvalRate = stats && stats.total > 0 ? Math.round((stats.approved / stats.total) * 100) : 0;
+
+  const chartData = (() => {
+    if (!stats?.daily) return [];
+    const days: { date: string; aprobados: number; rechazados: number; errores: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const entry = stats.daily[key] ?? { approved: 0, rejected: 0, error: 0 };
+      days.push({ date: key.slice(5), aprobados: entry.approved, rechazados: entry.rejected, errores: entry.error });
+    }
+    return days;
+  })();
+
+  const verdictBadge = (verdict: string) => {
+    switch (verdict) {
+      case "approved": return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"><CheckCircle className="h-3 w-3 mr-1" />Aprobado</Badge>;
+      case "rejected": return <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 hover:bg-rose-500/20"><XCircle className="h-3 w-3 mr-1" />Rechazado</Badge>;
+      default: return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 hover:bg-amber-500/20"><AlertTriangle className="h-3 w-3 mr-1" />Error</Badge>;
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-6">
+      {loading ? <LoadingSpinner /> : stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <span className="text-xs text-muted-foreground">Total evaluaciones</span>
+            <p className="text-2xl font-bold">{stats.total.toLocaleString("es-AR")}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <span className="text-xs text-muted-foreground">Tasa aprobación</span>
+            <p className="text-2xl font-bold text-emerald-600">{approvalRate}%</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <span className="text-xs text-muted-foreground">Score promedio</span>
+            <p className="text-2xl font-bold">{stats.avgScore}/10</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <span className="text-xs text-muted-foreground">Errores supervisor</span>
+            <p className="text-2xl font-bold text-amber-600">{stats.errors}</p>
+          </div>
+        </div>
+      )}
+
+      {chartData.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+          <h2 className="text-sm font-semibold">Evaluaciones (últimos 30 días)</h2>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="aprobados" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="rechazados" stroke="hsl(0, 84%, 60%)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="errores" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} logs</span>
+          <select className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
+            value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setPage(0); }}>
+            <option value="">Todos</option>
+            <option value="approved">Aprobados</option>
+            <option value="rejected">Rechazados</option>
+            <option value="error">Errores</option>
+          </select>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(logs, "supervisor-logs")}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />CSV
+          </Button>
+        </div>
+
+        {logsLoading ? <LoadingSpinner /> : (
+          <>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead><TableHead>Usuario</TableHead>
+                    <TableHead>Veredicto</TableHead><TableHead>Score</TableHead>
+                    <TableHead>Reintentos</TableHead><TableHead>Latencia</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((l) => (
+                    <React.Fragment key={l.id}>
+                      <TableRow className={expandedLog === l.id ? "bg-muted/50" : ""}>
+                        <TableCell className="text-xs">
+                          {new Date(l.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium">{l.user_name}</TableCell>
+                        <TableCell>{verdictBadge(l.verdict)}</TableCell>
+                        <TableCell className="text-xs font-mono">{l.score ?? "—"}</TableCell>
+                        <TableCell className="text-xs">{l.retry_count}</TableCell>
+                        <TableCell className="text-xs">{l.latency_ms ? `${l.latency_ms}ms` : "—"}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}>
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {expandedLog === l.id && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="p-4 bg-muted/30">
+                            <div className="space-y-3 text-xs">
+                              <div>
+                                <p className="font-semibold mb-1">Mensaje del usuario:</p>
+                                <p className="whitespace-pre-wrap bg-card rounded p-2 border border-border">{l.user_message.slice(0, 500)}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold mb-1">Respuesta de Alan:</p>
+                                <p className="whitespace-pre-wrap bg-card rounded p-2 border border-border max-h-40 overflow-y-auto">{l.alan_response.slice(0, 1000)}</p>
+                              </div>
+                              {l.rejection_reason && (
+                                <div>
+                                  <p className="font-semibold mb-1 text-rose-600">Motivo de rechazo:</p>
+                                  <p className="bg-rose-500/10 rounded p-2 border border-rose-500/20">{l.rejection_reason}</p>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ==================== SHARED ==================== */
 function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
