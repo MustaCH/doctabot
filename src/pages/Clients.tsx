@@ -85,6 +85,11 @@ const Clients = () => {
   const [deleteClient, setDeleteClient] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Create state
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+  const [creating, setCreating] = useState(false);
+
   const loadClients = useCallback(async () => {
     if (!user) return;
     setLoading(true);
