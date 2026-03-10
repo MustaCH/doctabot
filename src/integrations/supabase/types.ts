@@ -362,6 +362,48 @@ export type Database = {
         }
         Relationships: []
       }
+      supervisor_logs: {
+        Row: {
+          alan_response: string
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          latency_ms: number | null
+          rejection_reason: string | null
+          retry_count: number | null
+          score: number | null
+          user_id: string | null
+          user_message: string
+          verdict: string
+        }
+        Insert: {
+          alan_response: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          rejection_reason?: string | null
+          retry_count?: number | null
+          score?: number | null
+          user_id?: string | null
+          user_message: string
+          verdict: string
+        }
+        Update: {
+          alan_response?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          rejection_reason?: string | null
+          retry_count?: number | null
+          score?: number | null
+          user_id?: string | null
+          user_message?: string
+          verdict?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
