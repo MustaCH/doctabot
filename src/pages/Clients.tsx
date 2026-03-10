@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 interface ClientProperty {
@@ -84,6 +84,11 @@ const Clients = () => {
   // Delete state
   const [deleteClient, setDeleteClient] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Create state
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+  const [creating, setCreating] = useState(false);
 
   const loadClients = useCallback(async () => {
     if (!user) return;
@@ -191,6 +196,35 @@ const Clients = () => {
     }
   };
 
+  const handleCreate = async () => {
+    if (!user) return;
+    const name = createForm.full_name.trim();
+    if (!name) {
+      toast.error("El nombre no puede estar vacío");
+      return;
+    }
+    setCreating(true);
+    try {
+      const { error } = await supabase.from("clients").insert({
+        full_name: name,
+        phone: createForm.phone.trim() || null,
+        email: createForm.email.trim() || null,
+        notes: createForm.notes.trim() || null,
+        status: createForm.status,
+        user_id: user.id,
+      });
+      if (error) throw error;
+      toast.success("Cliente creado");
+      setShowCreate(false);
+      setCreateForm({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+      loadClients();
+    } catch {
+      toast.error("Error al crear el cliente");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
     const formatted = price.toLocaleString("es-AR");
@@ -211,6 +245,9 @@ const Clients = () => {
             {loading ? "Cargando..." : `${clients.length} cliente${clients.length !== 1 ? "s" : ""}`}
           </p>
         </div>
+        <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Content */}
@@ -423,6 +460,77 @@ const Clients = () => {
             </Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
               {saving ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Dialog */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
+              <Input
+                value={createForm.full_name}
+                onChange={(e) => setCreateForm((f) => ({ ...f, full_name: e.target.value }))}
+                placeholder="Nombre completo"
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+              <Input
+                value={createForm.phone}
+                onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+54 351 ..."
+                maxLength={30}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+              <Input
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="cliente@email.com"
+                maxLength={255}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Estado</label>
+              <Select value={createForm.status} onValueChange={(v) => setCreateForm((f) => ({ ...f, status: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="prospect">Prospecto</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="inactive">Inactivo</SelectItem>
+                  <SelectItem value="closed">Cerrado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas</label>
+              <Textarea
+                value={createForm.notes}
+                onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Observaciones sobre el cliente..."
+                rows={3}
+                maxLength={1000}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)} disabled={creating}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreate} disabled={creating}>
+              {creating ? "Creando..." : "Crear cliente"}
             </Button>
           </DialogFooter>
         </DialogContent>
