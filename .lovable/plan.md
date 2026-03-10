@@ -1,72 +1,72 @@
 
 
-# Mensajes de Audio estilo WhatsApp
+## Plan: Sistema de Supervisión de Respuestas de Alan
 
-## Resumen
+### Concepto
 
-Agregar grabacion de audio al chat con reproductor inline en las burbujas de mensaje (como WhatsApp). El usuario graba, el audio queda visible y reproducible en el chat, y Alan recibe la transcripcion para responder.
+Agregar una capa de validación invisible entre la respuesta final de Alan y su envío al usuario. Un segundo modelo (más rápido/barato, `gemini-2.5-flash-lite`) evalúa la respuesta contra la solicitud del usuario y decide si aprobarla o rechazarla. Si rechaza, Alan regenera la respuesta (máximo 2 reintentos). Todos los resultados de supervisión se registran en una tabla para análisis desde el Super Admin Panel.
 
-## Flujo del usuario
+### Cambios
 
-1. El usuario mantiene presionado (o toca) el boton de microfono que reemplaza al boton de enviar cuando no hay texto
-2. Se graba audio usando MediaRecorder API del navegador
-3. Al soltar/detener, el audio se muestra como burbuja de mensaje con reproductor inline
-4. En paralelo, se envia el audio a la edge function `transcribe` existente
-5. El texto transcripto se envia a Alan como mensaje (invisible para el usuario, que ve solo su burbuja de audio)
-6. Alan responde normalmente
+#### 1. Nueva tabla `supervisor_logs`
 
-## Cambios planificados
+```sql
+CREATE TABLE public.supervisor_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id uuid,
+  user_id uuid,
+  user_message text NOT NULL,
+  alan_response text NOT NULL,
+  verdict text NOT NULL,          -- 'approved', 'rejected', 'error'
+  rejection_reason text,          -- motivo si fue rechazada
+  score integer,                  -- 1-10 calidad estimada
+  retry_count integer DEFAULT 0,  -- cuántas veces se reintentó
+  latency_ms integer,             -- tiempo que tomó la supervisión
+  created_at timestamptz DEFAULT now()
+);
+```
 
-### 1. Ampliar tipos de mensaje (`src/lib/stream-chat.ts`)
+RLS: solo lectura vía service role (admin-stats). Sin acceso público directo.
 
-- Agregar campo opcional `audioUrl?: string` al tipo `Msg` para almacenar la URL del blob de audio en mensajes del usuario
+#### 2. Modificar Edge Function `chat/index.ts`
 
-### 2. Hook de grabacion de audio (`src/hooks/use-audio-recorder.ts`) - NUEVO
+Después de obtener la respuesta final de Alan (línea ~1700) y antes de retornar el SSE:
 
-- Usa `navigator.mediaDevices.getUserMedia` para acceder al microfono
-- `MediaRecorder` para grabar en formato `audio/webm` (compatible con navegadores)
-- Estados: `idle`, `recording`, `processing`
-- Expone: `startRecording()`, `stopRecording()`, `isRecording`, `isTranscribing`
-- Al detener, devuelve `{ audioBlob, audioUrl }` via callback
-- Funcion `transcribeAudio(blob)` que envia al edge function `/functions/v1/transcribe` y retorna el texto
+- Llamar a `gemini-2.5-flash-lite` con un prompt de supervisor que recibe: mensaje del usuario + respuesta de Alan.
+- El supervisor usa **tool calling** para retornar un JSON estructurado: `{ verdict: "approved"|"rejected", score: 1-10, reason: string }`.
+- Si `verdict === "rejected"` y `retry_count < 2`: regenerar respuesta de Alan con feedback del supervisor.
+- Registrar el log en `supervisor_logs`.
+- Si el supervisor falla (error de red, timeout), aprobar por defecto y loguear como `verdict: "error"`.
 
-### 3. Modificar ChatInput (`src/components/ChatInput.tsx`)
+```text
+Usuario envía mensaje
+        ↓
+  Alan genera respuesta (existente)
+        ↓
+  Supervisor evalúa (gemini-2.5-flash-lite)
+        ↓
+  ¿Aprobada? → Sí → Devolver respuesta + log
+             → No → Regenerar con feedback (max 2 reintentos) → log
+```
 
-- Importar el hook `useAudioRecorder`
-- Cuando no hay texto ni adjuntos, mostrar boton de **microfono** en lugar del boton de enviar
-- Al presionar el microfono: iniciar grabacion, cambiar UI a estado "grabando" (indicador rojo pulsante + duracion + boton cancelar/enviar)
-- Al soltar/confirmar: detener grabacion y llamar `onSendAudio(audioBlob, audioUrl)`
-- Nueva prop `onSendAudio` en la interfaz
+#### 3. Modificar Edge Function `admin-stats/index.ts`
 
-### 4. Modificar use-chat-messages (`src/hooks/use-chat-messages.ts`)
+Agregar acciones:
+- `"supervisor-stats"`: totales de approved/rejected/error, tasa de aprobación, score promedio, últimos 30 días agrupados por día.
+- `"supervisor-logs"`: listado paginado con búsqueda, incluyendo nombre del usuario.
 
-- Agregar funcion `handleSendAudio(blob: Blob, localUrl: string)`
-- Agrega inmediatamente un mensaje de usuario con `audioUrl` y content placeholder `"(mensaje de voz)"`
-- Llama a la edge function `transcribe` para obtener el texto
-- Actualiza el contenido del mensaje del usuario con el texto transcripto (prefijado con icono de microfono)
-- Envia el texto transcripto a `streamChat` para que Alan responda
-- Guarda en la DB el texto transcripto (no el audio)
+#### 4. Modificar `SuperAdmin.tsx`
 
-### 5. Componente de reproductor de audio en ChatMessage (`src/components/ChatMessage.tsx`)
+Agregar nueva pestaña **"Supervisor"** con:
+- **Cards resumen**: total evaluaciones, tasa de aprobación (%), score promedio, errores críticos.
+- **Gráfico de línea**: aprobaciones vs rechazos por día (últimos 30 días).
+- **Tabla de logs**: fecha, usuario, extracto del mensaje, extracto de respuesta, veredicto (badge color), score, motivo de rechazo, reintentos. Con paginación, búsqueda y exportación CSV.
+- **Filtros**: por veredicto (approved/rejected/error) y por rango de score.
 
-- Nuevo sub-componente `AudioBubble` que renderiza:
-  - Boton play/pause
-  - Barra de progreso animada (estilo WhatsApp)
-  - Duracion del audio
-  - Indicador de "transcribiendo..." mientras se procesa
-- Se muestra cuando `msg.audioUrl` existe
-- Usa `HTMLAudioElement` para reproduccion
+### Consideraciones técnicas
 
-### 6. Pasar datos de audio por Chat.tsx
-
-- Conectar `onSendAudio` del ChatInput con `handleSendAudio` del hook
-- Agregar estado `isTranscribing` al indicador de procesamiento
-
-## Detalles tecnicos
-
-- **Formato de audio**: `audio/webm;codecs=opus` (nativo del navegador), se convierte a WAV antes de enviar al transcribe function si es necesario, o se envia como webm ya que Gemini lo soporta
-- **Almacenamiento**: El audio NO se persiste en la DB/storage; solo se mantiene como blob URL en la sesion actual. Al recargar, se ve el texto transcripto
-- **Permisos**: Se solicita permiso de microfono al primer uso; si se deniega se muestra toast de error
-- **Limite**: Maximo 2 minutos de grabacion (auto-stop)
-- **Edge function transcribe**: Ya existe y funciona con Gemini, solo hay que asegurarse de que acepte webm ademas de wav (el formato se pasa como parametro)
+- **Latencia**: el supervisor agrega ~1-2s por request (flash-lite es rápido). El usuario solo ve "Alan pensando" un poco más.
+- **Costo**: flash-lite es el modelo más barato disponible, ideal para evaluación rápida.
+- **Resiliencia**: si el supervisor falla, la respuesta pasa igual (fail-open) para no bloquear al usuario.
+- **Prompt del supervisor**: evaluará relevancia, precisión, formato correcto (tarjetas, borradores), y ausencia de alucinaciones.
 
