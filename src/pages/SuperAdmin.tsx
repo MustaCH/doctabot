@@ -199,6 +199,7 @@ function AdminDashboard({ pin }: { pin: string }) {
           <TabsContent value="conversations"><ConversationsTable pin={pin} initialUserId={prefilterUserId} /></TabsContent>
           <TabsContent value="favorites"><FavoritesTable pin={pin} /></TabsContent>
           <TabsContent value="clients"><ClientsTable pin={pin} /></TabsContent>
+          <TabsContent value="supervisor"><SupervisorPanel pin={pin} /></TabsContent>
         </Tabs>
       </div>
     </div>
