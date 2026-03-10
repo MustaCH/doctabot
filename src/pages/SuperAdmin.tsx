@@ -8,7 +8,7 @@ import {
 import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
-  Download, UserCheck, TrendingUp,
+  Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
