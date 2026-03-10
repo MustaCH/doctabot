@@ -1,5 +1,3 @@
-
-
 # Mensajes de Audio estilo WhatsApp
 
 ## Resumen
@@ -70,3 +68,11 @@ Agregar grabacion de audio al chat con reproductor inline en las burbujas de men
 - **Limite**: Maximo 2 minutos de grabacion (auto-stop)
 - **Edge function transcribe**: Ya existe y funciona con Gemini, solo hay que asegurarse de que acepte webm ademas de wav (el formato se pasa como parametro)
 
+# Sistema de Supervisión de Respuestas de Alan ✅
+
+## Implementado
+
+- **Tabla `supervisor_logs`**: Almacena cada evaluación (veredicto, score, motivo, reintentos, latencia)
+- **Capa de supervisión en `chat/index.ts`**: Usa `gemini-2.5-flash-lite` para evaluar respuestas antes de enviarlas. Máx 2 reintentos si rechazada. Fail-open si el supervisor falla.
+- **Acciones en `admin-stats`**: `supervisor-stats` y `supervisor-logs` para consultar datos
+- **Pestaña "Supervisor" en Super Admin**: KPIs, gráfico de 30 días, tabla de logs con detalle expandible, filtros y exportación CSV
