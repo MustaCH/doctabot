@@ -262,6 +262,75 @@ Deno.serve(async (req) => {
       return json(scrapeData, scrapeRes.status);
     }
 
+    // ---------- SUPERVISOR STATS ----------
+    if (action === "supervisor-stats") {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const sinceISO = since.toISOString();
+
+      const [allRes, approvedRes, rejectedRes, errorRes] = await Promise.all([
+        supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }),
+        supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "approved"),
+        supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "rejected"),
+        supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "error"),
+      ]);
+
+      const { data: scoreData } = await supabaseAdmin.from("supervisor_logs").select("score").not("score", "is", null);
+      const scores = (scoreData ?? []).map((r: any) => r.score).filter((s: number) => s > 0);
+      const avgScore = scores.length > 0 ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
+
+      const { data: timeData } = await supabaseAdmin
+        .from("supervisor_logs")
+        .select("verdict, created_at")
+        .gte("created_at", sinceISO);
+
+      const dailyMap: Record<string, { approved: number; rejected: number; error: number }> = {};
+      (timeData ?? []).forEach((r: any) => {
+        const d = r.created_at.slice(0, 10);
+        if (!dailyMap[d]) dailyMap[d] = { approved: 0, rejected: 0, error: 0 };
+        const v = r.verdict as "approved" | "rejected" | "error";
+        if (dailyMap[d][v] !== undefined) dailyMap[d][v]++;
+      });
+
+      return json({
+        total: allRes.count ?? 0,
+        approved: approvedRes.count ?? 0,
+        rejected: rejectedRes.count ?? 0,
+        errors: errorRes.count ?? 0,
+        avgScore: Math.round(avgScore * 10) / 10,
+        daily: dailyMap,
+      });
+    }
+
+    // ---------- SUPERVISOR LOGS ----------
+    if (action === "supervisor-logs") {
+      let query = supabaseAdmin
+        .from("supervisor_logs")
+        .select("id, conversation_id, user_id, user_message, alan_response, verdict, rejection_reason, score, retry_count, latency_ms, created_at", { count: "exact" })
+        .order("created_at", { ascending: false });
+
+      if (body.verdict) query = query.eq("verdict", body.verdict);
+      if (body.minScore) query = query.gte("score", body.minScore);
+      if (body.maxScore) query = query.lte("score", body.maxScore);
+
+      query = query.range(pg * ps, (pg + 1) * ps - 1);
+      const { data, count } = await query;
+
+      const userIds = [...new Set((data ?? []).map((l: any) => l.user_id).filter(Boolean))];
+      const { data: profiles } = userIds.length > 0
+        ? await supabaseAdmin.from("profiles").select("user_id, full_name").in("user_id", userIds)
+        : { data: [] };
+      const nameMap: Record<string, string> = {};
+      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+
+      const enriched = (data ?? []).map((l: any) => ({
+        ...l,
+        user_name: nameMap[l.user_id] ?? "Desconocido",
+      }));
+
+      return json({ data: enriched, total: count ?? 0 });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (err) {
     return new Response(JSON.stringify({ error: "Internal error" }), {
