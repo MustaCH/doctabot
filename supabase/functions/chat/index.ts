@@ -1832,6 +1832,30 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
         retry_count: supervisorRetryCount,
         latency_ms: supervisorLatency,
       }).then(() => {}).catch((err: unknown) => console.error("Supervisor log error:", err));
+
+      // Notify n8n webhook on errors or empty responses (fire-and-forget)
+      const shouldNotify = supervisorVerdict === "error" || !finalContent.trim() || (supervisorVerdict === "rejected" && supervisorRetryCount >= maxRetries);
+      if (shouldNotify) {
+        const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
+        if (N8N_WEBHOOK_URL) {
+          fetch(N8N_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: !finalContent.trim() ? "empty_response" : supervisorVerdict === "error" ? "supervisor_error" : "persistent_rejection",
+              conversation_id: conversationId || null,
+              user_id: userId,
+              user_message: userMessage.slice(0, 500),
+              alan_response: finalContent.slice(0, 500),
+              verdict: supervisorVerdict,
+              reason: supervisorReason,
+              score: supervisorScore,
+              retry_count: supervisorRetryCount,
+              timestamp: new Date().toISOString(),
+            }),
+          }).catch((err: unknown) => console.error("n8n webhook error:", err));
+        }
+      }
     }
 
     // Return SSE response
