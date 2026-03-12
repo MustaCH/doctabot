@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
+import ImportClientsDialog from "@/components/ImportClientsDialog";
 
 interface ClientProperty {
   id: string;
@@ -89,6 +90,9 @@ const Clients = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
   const [creating, setCreating] = useState(false);
+
+  // Import state
+  const [showImport, setShowImport] = useState(false);
 
   const loadClients = useCallback(async () => {
     if (!user) return;
@@ -245,9 +249,14 @@ const Clients = () => {
             {loading ? "Cargando..." : `${clients.length} cliente${clients.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowImport(true)} title="Importar desde Excel/CSV">
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -553,6 +562,16 @@ const Clients = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Dialog */}
+      {user && (
+        <ImportClientsDialog
+          open={showImport}
+          onOpenChange={setShowImport}
+          userId={user.id}
+          onImported={loadClients}
+        />
+      )}
     </div>
   );
 };
