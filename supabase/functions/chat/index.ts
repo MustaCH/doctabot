@@ -1133,7 +1133,7 @@ async function executeTool(
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
       let query = supabase
         .from("clients")
-        .select("id, full_name, phone, email, status, notes, created_at, updated_at")
+        .select("id, full_name, phone, email, status, client_type, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
         .limit(limit);
