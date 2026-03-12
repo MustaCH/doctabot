@@ -740,7 +740,9 @@ const toolDefinitions = [
 // ============================================================================
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VALID_CLIENT_STATUSES = ["prospect", "active", "closed"];
+const VALID_CLIENT_STATUSES = ["prospect", "active", "inactive", "closed"];
+const VALID_CLIENT_TYPES = ["buyer", "seller", "both"];
+const VALID_BUDGET_CURRENCIES = ["USD", "ARS"];
 const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
 
 /** Sanitize ILIKE patterns – escape wildcards and limit length */
