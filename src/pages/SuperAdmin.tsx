@@ -264,12 +264,17 @@ function ActivityCharts({ pin }: { pin: string }) {
 function ScrapingStatus({ pin }: { pin: string }) {
   const [lastProperty, setLastProperty] = useState<{ created_at: string; updated_at: string } | null>(null);
   const [totalToday, setTotalToday] = useState(0);
+  const [totalProperties, setTotalProperties] = useState(0);
+  const [lastBatchTimestamp, setLastBatchTimestamp] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
   const loadStatus = useCallback(() => {
     adminFetch(pin, "scraping-status").then((data) => {
-      setLastProperty(data.lastProperty); setTotalToday(data.totalToday);
+      setLastProperty(data.lastProperty);
+      setTotalToday(data.totalToday);
+      setTotalProperties(data.totalProperties ?? 0);
+      setLastBatchTimestamp(data.lastBatchTimestamp ?? null);
     }).catch(() => {});
   }, [pin]);
 
@@ -279,7 +284,11 @@ function ScrapingStatus({ pin }: { pin: string }) {
     setScraping(true); setScrapeResult(null);
     try {
       const res = await adminFetch(pin, "trigger-scraping");
-      setScrapeResult(`✅ Scraping completado: ${res.upserted ?? 0} propiedades actualizadas, ${res.errors ?? 0} errores`);
+      const parts = [`✅ ${res.upserted ?? 0} actualizadas`];
+      if (res.deleted > 0) parts.push(`🗑️ ${res.deleted} obsoletas eliminadas`);
+      if (res.errors > 0) parts.push(`⚠️ ${res.errors} errores`);
+      if (!res.is_last_batch) parts.push(`⏭️ Lote parcial (siguiente en proceso)`);
+      setScrapeResult(parts.join(" · "));
       loadStatus();
     } catch { setScrapeResult("❌ Error al ejecutar el scraping"); }
     setScraping(false);
@@ -300,18 +309,26 @@ function ScrapingStatus({ pin }: { pin: string }) {
           {scraping ? "Ejecutando..." : "Ejecutar ahora"}
         </Button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         <div>
           <span className="text-muted-foreground">Última actualización:</span>{" "}
           <span className="font-medium">{lastProperty ? fmt(lastProperty.updated_at) : "—"}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">Propiedades actualizadas hoy:</span>{" "}
+          <span className="text-muted-foreground">Actualizadas hoy:</span>{" "}
           <span className="font-medium">{totalToday.toLocaleString("es-AR")}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Total activas:</span>{" "}
+          <span className="font-medium">{totalProperties.toLocaleString("es-AR")}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Último lote:</span>{" "}
+          <span className="font-medium">{lastBatchTimestamp ? fmt(lastBatchTimestamp) : "—"}</span>
         </div>
       </div>
       {scrapeResult && <p className="text-xs font-medium">{scrapeResult}</p>}
-      <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente a las 00:30hs de forma automática.</p>
+      <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente. Las propiedades no vistas en el último lote se eliminan automáticamente.</p>
     </div>
   );
 }
