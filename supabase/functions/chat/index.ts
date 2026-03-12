@@ -130,7 +130,27 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 **ESTADOS DE CLIENTES:**
 - prospect: Cliente potencial (default)
 - active: Cliente activo en proceso
+- inactive: Cliente inactivo
 - closed: Operación cerrada
+
+**TIPOS DE CLIENTES (client_type):**
+- buyer: Busca comprar o alquilar una propiedad (default)
+- seller: Quiere vender o poner en alquiler su propiedad
+- both: Ambos (ej: vende una propiedad y compra otra)
+
+**CAMPOS CRM ENRIQUECIDOS:**
+Al crear o actualizar clientes, tratá de capturar la mayor cantidad de datos posibles:
+- client_type: Tipo de cliente (buyer/seller/both)
+- birthday: Fecha de cumpleaños (formato YYYY-MM-DD)
+- company: Empresa u ocupación del cliente
+- address: Dirección actual del cliente
+- preferred_zones: Zonas de interés para compradores
+- budget_min / budget_max: Rango de presupuesto
+- budget_currency: Moneda del presupuesto (USD o ARS, default USD)
+- property_type_interest: Tipo de propiedad buscada
+- source: Cómo llegó el cliente (referido, portal, redes, cartel, otro)
+
+**DETECCIÓN AUTOMÁTICA DE DATOS CRM:** Si durante la conversación el agente menciona datos del cliente como cumpleaños, presupuesto, zona de interés, empresa, tipo de propiedad, etc., sugerí guardarlos: "📋 Detecté que [nombre] busca un departamento de 2 ambientes en Nueva Córdoba con presupuesto de USD 80.000-120.000. ¿Querés que actualice su perfil?" Solo si confirma, ejecutá update_client.
 
 ## GESTIÓN DE GOOGLE CALENDAR
 
@@ -389,7 +409,7 @@ const toolDefinitions = [
     type: "function",
     function: {
       name: "create_client",
-      description: "Crear un nuevo perfil de cliente para el agente. Usar cuando el agente quiera guardar datos de un cliente potencial o activo.",
+      description: "Crear un nuevo perfil de cliente para el agente. Capturá la mayor cantidad de datos posibles: tipo de cliente, cumpleaños, empresa, zonas de interés, presupuesto, etc.",
       parameters: {
         type: "object",
         properties: {
@@ -397,7 +417,17 @@ const toolDefinitions = [
           phone: { type: "string", description: "Teléfono del cliente" },
           email: { type: "string", description: "Email del cliente" },
           notes: { type: "string", description: "Notas libres sobre el cliente" },
-          status: { type: "string", description: "Estado: prospect (default), active, closed" },
+          status: { type: "string", description: "Estado: prospect (default), active, inactive, closed" },
+          client_type: { type: "string", description: "Tipo: buyer (compra/alquila, default), seller (vende/alquila su propiedad), both" },
+          birthday: { type: "string", description: "Fecha de cumpleaños formato YYYY-MM-DD" },
+          company: { type: "string", description: "Empresa u ocupación" },
+          address: { type: "string", description: "Dirección actual del cliente" },
+          preferred_zones: { type: "string", description: "Zonas de interés (ej: 'Nueva Córdoba, Centro')" },
+          budget_min: { type: "number", description: "Presupuesto mínimo" },
+          budget_max: { type: "number", description: "Presupuesto máximo" },
+          budget_currency: { type: "string", description: "Moneda del presupuesto: USD (default) o ARS" },
+          property_type_interest: { type: "string", description: "Tipo de propiedad buscada (ej: 'Departamento 2 amb')" },
+          source: { type: "string", description: "Fuente: referido, portal, redes, cartel, otro" },
         },
         required: ["full_name"],
         additionalProperties: false,
@@ -408,7 +438,7 @@ const toolDefinitions = [
     type: "function",
     function: {
       name: "update_client",
-      description: "Actualizar datos de un cliente existente. Usar cuando el agente quiera modificar información de un cliente.",
+      description: "Actualizar datos de un cliente existente. Podés actualizar cualquier campo del perfil CRM.",
       parameters: {
         type: "object",
         properties: {
@@ -417,7 +447,17 @@ const toolDefinitions = [
           phone: { type: "string", description: "Nuevo teléfono" },
           email: { type: "string", description: "Nuevo email" },
           notes: { type: "string", description: "Nuevas notas" },
-          status: { type: "string", description: "Nuevo estado: prospect, active, closed" },
+          status: { type: "string", description: "Nuevo estado: prospect, active, inactive, closed" },
+          client_type: { type: "string", description: "Tipo: buyer, seller, both" },
+          birthday: { type: "string", description: "Cumpleaños formato YYYY-MM-DD" },
+          company: { type: "string", description: "Empresa u ocupación" },
+          address: { type: "string", description: "Dirección actual" },
+          preferred_zones: { type: "string", description: "Zonas de interés" },
+          budget_min: { type: "number", description: "Presupuesto mínimo" },
+          budget_max: { type: "number", description: "Presupuesto máximo" },
+          budget_currency: { type: "string", description: "Moneda: USD o ARS" },
+          property_type_interest: { type: "string", description: "Tipo de propiedad buscada" },
+          source: { type: "string", description: "Fuente del cliente" },
         },
         required: ["client_id"],
         additionalProperties: false,
@@ -700,7 +740,9 @@ const toolDefinitions = [
 // ============================================================================
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VALID_CLIENT_STATUSES = ["prospect", "active", "closed"];
+const VALID_CLIENT_STATUSES = ["prospect", "active", "inactive", "closed"];
+const VALID_CLIENT_TYPES = ["buyer", "seller", "both"];
+const VALID_BUDGET_CURRENCIES = ["USD", "ARS"];
 const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
 
 /** Sanitize ILIKE patterns – escape wildcards and limit length */
@@ -1036,10 +1078,20 @@ async function executeTool(
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "prospect";
+      const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
+      const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
+      const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
+      const address = typeof args.address === "string" ? args.address.trim().slice(0, 200) : null;
+      const preferred_zones = typeof args.preferred_zones === "string" ? args.preferred_zones.trim().slice(0, 300) : null;
+      const budget_min = safePositiveNumber(args.budget_min);
+      const budget_max = safePositiveNumber(args.budget_max);
+      const budget_currency = VALID_BUDGET_CURRENCIES.includes(args.budget_currency) ? args.budget_currency : "USD";
+      const property_type_interest = typeof args.property_type_interest === "string" ? args.property_type_interest.trim().slice(0, 200) : null;
+      const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
       const { data, error } = await supabase
         .from("clients")
-        .insert({ user_id: userId, full_name, phone, email, notes, status })
-        .select("id, full_name, status")
+        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source })
+        .select("id, full_name, status, client_type")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
@@ -1053,13 +1105,23 @@ async function executeTool(
       if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
       if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
       if (VALID_CLIENT_STATUSES.includes(args.status)) updates.status = args.status;
+      if (VALID_CLIENT_TYPES.includes(args.client_type)) updates.client_type = args.client_type;
+      if (typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday)) updates.birthday = args.birthday;
+      if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
+      if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
+      if (typeof args.preferred_zones === "string") updates.preferred_zones = args.preferred_zones.trim().slice(0, 300);
+      if (typeof args.budget_min === "number" && isFinite(args.budget_min) && args.budget_min >= 0) updates.budget_min = args.budget_min;
+      if (typeof args.budget_max === "number" && isFinite(args.budget_max) && args.budget_max >= 0) updates.budget_max = args.budget_max;
+      if (VALID_BUDGET_CURRENCIES.includes(args.budget_currency)) updates.budget_currency = args.budget_currency;
+      if (typeof args.property_type_interest === "string") updates.property_type_interest = args.property_type_interest.trim().slice(0, 200);
+      if (typeof args.source === "string") updates.source = args.source.trim().slice(0, 100);
       if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
       const { data, error } = await supabase
         .from("clients")
         .update(updates)
         .eq("id", args.client_id)
         .eq("user_id", userId)
-        .select("id, full_name, status")
+        .select("id, full_name, status, client_type")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
@@ -1071,7 +1133,7 @@ async function executeTool(
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
       let query = supabase
         .from("clients")
-        .select("id, full_name, phone, email, status, notes, created_at, updated_at")
+        .select("id, full_name, phone, email, status, client_type, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
         .limit(limit);
