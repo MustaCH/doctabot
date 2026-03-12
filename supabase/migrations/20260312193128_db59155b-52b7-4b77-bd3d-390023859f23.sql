@@ -1,0 +1,1 @@
+ALTER TABLE public.clients ADD COLUMN budget_currency text DEFAULT 'USD';

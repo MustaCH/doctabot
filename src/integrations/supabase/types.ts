@@ -66,6 +66,7 @@ export type Database = {
         Row: {
           address: string | null
           birthday: string | null
+          budget_currency: string | null
           budget_max: number | null
           budget_min: number | null
           client_type: string
@@ -87,6 +88,7 @@ export type Database = {
         Insert: {
           address?: string | null
           birthday?: string | null
+          budget_currency?: string | null
           budget_max?: number | null
           budget_min?: number | null
           client_type?: string
@@ -108,6 +110,7 @@ export type Database = {
         Update: {
           address?: string | null
           birthday?: string | null
+          budget_currency?: string | null
           budget_max?: number | null
           budget_min?: number | null
           client_type?: string
