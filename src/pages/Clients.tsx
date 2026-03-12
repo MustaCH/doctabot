@@ -1,19 +1,17 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
+import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 
 interface ClientProperty {
   id: string;
@@ -39,6 +37,16 @@ interface Client {
   notes: string | null;
   status: string;
   created_at: string;
+  client_type: string;
+  birthday: string | null;
+  company: string | null;
+  address: string | null;
+  preferred_zones: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  property_type_interest: string | null;
+  source: string | null;
+  last_contact_at: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -55,6 +63,18 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
   closed: "destructive",
 };
 
+const clientTypeLabel: Record<string, string> = {
+  buyer: "🔍 Comprador",
+  seller: "🏠 Vendedor",
+  both: "↔️ Ambos",
+};
+
+const clientTypeVariant: Record<string, "default" | "secondary" | "outline"> = {
+  buyer: "default",
+  seller: "outline",
+  both: "secondary",
+};
+
 const propStatusLabel: Record<string, string> = {
   sugerida: "Sugerida",
   enviada: "Enviada",
@@ -69,6 +89,42 @@ const propStatusVariant: Record<string, "default" | "secondary" | "outline" | "d
   descartada: "destructive",
 };
 
+type TypeFilter = "all" | "buyer" | "seller" | "both";
+
+const clientToForm = (c: Client): ClientFormData => ({
+  full_name: c.full_name,
+  phone: c.phone ?? "",
+  email: c.email ?? "",
+  notes: c.notes ?? "",
+  status: c.status,
+  client_type: c.client_type ?? "buyer",
+  birthday: c.birthday ?? "",
+  company: c.company ?? "",
+  address: c.address ?? "",
+  preferred_zones: c.preferred_zones ?? "",
+  budget_min: c.budget_min != null ? String(c.budget_min) : "",
+  budget_max: c.budget_max != null ? String(c.budget_max) : "",
+  property_type_interest: c.property_type_interest ?? "",
+  source: c.source ?? "",
+});
+
+const formToDb = (form: ClientFormData) => ({
+  full_name: form.full_name.trim(),
+  phone: form.phone.trim() || null,
+  email: form.email.trim() || null,
+  notes: form.notes.trim() || null,
+  status: form.status,
+  client_type: form.client_type,
+  birthday: form.birthday || null,
+  company: form.company.trim() || null,
+  address: form.address.trim() || null,
+  preferred_zones: form.preferred_zones.trim() || null,
+  budget_min: form.budget_min ? Number(form.budget_min) : null,
+  budget_max: form.budget_max ? Number(form.budget_max) : null,
+  property_type_interest: form.property_type_interest.trim() || null,
+  source: form.source || null,
+});
+
 const Clients = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -76,10 +132,11 @@ const Clients = () => {
   const [loading, setLoading] = useState(true);
   const [clientProperties, setClientProperties] = useState<Record<string, ClientProperty[]>>({});
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   // Edit state
   const [editClient, setEditClient] = useState<Client | null>(null);
-  const [editForm, setEditForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+  const [editForm, setEditForm] = useState<ClientFormData>(emptyClientForm);
   const [saving, setSaving] = useState(false);
 
   // Delete state
@@ -88,7 +145,7 @@ const Clients = () => {
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+  const [createForm, setCreateForm] = useState<ClientFormData>(emptyClientForm);
   const [creating, setCreating] = useState(false);
 
   // Import state
@@ -100,12 +157,12 @@ const Clients = () => {
     try {
       const { data, error } = await supabase
         .from("clients")
-        .select("id, full_name, phone, email, notes, status, created_at")
+        .select("id, full_name, phone, email, notes, status, created_at, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, property_type_interest, source, last_contact_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setClients(data ?? []);
+      setClients((data as Client[]) ?? []);
     } catch {
       toast.error("Error al cargar los clientes");
     } finally {
@@ -143,21 +200,19 @@ const Clients = () => {
     loadClients();
   }, [loadClients]);
 
+  const filteredClients = useMemo(() => {
+    if (typeFilter === "all") return clients;
+    return clients.filter(c => c.client_type === typeFilter || c.client_type === "both");
+  }, [clients, typeFilter]);
+
   const openEdit = (client: Client) => {
     setEditClient(client);
-    setEditForm({
-      full_name: client.full_name,
-      phone: client.phone ?? "",
-      email: client.email ?? "",
-      notes: client.notes ?? "",
-      status: client.status,
-    });
+    setEditForm(clientToForm(client));
   };
 
   const handleSaveEdit = async () => {
     if (!editClient) return;
-    const name = editForm.full_name.trim();
-    if (!name) {
+    if (!editForm.full_name.trim()) {
       toast.error("El nombre no puede estar vacío");
       return;
     }
@@ -165,13 +220,7 @@ const Clients = () => {
     try {
       const { error } = await supabase
         .from("clients")
-        .update({
-          full_name: name,
-          phone: editForm.phone.trim() || null,
-          email: editForm.email.trim() || null,
-          notes: editForm.notes.trim() || null,
-          status: editForm.status,
-        })
+        .update(formToDb(editForm))
         .eq("id", editClient.id);
       if (error) throw error;
       toast.success("Cliente actualizado");
@@ -202,25 +251,20 @@ const Clients = () => {
 
   const handleCreate = async () => {
     if (!user) return;
-    const name = createForm.full_name.trim();
-    if (!name) {
+    if (!createForm.full_name.trim()) {
       toast.error("El nombre no puede estar vacío");
       return;
     }
     setCreating(true);
     try {
       const { error } = await supabase.from("clients").insert({
-        full_name: name,
-        phone: createForm.phone.trim() || null,
-        email: createForm.email.trim() || null,
-        notes: createForm.notes.trim() || null,
-        status: createForm.status,
+        ...formToDb(createForm),
         user_id: user.id,
       });
       if (error) throw error;
       toast.success("Cliente creado");
       setShowCreate(false);
-      setCreateForm({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
+      setCreateForm(emptyClientForm);
       loadClients();
     } catch {
       toast.error("Error al crear el cliente");
@@ -231,9 +275,21 @@ const Clients = () => {
 
   const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
-    const formatted = price.toLocaleString("es-AR");
-    return `${currency ?? "USD"} ${formatted}`;
+    return `${currency ?? "USD"} ${price.toLocaleString("es-AR")}`;
   };
+
+  const formatBudget = (min: number | null, max: number | null) => {
+    if (!min && !max) return null;
+    if (min && max) return `USD ${min.toLocaleString("es-AR")} – ${max.toLocaleString("es-AR")}`;
+    if (min) return `Desde USD ${min.toLocaleString("es-AR")}`;
+    return `Hasta USD ${max!.toLocaleString("es-AR")}`;
+  };
+
+  const filterButtons: { key: TypeFilter; label: string }[] = [
+    { key: "all", label: "Todos" },
+    { key: "buyer", label: "🔍 Compradores" },
+    { key: "seller", label: "🏠 Vendedores" },
+  ];
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
@@ -246,7 +302,7 @@ const Clients = () => {
         <div className="flex-1">
           <p className="text-sm font-semibold">Mis Clientes</p>
           <p className="text-xs text-muted-foreground">
-            {loading ? "Cargando..." : `${clients.length} cliente${clients.length !== 1 ? "s" : ""}`}
+            {loading ? "Cargando..." : `${filteredClients.length} cliente${filteredClients.length !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -257,6 +313,21 @@ const Clients = () => {
             <Plus className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      {/* Type filter tabs */}
+      <div className="flex gap-1 px-4 py-2 border-b border-border bg-card/50 overflow-x-auto">
+        {filterButtons.map(fb => (
+          <Button
+            key={fb.key}
+            size="sm"
+            variant={typeFilter === fb.key ? "default" : "ghost"}
+            className="h-7 text-xs px-3 shrink-0"
+            onClick={() => setTypeFilter(fb.key)}
+          >
+            {fb.label}
+          </Button>
+        ))}
       </div>
 
       {/* Content */}
@@ -271,10 +342,12 @@ const Clients = () => {
               </div>
             ))}
           </div>
-        ) : clients.length === 0 ? (
+        ) : filteredClients.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
             <Users className="h-14 w-14 text-muted-foreground/30" />
-            <p className="text-base font-medium text-muted-foreground">No tenés clientes registrados</p>
+            <p className="text-base font-medium text-muted-foreground">
+              {typeFilter === "all" ? "No tenés clientes registrados" : "No hay clientes de este tipo"}
+            </p>
             <p className="text-sm text-muted-foreground/70 max-w-xs">
               Podés pedirle a Alan que registre un cliente desde el chat con lenguaje natural.
             </p>
@@ -284,19 +357,33 @@ const Clients = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {clients.map((client) => {
+            {filteredClients.map((client) => {
               const isExpanded = expandedClients.has(client.id);
               const props = clientProperties[client.id];
+              const budget = formatBudget(client.budget_min, client.budget_max);
 
               return (
                 <Collapsible key={client.id} open={isExpanded} onOpenChange={() => toggleExpand(client.id)}>
                   <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                    {/* Header row */}
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant={statusVariant[client.status] ?? "secondary"}>
-                          {statusLabel[client.status] ?? client.status}
-                        </Badge>
+                      <div className="space-y-1 min-w-0">
+                        <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
+                            {clientTypeLabel[client.client_type] ?? client.client_type}
+                          </Badge>
+                          <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+                            {statusLabel[client.status] ?? client.status}
+                          </Badge>
+                          {client.source && (
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {client.source}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -306,17 +393,55 @@ const Clients = () => {
                       </div>
                     </div>
 
-                    {client.phone && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Phone className="h-3 w-3 shrink-0" />
-                        <span>{client.phone}</span>
-                      </div>
-                    )}
+                    {/* Contact info */}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {client.phone && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <span>{client.phone}</span>
+                        </div>
+                      )}
+                      {client.email && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{client.email}</span>
+                        </div>
+                      )}
+                      {client.company && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          <span>{client.company}</span>
+                        </div>
+                      )}
+                      {client.birthday && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Cake className="h-3 w-3 shrink-0" />
+                          <span>{new Date(client.birthday + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                        </div>
+                      )}
+                    </div>
 
-                    {client.email && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Mail className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{client.email}</span>
+                    {/* Buyer preferences summary */}
+                    {(client.client_type === "buyer" || client.client_type === "both") && (client.preferred_zones || budget || client.property_type_interest) && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                        {client.preferred_zones && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate max-w-[200px]">{client.preferred_zones}</span>
+                          </div>
+                        )}
+                        {budget && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <DollarSign className="h-3 w-3 shrink-0" />
+                            <span>{budget}</span>
+                          </div>
+                        )}
+                        {client.property_type_interest && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Search className="h-3 w-3 shrink-0" />
+                            <span className="truncate max-w-[200px]">{client.property_type_interest}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -385,12 +510,7 @@ const Clients = () => {
                                 )}
                               </div>
                               {cp.properties?.url && (
-                                <a
-                                  href={cp.properties.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0 self-center text-muted-foreground hover:text-primary transition-colors"
-                                >
+                                <a href={cp.properties.url} target="_blank" rel="noopener noreferrer" className="shrink-0 self-center text-muted-foreground hover:text-primary transition-colors">
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </a>
                               )}
@@ -409,138 +529,32 @@ const Clients = () => {
 
       {/* Edit Dialog */}
       <Dialog open={!!editClient} onOpenChange={(open) => !open && setEditClient(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Editar cliente</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
-              <Input
-                value={editForm.full_name}
-                onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))}
-                maxLength={100}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
-              <Input
-                value={editForm.phone}
-                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
-                maxLength={30}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
-              <Input
-                type="email"
-                value={editForm.email}
-                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                maxLength={255}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Estado</label>
-              <Select value={editForm.status} onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="prospect">Prospecto</SelectItem>
-                  <SelectItem value="active">Activo</SelectItem>
-                  <SelectItem value="inactive">Inactivo</SelectItem>
-                  <SelectItem value="closed">Cerrado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas</label>
-              <Textarea
-                value={editForm.notes}
-                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                rows={3}
-                maxLength={1000}
-              />
-            </div>
+          <div className="flex-1 overflow-y-auto py-2 min-h-0">
+            <ClientFormFields form={editForm} onChange={setEditForm} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditClient(null)} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar"}
-            </Button>
+            <Button variant="outline" onClick={() => setEditClient(null)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Create Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Nuevo cliente</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre *</label>
-              <Input
-                value={createForm.full_name}
-                onChange={(e) => setCreateForm((f) => ({ ...f, full_name: e.target.value }))}
-                placeholder="Nombre completo"
-                maxLength={100}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
-              <Input
-                value={createForm.phone}
-                onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
-                placeholder="+54 351 ..."
-                maxLength={30}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
-              <Input
-                type="email"
-                value={createForm.email}
-                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="cliente@email.com"
-                maxLength={255}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Estado</label>
-              <Select value={createForm.status} onValueChange={(v) => setCreateForm((f) => ({ ...f, status: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="prospect">Prospecto</SelectItem>
-                  <SelectItem value="active">Activo</SelectItem>
-                  <SelectItem value="inactive">Inactivo</SelectItem>
-                  <SelectItem value="closed">Cerrado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Notas</label>
-              <Textarea
-                value={createForm.notes}
-                onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Observaciones sobre el cliente..."
-                rows={3}
-                maxLength={1000}
-              />
-            </div>
+          <div className="flex-1 overflow-y-auto py-2 min-h-0">
+            <ClientFormFields form={createForm} onChange={setCreateForm} showPlaceholders />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)} disabled={creating}>
-              Cancelar
-            </Button>
-            <Button onClick={handleCreate} disabled={creating}>
-              {creating ? "Creando..." : "Crear cliente"}
-            </Button>
+            <Button variant="outline" onClick={() => setShowCreate(false)} disabled={creating}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={creating}>{creating ? "Creando..." : "Crear cliente"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
