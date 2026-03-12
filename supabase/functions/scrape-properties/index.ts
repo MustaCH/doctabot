@@ -94,23 +94,33 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Accept optional startPage/endPage from body or query
+    // Accept optional startPage/endPage/batchTimestamp from body
     let startPage = 1;
     let endPage: number | null = null;
+    let batchTimestamp: string | null = null;
+    let isLastBatch = false;
 
     try {
       const body = await req.json();
       if (body.startPage) startPage = Number(body.startPage);
       if (body.endPage) endPage = Number(body.endPage);
+      if (body.batchTimestamp) batchTimestamp = body.batchTimestamp;
     } catch { /* no body, use defaults */ }
 
+    // Generate batch timestamp on first invocation
+    if (!batchTimestamp) {
+      batchTimestamp = new Date().toISOString();
+      console.log(`🆕 New scraping batch started: ${batchTimestamp}`);
+    }
+
     // If no endPage specified, check max pages but cap at 10 pages per invocation
+    let maxPages = 1;
     if (!endPage) {
       console.log("📄 Checking max pages...");
       const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages`);
       if (!maxPagesRes.ok) throw new Error(`checkMaxPages failed: ${maxPagesRes.status}`);
       const maxPagesData = await maxPagesRes.json();
-      const maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
+      maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
       console.log(`📄 Max pages: ${maxPages}`);
 
       // Cap at 10 pages per invocation to avoid timeout
@@ -121,16 +131,21 @@ serve(async (req) => {
         const nextStart = endPage + 1;
         const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
         console.log(`⏭️ Scheduling next batch: pages ${nextStart}-${Math.min(nextStart + 9, maxPages)}`);
-        // Fire and forget next batch
+        // Pass batchTimestamp to next invocation
         fetch(`${supabaseUrl}/functions/v1/scrape-properties`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${anonKey}`,
           },
-          body: JSON.stringify({ startPage: nextStart }),
+          body: JSON.stringify({ startPage: nextStart, batchTimestamp }),
         }).catch(e => console.error("Failed to schedule next batch:", e));
+      } else {
+        isLastBatch = true;
       }
+    } else {
+      // Manual endPage provided — check if this covers the last page
+      isLastBatch = true; // Conservative: clean up when endPage is explicit
     }
 
     console.log(`🏠 Scraping pages ${startPage}-${endPage}...`);
@@ -160,9 +175,9 @@ serve(async (req) => {
 
     console.log(`📦 Properties scraped: ${allProperties.length}`);
 
-    // Build records and batch upsert
+    // Build records with last_seen_at and batch upsert
     const records = allProperties
-      .map(buildRecord)
+      .map(prop => ({ ...buildRecord(prop), last_seen_at: batchTimestamp }))
       .filter(r => r.external_id);
 
     let upserted = 0;
@@ -183,12 +198,33 @@ serve(async (req) => {
       }
     }
 
+    // On last batch, clean up stale properties not seen in this scraping run
+    let deleted = 0;
+    if (isLastBatch && upserted > 0) {
+      console.log(`🧹 Cleaning up stale properties (not seen since ${batchTimestamp})...`);
+      const { data: staleData, error: deleteError } = await supabase
+        .from("properties")
+        .delete()
+        .lt("last_seen_at", batchTimestamp)
+        .select("id");
+
+      if (deleteError) {
+        console.error("❌ Cleanup error:", deleteError.message);
+      } else {
+        deleted = staleData?.length ?? 0;
+        console.log(`🗑️ Deleted ${deleted} stale properties`);
+      }
+    }
+
     const result = { 
       success: true,
       pages: `${startPage}-${endPage}`,
       total_scraped: allProperties.length, 
       upserted, 
       errors,
+      deleted,
+      is_last_batch: isLastBatch,
+      batch_timestamp: batchTimestamp,
       timestamp: new Date().toISOString(),
     };
     console.log("✅ Batch complete:", JSON.stringify(result));
