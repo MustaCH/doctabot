@@ -365,6 +365,39 @@ export type Database = {
         }
         Relationships: []
       }
+      scraping_logs: {
+        Row: {
+          batch_id: string
+          created_at: string
+          current_page: number | null
+          id: string
+          level: string
+          message: string
+          properties_count: number | null
+          total_pages: number | null
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          current_page?: number | null
+          id?: string
+          level?: string
+          message: string
+          properties_count?: number | null
+          total_pages?: number | null
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          current_page?: number | null
+          id?: string
+          level?: string
+          message?: string
+          properties_count?: number | null
+          total_pages?: number | null
+        }
+        Relationships: []
+      }
       supervisor_logs: {
         Row: {
           alan_response: string
