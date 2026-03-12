@@ -29,6 +29,15 @@ interface ParsedClient {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  client_type?: string;
+  birthday?: string | null;
+  company?: string | null;
+  address?: string | null;
+  preferred_zones?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  property_type_interest?: string | null;
+  source?: string | null;
 }
 
 type Step = "upload" | "mapping" | "preview" | "importing" | "done";

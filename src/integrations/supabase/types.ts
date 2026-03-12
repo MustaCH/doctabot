@@ -64,34 +64,64 @@ export type Database = {
       }
       clients: {
         Row: {
+          address: string | null
+          birthday: string | null
+          budget_max: number | null
+          budget_min: number | null
+          client_type: string
+          company: string | null
           created_at: string
           email: string | null
           full_name: string
           id: string
+          last_contact_at: string | null
           notes: string | null
           phone: string | null
+          preferred_zones: string | null
+          property_type_interest: string | null
+          source: string | null
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          address?: string | null
+          birthday?: string | null
+          budget_max?: number | null
+          budget_min?: number | null
+          client_type?: string
+          company?: string | null
           created_at?: string
           email?: string | null
           full_name: string
           id?: string
+          last_contact_at?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_zones?: string | null
+          property_type_interest?: string | null
+          source?: string | null
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          address?: string | null
+          birthday?: string | null
+          budget_max?: number | null
+          budget_min?: number | null
+          client_type?: string
+          company?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
           id?: string
+          last_contact_at?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_zones?: string | null
+          property_type_interest?: string | null
+          source?: string | null
           status?: string
           updated_at?: string
           user_id?: string
