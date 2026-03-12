@@ -44,6 +44,7 @@ interface Client {
   preferred_zones: string | null;
   budget_min: number | null;
   budget_max: number | null;
+  budget_currency: string | null;
   property_type_interest: string | null;
   source: string | null;
   last_contact_at: string | null;
