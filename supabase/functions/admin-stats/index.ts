@@ -155,19 +155,40 @@ Deno.serve(async (req) => {
     if (action === "scraping-status") {
       const { data: latest } = await supabaseAdmin
         .from("properties")
-        .select("created_at, updated_at")
+        .select("created_at, updated_at, last_seen_at")
         .order("updated_at", { ascending: false })
         .limit(1)
         .single();
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const { count } = await supabaseAdmin
-        .from("properties")
-        .select("id", { count: "exact", head: true })
-        .gte("updated_at", todayStart.toISOString());
 
-      return json({ lastProperty: latest, totalToday: count ?? 0 });
+      // Get the latest batch timestamp (most recent last_seen_at)
+      const { data: batchInfo } = await supabaseAdmin
+        .from("properties")
+        .select("last_seen_at")
+        .order("last_seen_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      const latestBatch = batchInfo?.last_seen_at ?? null;
+
+      const [todayRes, totalRes] = await Promise.all([
+        supabaseAdmin
+          .from("properties")
+          .select("id", { count: "exact", head: true })
+          .gte("updated_at", todayStart.toISOString()),
+        supabaseAdmin
+          .from("properties")
+          .select("id", { count: "exact", head: true }),
+      ]);
+
+      return json({
+        lastProperty: latest,
+        totalToday: todayRes.count ?? 0,
+        totalProperties: totalRes.count ?? 0,
+        lastBatchTimestamp: latestBatch,
+      });
     }
 
     // ---------- FAVORITES (enriched) ----------
