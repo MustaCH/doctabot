@@ -16,6 +16,7 @@ export interface ClientFormData {
   preferred_zones: string;
   budget_min: string;
   budget_max: string;
+  budget_currency: string;
   property_type_interest: string;
   source: string;
 }
@@ -33,6 +34,7 @@ export const emptyClientForm: ClientFormData = {
   preferred_zones: "",
   budget_min: "",
   budget_max: "",
+  budget_currency: "USD",
   property_type_interest: "",
   source: "",
 };
@@ -141,7 +143,7 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
             <Label>Zonas de interés</Label>
             <Input value={form.preferred_zones} onChange={(e) => set("preferred_zones", e.target.value)} placeholder={showPlaceholders ? "Nueva Córdoba, Cerro, ..." : undefined} maxLength={300} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
             <div>
               <Label>Presupuesto mín.</Label>
               <Input type="number" value={form.budget_min} onChange={(e) => set("budget_min", e.target.value)} placeholder={showPlaceholders ? "50000" : undefined} />
@@ -149,6 +151,16 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
             <div>
               <Label>Presupuesto máx.</Label>
               <Input type="number" value={form.budget_max} onChange={(e) => set("budget_max", e.target.value)} placeholder={showPlaceholders ? "150000" : undefined} />
+            </div>
+            <div>
+              <Label>Moneda</Label>
+              <Select value={form.budget_currency} onValueChange={(v) => set("budget_currency", v)}>
+                <SelectTrigger className="w-[80px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="ARS">ARS</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>

@@ -44,6 +44,7 @@ interface Client {
   preferred_zones: string | null;
   budget_min: number | null;
   budget_max: number | null;
+  budget_currency: string | null;
   property_type_interest: string | null;
   source: string | null;
   last_contact_at: string | null;
@@ -104,6 +105,7 @@ const clientToForm = (c: Client): ClientFormData => ({
   preferred_zones: c.preferred_zones ?? "",
   budget_min: c.budget_min != null ? String(c.budget_min) : "",
   budget_max: c.budget_max != null ? String(c.budget_max) : "",
+  budget_currency: c.budget_currency ?? "USD",
   property_type_interest: c.property_type_interest ?? "",
   source: c.source ?? "",
 });
@@ -121,6 +123,7 @@ const formToDb = (form: ClientFormData) => ({
   preferred_zones: form.preferred_zones.trim() || null,
   budget_min: form.budget_min ? Number(form.budget_min) : null,
   budget_max: form.budget_max ? Number(form.budget_max) : null,
+  budget_currency: form.budget_currency || "USD",
   property_type_interest: form.property_type_interest.trim() || null,
   source: form.source || null,
 });
