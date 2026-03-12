@@ -56,7 +56,7 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
   const showBuyerFields = form.client_type === "buyer" || form.client_type === "both";
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Personal */}
       <SectionTitle>Datos personales</SectionTitle>
       <div>

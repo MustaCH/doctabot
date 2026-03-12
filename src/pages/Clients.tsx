@@ -545,16 +545,16 @@ const Clients = () => {
 
       {/* Create Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-5 pt-5 pb-2">
             <DialogTitle>Nuevo cliente</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-2 min-h-0">
+          <div className="flex-1 overflow-y-auto px-5 pb-2 min-h-0">
             <ClientFormFields form={createForm} onChange={setCreateForm} showPlaceholders />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)} disabled={creating}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={creating}>{creating ? "Creando..." : "Crear cliente"}</Button>
+          <DialogFooter className="px-5 pb-5 pt-3 border-t border-border/40 gap-2 flex-col sm:flex-col">
+            <Button className="w-full" onClick={handleCreate} disabled={creating}>{creating ? "Creando..." : "Crear cliente"}</Button>
+            <Button variant="outline" className="w-full" onClick={() => setShowCreate(false)} disabled={creating}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
