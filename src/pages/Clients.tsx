@@ -249,9 +249,14 @@ const Clients = () => {
             {loading ? "Cargando..." : `${clients.length} cliente${clients.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowImport(true)} title="Importar desde Excel/CSV">
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="default" className="h-8 w-8 rounded-full" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
