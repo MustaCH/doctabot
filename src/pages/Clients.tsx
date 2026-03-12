@@ -562,6 +562,16 @@ const Clients = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Dialog */}
+      {user && (
+        <ImportClientsDialog
+          open={showImport}
+          onOpenChange={setShowImport}
+          userId={user.id}
+          onImported={loadClients}
+        />
+      )}
     </div>
   );
 };
