@@ -213,6 +213,24 @@ serve(async (req) => {
       } else {
         deleted = staleData?.length ?? 0;
         console.log(`🗑️ Deleted ${deleted} stale properties`);
+
+        // Notify n8n webhook about stale property cleanup
+        if (deleted > 0) {
+          const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
+          if (N8N_WEBHOOK_URL) {
+            fetch(N8N_WEBHOOK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type: "stale_properties_deleted",
+                deleted_count: deleted,
+                upserted_count: upserted,
+                batch_timestamp: batchTimestamp,
+                timestamp: new Date().toISOString(),
+              }),
+            }).catch(err => console.error("n8n webhook error:", err));
+          }
+        }
       }
     }
 
