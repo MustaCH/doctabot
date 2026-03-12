@@ -1078,10 +1078,20 @@ async function executeTool(
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "prospect";
+      const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
+      const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
+      const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
+      const address = typeof args.address === "string" ? args.address.trim().slice(0, 200) : null;
+      const preferred_zones = typeof args.preferred_zones === "string" ? args.preferred_zones.trim().slice(0, 300) : null;
+      const budget_min = safePositiveNumber(args.budget_min);
+      const budget_max = safePositiveNumber(args.budget_max);
+      const budget_currency = VALID_BUDGET_CURRENCIES.includes(args.budget_currency) ? args.budget_currency : "USD";
+      const property_type_interest = typeof args.property_type_interest === "string" ? args.property_type_interest.trim().slice(0, 200) : null;
+      const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
       const { data, error } = await supabase
         .from("clients")
-        .insert({ user_id: userId, full_name, phone, email, notes, status })
-        .select("id, full_name, status")
+        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source })
+        .select("id, full_name, status, client_type")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
