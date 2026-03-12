@@ -91,6 +91,9 @@ const Clients = () => {
   const [createForm, setCreateForm] = useState({ full_name: "", phone: "", email: "", notes: "", status: "prospect" });
   const [creating, setCreating] = useState(false);
 
+  // Import state
+  const [showImport, setShowImport] = useState(false);
+
   const loadClients = useCallback(async () => {
     if (!user) return;
     setLoading(true);
