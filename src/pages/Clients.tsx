@@ -105,6 +105,7 @@ const clientToForm = (c: Client): ClientFormData => ({
   preferred_zones: c.preferred_zones ?? "",
   budget_min: c.budget_min != null ? String(c.budget_min) : "",
   budget_max: c.budget_max != null ? String(c.budget_max) : "",
+  budget_currency: c.budget_currency ?? "USD",
   property_type_interest: c.property_type_interest ?? "",
   source: c.source ?? "",
 });
