@@ -34,6 +34,7 @@ export const emptyClientForm: ClientFormData = {
   preferred_zones: "",
   budget_min: "",
   budget_max: "",
+  budget_currency: "USD",
   property_type_interest: "",
   source: "",
 };
