@@ -352,6 +352,34 @@ Deno.serve(async (req) => {
       return json({ data: enriched, total: count ?? 0 });
     }
 
+    // ---------- SCRAPING LOGS ----------
+    if (action === "scraping-logs-live") {
+      const batchId = body.batchId;
+      let query = supabaseAdmin
+        .from("scraping_logs")
+        .select("id, batch_id, message, level, current_page, total_pages, properties_count, created_at")
+        .order("created_at", { ascending: true });
+
+      if (batchId) {
+        query = query.eq("batch_id", batchId);
+      } else {
+        // Get latest batch
+        const { data: latest } = await supabaseAdmin
+          .from("scraping_logs")
+          .select("batch_id")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (latest) {
+          query = query.eq("batch_id", latest.batch_id);
+        }
+      }
+
+      const { data } = await query;
+      return json({ data: data ?? [] });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (err) {
     return new Response(JSON.stringify({ error: "Internal error" }), {
