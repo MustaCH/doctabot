@@ -123,6 +123,7 @@ const formToDb = (form: ClientFormData) => ({
   preferred_zones: form.preferred_zones.trim() || null,
   budget_min: form.budget_min ? Number(form.budget_min) : null,
   budget_max: form.budget_max ? Number(form.budget_max) : null,
+  budget_currency: form.budget_currency || "USD",
   property_type_interest: form.property_type_interest.trim() || null,
   source: form.source || null,
 });
