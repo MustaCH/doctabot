@@ -261,6 +261,17 @@ function ActivityCharts({ pin }: { pin: string }) {
 }
 
 /* ==================== SCRAPING STATUS ==================== */
+interface ScrapingLog {
+  id: string;
+  batch_id: string;
+  message: string;
+  level: string;
+  current_page: number | null;
+  total_pages: number | null;
+  properties_count: number | null;
+  created_at: string;
+}
+
 function ScrapingStatus({ pin }: { pin: string }) {
   const [lastProperty, setLastProperty] = useState<{ created_at: string; updated_at: string } | null>(null);
   const [totalToday, setTotalToday] = useState(0);
@@ -268,6 +279,10 @@ function ScrapingStatus({ pin }: { pin: string }) {
   const [lastBatchTimestamp, setLastBatchTimestamp] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
+  const [logs, setLogs] = useState<ScrapingLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const logsEndRef = React.useRef<HTMLDivElement>(null);
 
   const loadStatus = useCallback(() => {
     adminFetch(pin, "scraping-status").then((data) => {
@@ -280,8 +295,30 @@ function ScrapingStatus({ pin }: { pin: string }) {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
+  // Poll logs while scraping is active
+  useEffect(() => {
+    if (!scraping || !activeBatchId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await adminFetch(pin, "scraping-logs-live", { batchId: activeBatchId });
+        setLogs(res.data ?? []);
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [scraping, activeBatchId, pin]);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
   const triggerScraping = async () => {
-    setScraping(true); setScrapeResult(null);
+    setScraping(true);
+    setScrapeResult(null);
+    setLogs([]);
+    setShowLogs(true);
+    const batchId = new Date().toISOString();
+    setActiveBatchId(batchId);
     try {
       const res = await adminFetch(pin, "trigger-scraping");
       const parts = [`✅ ${res.upserted ?? 0} actualizadas`];
@@ -289,13 +326,45 @@ function ScrapingStatus({ pin }: { pin: string }) {
       if (res.errors > 0) parts.push(`⚠️ ${res.errors} errores`);
       if (!res.is_last_batch) parts.push(`⏭️ Lote parcial (siguiente en proceso)`);
       setScrapeResult(parts.join(" · "));
+      // Final fetch of logs
+      const logsRes = await adminFetch(pin, "scraping-logs-live", { batchId: res.batch_timestamp ?? activeBatchId });
+      setLogs(logsRes.data ?? []);
+      setActiveBatchId(res.batch_timestamp ?? activeBatchId);
       loadStatus();
-    } catch { setScrapeResult("❌ Error al ejecutar el scraping"); }
+    } catch {
+      setScrapeResult("❌ Error al ejecutar el scraping");
+    }
     setScraping(false);
   };
 
+  // Load latest logs on mount
+  useEffect(() => {
+    adminFetch(pin, "scraping-logs-live").then((res) => {
+      if (res.data?.length > 0) {
+        setLogs(res.data);
+        setActiveBatchId(res.data[0].batch_id);
+      }
+    }).catch(() => {});
+  }, [pin]);
+
+  // Calculate progress from logs
+  const latestPageLog = [...logs].reverse().find(l => l.current_page != null && l.total_pages != null);
+  const progress = latestPageLog && latestPageLog.total_pages
+    ? Math.round((latestPageLog.current_page! / latestPageLog.total_pages) * 100)
+    : 0;
+  const isFinished = logs.some(l => l.message.includes("🏁") || l.level === "success");
+
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  const logLevelColor = (level: string) => {
+    switch (level) {
+      case "error": return "text-destructive";
+      case "warning": return "text-yellow-500";
+      case "success": return "text-green-500";
+      default: return "text-muted-foreground";
+    }
+  };
 
   return (
     <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
@@ -304,11 +373,41 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <Database className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Estado del Scraping</h2>
         </div>
-        <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping}>
-          {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
-          {scraping ? "Ejecutando..." : "Ejecutar ahora"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setShowLogs(!showLogs)} className="text-xs">
+            <Eye className="h-3.5 w-3.5 mr-1" />
+            {showLogs ? "Ocultar logs" : "Ver logs"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping}>
+            {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            {scraping ? "Ejecutando..." : "Ejecutar ahora"}
+          </Button>
+        </div>
       </div>
+
+      {/* Progress bar */}
+      {(scraping || (logs.length > 0 && showLogs)) && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {isFinished
+                ? "✅ Completado"
+                : scraping
+                  ? `Procesando... ${latestPageLog ? `Página ${latestPageLog.current_page}/${latestPageLog.total_pages}` : ""}`
+                  : "Último scraping"
+              }
+            </span>
+            <span>{isFinished ? "100" : progress}%</span>
+          </div>
+          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isFinished ? "bg-green-500" : "bg-primary"}`}
+              style={{ width: `${isFinished ? 100 : progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         <div>
           <span className="text-muted-foreground">Última actualización:</span>{" "}
@@ -327,11 +426,28 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <span className="font-medium">{lastBatchTimestamp ? fmt(lastBatchTimestamp) : "—"}</span>
         </div>
       </div>
+
+      {/* Live logs */}
+      {showLogs && logs.length > 0 && (
+        <div className="rounded-lg border border-border bg-background/50 p-3 max-h-48 overflow-y-auto font-mono text-xs space-y-0.5">
+          {logs.map((log) => (
+            <div key={log.id} className={`flex gap-2 ${logLevelColor(log.level)}`}>
+              <span className="text-muted-foreground/60 shrink-0">
+                {new Date(log.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+              <span>{log.message}</span>
+            </div>
+          ))}
+          <div ref={logsEndRef} />
+        </div>
+      )}
+
       {scrapeResult && <p className="text-xs font-medium">{scrapeResult}</p>}
       <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente. Las propiedades no vistas en el último lote se eliminan automáticamente.</p>
     </div>
   );
 }
+
 
 /* ==================== PROPERTIES TABLE ==================== */
 function PropertiesTable({ pin }: { pin: string }) {
