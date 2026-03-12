@@ -1105,13 +1105,23 @@ async function executeTool(
       if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
       if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
       if (VALID_CLIENT_STATUSES.includes(args.status)) updates.status = args.status;
+      if (VALID_CLIENT_TYPES.includes(args.client_type)) updates.client_type = args.client_type;
+      if (typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday)) updates.birthday = args.birthday;
+      if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
+      if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
+      if (typeof args.preferred_zones === "string") updates.preferred_zones = args.preferred_zones.trim().slice(0, 300);
+      if (typeof args.budget_min === "number" && isFinite(args.budget_min) && args.budget_min >= 0) updates.budget_min = args.budget_min;
+      if (typeof args.budget_max === "number" && isFinite(args.budget_max) && args.budget_max >= 0) updates.budget_max = args.budget_max;
+      if (VALID_BUDGET_CURRENCIES.includes(args.budget_currency)) updates.budget_currency = args.budget_currency;
+      if (typeof args.property_type_interest === "string") updates.property_type_interest = args.property_type_interest.trim().slice(0, 200);
+      if (typeof args.source === "string") updates.source = args.source.trim().slice(0, 100);
       if (Object.keys(updates).length === 0) return JSON.stringify({ error: "No hay campos para actualizar" });
       const { data, error } = await supabase
         .from("clients")
         .update(updates)
         .eq("id", args.client_id)
         .eq("user_id", userId)
-        .select("id, full_name, status")
+        .select("id, full_name, status, client_type")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
