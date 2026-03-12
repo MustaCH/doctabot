@@ -16,6 +16,7 @@ export interface ClientFormData {
   preferred_zones: string;
   budget_min: string;
   budget_max: string;
+  budget_currency: string;
   property_type_interest: string;
   source: string;
 }
