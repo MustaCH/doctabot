@@ -293,6 +293,7 @@ export type Database = {
           dimensions_land_m2: number | null
           external_id: string | null
           id: string
+          last_seen_at: string | null
           lat: number | null
           lng: number | null
           locality: string | null
@@ -319,6 +320,7 @@ export type Database = {
           dimensions_land_m2?: number | null
           external_id?: string | null
           id?: string
+          last_seen_at?: string | null
           lat?: number | null
           lng?: number | null
           locality?: string | null
@@ -345,6 +347,7 @@ export type Database = {
           dimensions_land_m2?: number | null
           external_id?: string | null
           id?: string
+          last_seen_at?: string | null
           lat?: number | null
           lng?: number | null
           locality?: string | null
