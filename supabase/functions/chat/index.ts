@@ -757,6 +757,57 @@ const toolDefinitions = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_client_event",
+      description: "Crear un evento/fecha importante para un cliente (cumpleaños, aniversario de compra, vencimiento de contrato, etc.). Se sincroniza automáticamente con Google Calendar si está conectado.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
+          event_type: { type: "string", description: "Tipo: birthday, purchase_anniversary, contract_expiry, followup, custom" },
+          title: { type: "string", description: "Título del evento (ej: 'Cumpleaños de María González')" },
+          event_date: { type: "string", description: "Fecha del evento en formato YYYY-MM-DD" },
+          recurrence: { type: "string", description: "Recurrencia: yearly (default), once, monthly" },
+          notes: { type: "string", description: "Notas adicionales (opcional)" },
+        },
+        required: ["title", "event_date"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_client_events",
+      description: "Listar los eventos/fechas importantes de un cliente o todos los próximos eventos del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente (opcional, si no se pasa muestra todos)" },
+          days_ahead: { type: "integer", description: "Mostrar eventos en los próximos N días (default 90)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_client_event",
+      description: "Eliminar un evento/fecha importante de un cliente. También lo elimina de Google Calendar si estaba sincronizado.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID del evento a eliminar" },
+        },
+        required: ["event_id"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ============================================================================
