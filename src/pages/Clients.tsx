@@ -548,63 +548,55 @@ const Clients = () => {
                       )}
                     </CollapsibleContent>
 
-                    {/* Events section */}
-                    {isExpanded && (
-                      <div className="pt-1">
-                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>Fechas importantes</span>
-                          {clientEvents[client.id] && clientEvents[client.id].length > 0 && (
-                            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{clientEvents[client.id].length}</Badge>
-                          )}
-                        </div>
-                        {!clientEvents[client.id] ? (
-                          <Skeleton className="h-8 w-full rounded-lg mx-2" />
-                        ) : clientEvents[client.id].length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground/60 py-1 text-center">
-                            Sin eventos. Pedile a Alan que registre fechas importantes.
-                          </p>
-                        ) : (
-                          <div className="space-y-1 pt-0.5">
-                            {clientEvents[client.id].map((ev) => {
-                              const eventTypeEmoji: Record<string, string> = {
-                                birthday: "🎂",
-                                purchase_anniversary: "🏠",
-                                contract_expiry: "📄",
-                                followup: "📞",
-                                custom: "📌",
-                              };
-                              const recurrenceLabel: Record<string, string> = {
-                                yearly: "Anual",
-                                once: "Única vez",
-                                monthly: "Mensual",
-                              };
-                              return (
-                                <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
-                                  <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate">{ev.title}</p>
-                                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                      <span>{new Date(ev.event_date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
-                                      <span className="text-muted-foreground/50">·</span>
-                                      <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
-                                      {ev.google_event_id && (
-                                        <>
-                                          <span className="text-muted-foreground/50">·</span>
-                                          <span className="text-primary">📅 Calendar</span>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </Collapsible>
+
+                {/* Events section - always visible */}
+                {(() => {
+                  const events = clientEvents[client.id];
+                  const eventTypeEmoji: Record<string, string> = {
+                    birthday: "🎂",
+                    purchase_anniversary: "🏠",
+                    contract_expiry: "📄",
+                    followup: "📞",
+                    custom: "📌",
+                  };
+                  const recurrenceLabel: Record<string, string> = {
+                    yearly: "Anual",
+                    once: "Única vez",
+                    monthly: "Mensual",
+                  };
+                  if (!events) return <Skeleton className="h-8 w-full rounded-lg mt-1" />;
+                  if (events.length === 0) return null;
+                  return (
+                    <div className="pt-1 space-y-1">
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground">
+                        <CalendarDays className="h-3 w-3" />
+                        <span>Fechas importantes</span>
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                      </div>
+                      {events.map((ev) => (
+                        <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
+                          <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{ev.title}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span>{new Date(ev.event_date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                              <span className="text-muted-foreground/50">·</span>
+                              <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
+                              {ev.google_event_id && (
+                                <>
+                                  <span className="text-muted-foreground/50">·</span>
+                                  <span className="text-primary">📅 Calendar</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               );
             })}
           </div>
