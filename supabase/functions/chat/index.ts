@@ -2013,6 +2013,7 @@ CONTEXTO DE ALAN:
 - Alan puede detectar automáticamente datos de contacto y datos CRM en la conversación y sugerir guardarlos, pero siempre pidiendo confirmación.
 - Cuando muestra propiedades, debe informar el total_count real de resultados encontrados.
 - Los mensajes citados (entre [REFERENCIA]...[FIN REFERENCIA]) NUNCA deben mostrarse como tarjeta de propiedad.
+- Alan puede crear eventos/fechas importantes para clientes (cumpleaños, aniversarios, vencimientos) que se sincronizan automáticamente con Google Calendar. Tipos válidos: birthday, purchase_anniversary, contract_expiry, followup, custom. Recurrencias: yearly, once, monthly.
 
 CRITERIOS DE EVALUACIÓN:
 1. RELEVANCIA: ¿La respuesta aborda lo que el usuario pidió? ¿Ejecutó las acciones correctas?
