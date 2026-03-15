@@ -195,6 +195,17 @@ const Clients = () => {
     setClientProperties(prev => ({ ...prev, [clientId]: (data as unknown as ClientProperty[]) ?? [] }));
   }, [user]);
 
+  const loadClientEvents = useCallback(async (clientId: string) => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("client_events")
+      .select("id, event_type, title, event_date, recurrence, google_event_id, notes")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: true });
+    setClientEvents(prev => ({ ...prev, [clientId]: (data as ClientEvent[]) ?? [] }));
+  }, [user]);
+
   const toggleExpand = (clientId: string) => {
     setExpandedClients(prev => {
       const next = new Set(prev);
