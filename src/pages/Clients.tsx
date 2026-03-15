@@ -206,6 +206,24 @@ const Clients = () => {
     setClientEvents(prev => ({ ...prev, [clientId]: (data as ClientEvent[]) ?? [] }));
   }, [user]);
 
+  const loadAllEvents = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("client_events")
+      .select("id, client_id, event_type, title, event_date, recurrence, google_event_id, notes")
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: true });
+    if (data) {
+      const grouped: Record<string, ClientEvent[]> = {};
+      for (const ev of data) {
+        const cid = (ev as any).client_id as string;
+        if (!grouped[cid]) grouped[cid] = [];
+        grouped[cid].push(ev as ClientEvent);
+      }
+      setClientEvents(grouped);
+    }
+  }, [user]);
+
   const toggleExpand = (clientId: string) => {
     setExpandedClients(prev => {
       const next = new Set(prev);
@@ -226,7 +244,8 @@ const Clients = () => {
 
   useEffect(() => {
     loadClients();
-  }, [loadClients]);
+    loadAllEvents();
+  }, [loadClients, loadAllEvents]);
 
   const filteredClients = useMemo(() => {
     if (typeFilter === "all") return clients;
@@ -391,96 +410,132 @@ const Clients = () => {
               const budget = formatBudget(client.budget_min, client.budget_max);
 
               return (
-                <Collapsible key={client.id} open={isExpanded} onOpenChange={() => toggleExpand(client.id)}>
-                  <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-                    {/* Header row */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1 min-w-0">
-                        <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
-                            {clientTypeLabel[client.client_type] ?? client.client_type}
-                          </Badge>
-                          <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
-                            {statusLabel[client.status] ?? client.status}
-                          </Badge>
-                          {client.source && (
-                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {client.source}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                <div key={client.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
+                          {clientTypeLabel[client.client_type] ?? client.client_type}
+                        </Badge>
+                        <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+                          {statusLabel[client.status] ?? client.status}
+                        </Badge>
+                        {client.source && (
+                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {client.source}
+                          </span>
+                        )}
                       </div>
                     </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteClient(client)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
 
-                    {/* Contact info */}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1">
-                      {client.phone && (
+                  {/* Contact info */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {client.phone && (
+                      <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span>{client.phone}</span>
+                      </a>
+                    )}
+                    {client.email && (
+                      <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[180px]">{client.email}</span>
+                      </a>
+                    )}
+                    {client.company && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Building2 className="h-3 w-3 shrink-0" />
+                        <span>{client.company}</span>
+                      </div>
+                    )}
+                    {client.birthday && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Cake className="h-3 w-3 shrink-0" />
+                        <span>{new Date(client.birthday + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Buyer preferences summary */}
+                  {(client.client_type === "buyer" || client.client_type === "both") && (client.preferred_zones || budget || client.property_type_interest) && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                      {client.preferred_zones && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Phone className="h-3 w-3 shrink-0" />
-                          <span>{client.phone}</span>
+                          <MapPin className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[200px]">{client.preferred_zones}</span>
                         </div>
                       )}
-                      {client.email && (
+                      {budget && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{client.email}</span>
+                          <DollarSign className="h-3 w-3 shrink-0" />
+                          <span>{budget}</span>
                         </div>
                       )}
-                      {client.company && (
+                      {client.property_type_interest && (
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Building2 className="h-3 w-3 shrink-0" />
-                          <span>{client.company}</span>
-                        </div>
-                      )}
-                      {client.birthday && (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Cake className="h-3 w-3 shrink-0" />
-                          <span>{new Date(client.birthday + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                          <Search className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[200px]">{client.property_type_interest}</span>
                         </div>
                       )}
                     </div>
+                  )}
 
-                    {/* Buyer preferences summary */}
-                    {(client.client_type === "buyer" || client.client_type === "both") && (client.preferred_zones || budget || client.property_type_interest) && (
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
-                        {client.preferred_zones && (
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3 shrink-0" />
-                            <span className="truncate max-w-[200px]">{client.preferred_zones}</span>
+                  {client.notes && (
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <FileText className="h-3 w-3 shrink-0 mt-0.5" />
+                      <span className="line-clamp-2">{client.notes}</span>
+                    </div>
+                  )}
+
+                  {/* Events section - always visible when loaded */}
+                  {(() => {
+                    const events = clientEvents[client.id];
+                    if (!events || events.length === 0) return null;
+                    const eventTypeEmoji: Record<string, string> = { birthday: "🎂", purchase_anniversary: "🏠", contract_expiry: "📄", followup: "📞", custom: "📌" };
+                    const recurrenceLabel: Record<string, string> = { yearly: "Anual", once: "Única vez", monthly: "Mensual" };
+                    return (
+                      <div className="space-y-1 pt-0.5">
+                        <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
+                          <CalendarDays className="h-3 w-3" />
+                          <span>Fechas importantes</span>
+                          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                        </div>
+                        {events.map((ev) => (
+                          <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
+                            <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{ev.title}</p>
+                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                <span>{new Date(ev.event_date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                                <span className="text-muted-foreground/50">·</span>
+                                <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
+                                {ev.google_event_id && (
+                                  <>
+                                    <span className="text-muted-foreground/50">·</span>
+                                    <span className="text-primary">📅 Calendar</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        )}
-                        {budget && (
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <DollarSign className="h-3 w-3 shrink-0" />
-                            <span>{budget}</span>
-                          </div>
-                        )}
-                        {client.property_type_interest && (
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Search className="h-3 w-3 shrink-0" />
-                            <span className="truncate max-w-[200px]">{client.property_type_interest}</span>
-                          </div>
-                        )}
+                        ))}
                       </div>
-                    )}
+                    );
+                  })()}
 
-                    {client.notes && (
-                      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                        <FileText className="h-3 w-3 shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">{client.notes}</span>
-                      </div>
-                    )}
-
-                    {/* Properties toggle */}
+                  {/* Properties toggle */}
+                  <Collapsible open={isExpanded} onOpenChange={() => toggleExpand(client.id)}>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" size="sm" className="w-full justify-between h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
                         <span className="flex items-center gap-1.5">
@@ -493,7 +548,6 @@ const Clients = () => {
                         <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                       </Button>
                     </CollapsibleTrigger>
-
                     <CollapsibleContent>
                       {!props ? (
                         <div className="py-2 space-y-1.5">
@@ -509,33 +563,18 @@ const Clients = () => {
                           {props.map((cp) => (
                             <div key={cp.id} className="flex gap-2.5 rounded-lg border border-border/50 bg-muted/30 p-2.5">
                               {cp.properties?.photo && (
-                                <img
-                                  src={cp.properties.photo}
-                                  alt=""
-                                  className="h-12 w-12 rounded-md object-cover shrink-0"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                />
+                                <img src={cp.properties.photo} alt="" className="h-12 w-12 rounded-md object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                               )}
                               <div className="flex-1 min-w-0 space-y-0.5">
-                                <p className="text-xs font-medium leading-tight truncate">
-                                  {cp.properties?.title ?? "Propiedad"}
-                                </p>
-                                {cp.properties?.address && (
-                                  <p className="text-[11px] text-muted-foreground truncate">{cp.properties.address}</p>
-                                )}
+                                <p className="text-xs font-medium leading-tight truncate">{cp.properties?.title ?? "Propiedad"}</p>
+                                {cp.properties?.address && <p className="text-[11px] text-muted-foreground truncate">{cp.properties.address}</p>}
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {cp.properties?.price && (
-                                    <span className="text-[11px] font-medium text-primary">
-                                      {formatPrice(cp.properties.price, cp.properties.currency)}
-                                    </span>
+                                    <span className="text-[11px] font-medium text-primary">{formatPrice(cp.properties.price, cp.properties.currency)}</span>
                                   )}
-                                  <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="h-4 px-1.5 text-[10px]">
-                                    {propStatusLabel[cp.status] ?? cp.status}
-                                  </Badge>
+                                  <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="h-4 px-1.5 text-[10px]">{propStatusLabel[cp.status] ?? cp.status}</Badge>
                                 </div>
-                                {cp.notes && (
-                                  <p className="text-[11px] text-muted-foreground/70 line-clamp-1">{cp.notes}</p>
-                                )}
+                                {cp.notes && <p className="text-[11px] text-muted-foreground/70 line-clamp-1">{cp.notes}</p>}
                               </div>
                               {cp.properties?.url && (
                                 <a href={cp.properties.url} target="_blank" rel="noopener noreferrer" className="shrink-0 self-center text-muted-foreground hover:text-primary transition-colors">
@@ -547,64 +586,8 @@ const Clients = () => {
                         </div>
                       )}
                     </CollapsibleContent>
-
-                    {/* Events section */}
-                    {isExpanded && (
-                      <div className="pt-1">
-                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>Fechas importantes</span>
-                          {clientEvents[client.id] && clientEvents[client.id].length > 0 && (
-                            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{clientEvents[client.id].length}</Badge>
-                          )}
-                        </div>
-                        {!clientEvents[client.id] ? (
-                          <Skeleton className="h-8 w-full rounded-lg mx-2" />
-                        ) : clientEvents[client.id].length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground/60 py-1 text-center">
-                            Sin eventos. Pedile a Alan que registre fechas importantes.
-                          </p>
-                        ) : (
-                          <div className="space-y-1 pt-0.5">
-                            {clientEvents[client.id].map((ev) => {
-                              const eventTypeEmoji: Record<string, string> = {
-                                birthday: "🎂",
-                                purchase_anniversary: "🏠",
-                                contract_expiry: "📄",
-                                followup: "📞",
-                                custom: "📌",
-                              };
-                              const recurrenceLabel: Record<string, string> = {
-                                yearly: "Anual",
-                                once: "Única vez",
-                                monthly: "Mensual",
-                              };
-                              return (
-                                <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
-                                  <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate">{ev.title}</p>
-                                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                                      <span>{new Date(ev.event_date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
-                                      <span className="text-muted-foreground/50">·</span>
-                                      <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
-                                      {ev.google_event_id && (
-                                        <>
-                                          <span className="text-muted-foreground/50">·</span>
-                                          <span className="text-primary">📅 Calendar</span>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </Collapsible>
+                  </Collapsible>
+                </div>
               );
             })}
           </div>
