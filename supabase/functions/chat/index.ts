@@ -1590,6 +1590,148 @@ async function executeTool(
       return JSON.stringify({ success: true, message: "Propiedad del cliente actualizada.", data });
     }
 
+    // ---- Client Events ----
+    case "create_client_event": {
+      // Resolve client
+      let resolvedClientId = args.client_id;
+      if (!resolvedClientId && args.client_name) {
+        const search = sanitizePattern(args.client_name);
+        if (search) {
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
+          if (found?.length) resolvedClientId = found[0].id;
+          else return JSON.stringify({ error: `No se encontró un cliente con nombre "${args.client_name}"` });
+        }
+      }
+      if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) return JSON.stringify({ error: "Se requiere client_id o client_name" });
+      
+      const title = typeof args.title === "string" ? args.title.trim().slice(0, 300) : null;
+      if (!title) return JSON.stringify({ error: "El título es requerido" });
+      const eventDate = typeof args.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.event_date) ? args.event_date : null;
+      if (!eventDate) return JSON.stringify({ error: "La fecha es requerida (formato YYYY-MM-DD)" });
+      
+      const validEventTypes = ["birthday", "purchase_anniversary", "contract_expiry", "followup", "custom"];
+      const eventType = validEventTypes.includes(args.event_type) ? args.event_type : "custom";
+      const validRecurrences = ["yearly", "once", "monthly"];
+      const recurrence = validRecurrences.includes(args.recurrence) ? args.recurrence : "yearly";
+      const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 1000) : null;
+
+      // Try to sync with Google Calendar
+      let googleEventId: string | null = null;
+      try {
+        const accessToken = await getCalendarToken();
+        if (accessToken) {
+          // Calculate next occurrence for the calendar event
+          const today = new Date();
+          const [year, month, day] = eventDate.split("-").map(Number);
+          let nextDate = new Date(today.getFullYear(), month - 1, day);
+          if (nextDate < today && recurrence === "yearly") {
+            nextDate = new Date(today.getFullYear() + 1, month - 1, day);
+          }
+          
+          const calendarBody: any = {
+            summary: title,
+            start: { date: nextDate.toISOString().slice(0, 10) },
+            end: { date: nextDate.toISOString().slice(0, 10) },
+            reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 1440 }] }, // 1 day before
+          };
+          if (notes) calendarBody.description = notes;
+          if (recurrence !== "once") {
+            const rruleFreq = recurrence === "yearly" ? "YEARLY" : "MONTHLY";
+            calendarBody.recurrence = [`RRULE:FREQ=${rruleFreq}`];
+          }
+          
+          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(calendarBody),
+          });
+          if (calRes.ok) {
+            const calEvent = await calRes.json();
+            googleEventId = calEvent.id;
+          } else {
+            console.error("Calendar sync error for client event:", await calRes.text());
+          }
+        }
+      } catch (e) {
+        console.error("Calendar sync error:", e);
+      }
+
+      const { data, error } = await supabase
+        .from("client_events")
+        .insert({ client_id: resolvedClientId, user_id: userId, event_type: eventType, title, event_date: eventDate, recurrence, google_event_id: googleEventId, notes })
+        .select("id, title, event_type, event_date, recurrence, google_event_id")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, event: data, synced_to_calendar: !!googleEventId, message: `Evento "${title}" creado${googleEventId ? " y sincronizado con Google Calendar 📅" : ""}.` });
+    }
+
+    case "list_client_events": {
+      const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 90, 1), 365);
+      let query = supabase
+        .from("client_events")
+        .select("id, client_id, event_type, title, event_date, recurrence, google_event_id, notes, clients(full_name)")
+        .eq("user_id", userId)
+        .order("event_date", { ascending: true });
+      
+      if (args.client_id && UUID_REGEX.test(args.client_id)) {
+        query = query.eq("client_id", args.client_id);
+      }
+
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+
+      // Filter to upcoming events within daysAhead (considering recurrence)
+      const today = new Date();
+      const cutoff = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+      
+      const upcoming = (data ?? []).map((ev: any) => {
+        const [year, month, day] = ev.event_date.split("-").map(Number);
+        let nextOccurrence: Date;
+        if (ev.recurrence === "yearly") {
+          nextOccurrence = new Date(today.getFullYear(), month - 1, day);
+          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear() + 1, month - 1, day);
+        } else if (ev.recurrence === "monthly") {
+          nextOccurrence = new Date(today.getFullYear(), today.getMonth(), day);
+          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear(), today.getMonth() + 1, day);
+        } else {
+          nextOccurrence = new Date(year, month - 1, day);
+        }
+        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: nextOccurrence.toISOString().slice(0, 10) };
+      }).filter((ev: any) => {
+        const next = new Date(ev.next_occurrence);
+        return next >= new Date(today.toISOString().slice(0, 10)) && next <= cutoff;
+      }).sort((a: any, b: any) => a.next_occurrence.localeCompare(b.next_occurrence));
+
+      return JSON.stringify({ events: upcoming, total: upcoming.length });
+    }
+
+    case "delete_client_event": {
+      if (!args.event_id || !UUID_REGEX.test(args.event_id)) return JSON.stringify({ error: "ID de evento inválido" });
+      
+      // Get the event to check for Google Calendar sync
+      const { data: ev } = await supabase.from("client_events").select("google_event_id, title").eq("id", args.event_id).eq("user_id", userId).single();
+      if (!ev) return JSON.stringify({ error: "Evento no encontrado" });
+
+      // Delete from Google Calendar if synced
+      if (ev.google_event_id) {
+        try {
+          const accessToken = await getCalendarToken();
+          if (accessToken) {
+            await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(ev.google_event_id)}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+          }
+        } catch (e) {
+          console.error("Calendar delete error:", e);
+        }
+      }
+
+      const { error } = await supabase.from("client_events").delete().eq("id", args.event_id).eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: `Evento "${ev.title}" eliminado${ev.google_event_id ? " (también de Google Calendar)" : ""}.` });
+    }
+
     default:
       return JSON.stringify({ error: "Tool not found" });
   }
