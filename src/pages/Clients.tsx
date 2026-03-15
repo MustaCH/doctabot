@@ -216,6 +216,9 @@ const Clients = () => {
         if (!clientProperties[clientId]) {
           loadClientProperties(clientId);
         }
+        if (!clientEvents[clientId]) {
+          loadClientEvents(clientId);
+        }
       }
       return next;
     });
