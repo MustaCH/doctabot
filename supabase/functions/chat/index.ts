@@ -59,6 +59,9 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 21. **list_client_properties**: Ver las propiedades vinculadas a un cliente con sus estados y notas
 22. **remove_client_property**: Eliminar la vinculación de una propiedad con un cliente
 23. **update_client_property**: Actualizar el estado o las notas de una propiedad vinculada a un cliente
+24. **create_client_event**: Crear un evento/fecha importante para un cliente (cumpleaños, aniversario de compra, vencimientos, etc.) con sincronización automática a Google Calendar
+25. **list_client_events**: Ver los eventos/fechas importantes de un cliente
+26. **delete_client_event**: Eliminar un evento/fecha importante de un cliente (también lo elimina de Google Calendar)
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -151,6 +154,27 @@ Al crear o actualizar clientes, tratá de capturar la mayor cantidad de datos po
 - source: Cómo llegó el cliente (referido, portal, redes, cartel, otro)
 
 **DETECCIÓN AUTOMÁTICA DE DATOS CRM:** Si durante la conversación el agente menciona datos del cliente como cumpleaños, presupuesto, zona de interés, empresa, tipo de propiedad, etc., sugerí guardarlos: "📋 Detecté que [nombre] busca un departamento de 2 ambientes en Nueva Córdoba con presupuesto de USD 80.000-120.000. ¿Querés que actualice su perfil?" Solo si confirma, ejecutá update_client.
+
+## EVENTOS Y FECHAS IMPORTANTES DE CLIENTES
+
+Podés gestionar fechas importantes para cada cliente (cumpleaños, aniversarios de compra, vencimientos de contratos, etc.) con la tabla client_events. Estos eventos se sincronizan automáticamente con Google Calendar.
+
+**TIPOS DE EVENTOS:**
+- birthday: Cumpleaños del cliente
+- purchase_anniversary: Aniversario de compra/cierre de operación
+- contract_expiry: Vencimiento de contrato
+- followup: Fecha de seguimiento
+- custom: Cualquier otra fecha importante
+
+**RECURRENCIA:**
+- yearly: Se repite cada año (default, ideal para cumpleaños y aniversarios)
+- once: Evento único (ideal para vencimientos y seguimientos)
+- monthly: Se repite cada mes
+
+**COMPORTAMIENTO AUTOMÁTICO:**
+- Cuando el agente registra un cumpleaños de cliente (campo birthday en create_client o update_client), sugerí TAMBIÉN crear un evento de tipo "birthday" con create_client_event para que quede en el calendario.
+- Cuando se cierra una operación (cambio de status a "closed"), sugerí crear un evento "purchase_anniversary" con la fecha del cierre.
+- Al crear un evento, si el agente tiene Google Calendar conectado, se crea automáticamente el evento recurrente en el calendario.
 
 ## GESTIÓN DE GOOGLE CALENDAR
 
@@ -729,6 +753,57 @@ const toolDefinitions = [
           notes: { type: "string", description: "Nuevas notas" },
         },
         required: ["client_id", "property_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_client_event",
+      description: "Crear un evento/fecha importante para un cliente (cumpleaños, aniversario de compra, vencimiento de contrato, etc.). Se sincroniza automáticamente con Google Calendar si está conectado.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
+          event_type: { type: "string", description: "Tipo: birthday, purchase_anniversary, contract_expiry, followup, custom" },
+          title: { type: "string", description: "Título del evento (ej: 'Cumpleaños de María González')" },
+          event_date: { type: "string", description: "Fecha del evento en formato YYYY-MM-DD" },
+          recurrence: { type: "string", description: "Recurrencia: yearly (default), once, monthly" },
+          notes: { type: "string", description: "Notas adicionales (opcional)" },
+        },
+        required: ["title", "event_date"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_client_events",
+      description: "Listar los eventos/fechas importantes de un cliente o todos los próximos eventos del agente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente (opcional, si no se pasa muestra todos)" },
+          days_ahead: { type: "integer", description: "Mostrar eventos en los próximos N días (default 90)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_client_event",
+      description: "Eliminar un evento/fecha importante de un cliente. También lo elimina de Google Calendar si estaba sincronizado.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: { type: "string", description: "ID del evento a eliminar" },
+        },
+        required: ["event_id"],
         additionalProperties: false,
       },
     },
@@ -1515,6 +1590,148 @@ async function executeTool(
       return JSON.stringify({ success: true, message: "Propiedad del cliente actualizada.", data });
     }
 
+    // ---- Client Events ----
+    case "create_client_event": {
+      // Resolve client
+      let resolvedClientId = args.client_id;
+      if (!resolvedClientId && args.client_name) {
+        const search = sanitizePattern(args.client_name);
+        if (search) {
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
+          if (found?.length) resolvedClientId = found[0].id;
+          else return JSON.stringify({ error: `No se encontró un cliente con nombre "${args.client_name}"` });
+        }
+      }
+      if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) return JSON.stringify({ error: "Se requiere client_id o client_name" });
+      
+      const title = typeof args.title === "string" ? args.title.trim().slice(0, 300) : null;
+      if (!title) return JSON.stringify({ error: "El título es requerido" });
+      const eventDate = typeof args.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.event_date) ? args.event_date : null;
+      if (!eventDate) return JSON.stringify({ error: "La fecha es requerida (formato YYYY-MM-DD)" });
+      
+      const validEventTypes = ["birthday", "purchase_anniversary", "contract_expiry", "followup", "custom"];
+      const eventType = validEventTypes.includes(args.event_type) ? args.event_type : "custom";
+      const validRecurrences = ["yearly", "once", "monthly"];
+      const recurrence = validRecurrences.includes(args.recurrence) ? args.recurrence : "yearly";
+      const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 1000) : null;
+
+      // Try to sync with Google Calendar
+      let googleEventId: string | null = null;
+      try {
+        const accessToken = await getCalendarToken();
+        if (accessToken) {
+          // Calculate next occurrence for the calendar event
+          const today = new Date();
+          const [year, month, day] = eventDate.split("-").map(Number);
+          let nextDate = new Date(today.getFullYear(), month - 1, day);
+          if (nextDate < today && recurrence === "yearly") {
+            nextDate = new Date(today.getFullYear() + 1, month - 1, day);
+          }
+          
+          const calendarBody: any = {
+            summary: title,
+            start: { date: nextDate.toISOString().slice(0, 10) },
+            end: { date: nextDate.toISOString().slice(0, 10) },
+            reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 1440 }] }, // 1 day before
+          };
+          if (notes) calendarBody.description = notes;
+          if (recurrence !== "once") {
+            const rruleFreq = recurrence === "yearly" ? "YEARLY" : "MONTHLY";
+            calendarBody.recurrence = [`RRULE:FREQ=${rruleFreq}`];
+          }
+          
+          const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(calendarBody),
+          });
+          if (calRes.ok) {
+            const calEvent = await calRes.json();
+            googleEventId = calEvent.id;
+          } else {
+            console.error("Calendar sync error for client event:", await calRes.text());
+          }
+        }
+      } catch (e) {
+        console.error("Calendar sync error:", e);
+      }
+
+      const { data, error } = await supabase
+        .from("client_events")
+        .insert({ client_id: resolvedClientId, user_id: userId, event_type: eventType, title, event_date: eventDate, recurrence, google_event_id: googleEventId, notes })
+        .select("id, title, event_type, event_date, recurrence, google_event_id")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, event: data, synced_to_calendar: !!googleEventId, message: `Evento "${title}" creado${googleEventId ? " y sincronizado con Google Calendar 📅" : ""}.` });
+    }
+
+    case "list_client_events": {
+      const daysAhead = Math.min(Math.max(safePositiveInt(args.days_ahead) ?? 90, 1), 365);
+      let query = supabase
+        .from("client_events")
+        .select("id, client_id, event_type, title, event_date, recurrence, google_event_id, notes, clients(full_name)")
+        .eq("user_id", userId)
+        .order("event_date", { ascending: true });
+      
+      if (args.client_id && UUID_REGEX.test(args.client_id)) {
+        query = query.eq("client_id", args.client_id);
+      }
+
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+
+      // Filter to upcoming events within daysAhead (considering recurrence)
+      const today = new Date();
+      const cutoff = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+      
+      const upcoming = (data ?? []).map((ev: any) => {
+        const [year, month, day] = ev.event_date.split("-").map(Number);
+        let nextOccurrence: Date;
+        if (ev.recurrence === "yearly") {
+          nextOccurrence = new Date(today.getFullYear(), month - 1, day);
+          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear() + 1, month - 1, day);
+        } else if (ev.recurrence === "monthly") {
+          nextOccurrence = new Date(today.getFullYear(), today.getMonth(), day);
+          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear(), today.getMonth() + 1, day);
+        } else {
+          nextOccurrence = new Date(year, month - 1, day);
+        }
+        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: nextOccurrence.toISOString().slice(0, 10) };
+      }).filter((ev: any) => {
+        const next = new Date(ev.next_occurrence);
+        return next >= new Date(today.toISOString().slice(0, 10)) && next <= cutoff;
+      }).sort((a: any, b: any) => a.next_occurrence.localeCompare(b.next_occurrence));
+
+      return JSON.stringify({ events: upcoming, total: upcoming.length });
+    }
+
+    case "delete_client_event": {
+      if (!args.event_id || !UUID_REGEX.test(args.event_id)) return JSON.stringify({ error: "ID de evento inválido" });
+      
+      // Get the event to check for Google Calendar sync
+      const { data: ev } = await supabase.from("client_events").select("google_event_id, title").eq("id", args.event_id).eq("user_id", userId).single();
+      if (!ev) return JSON.stringify({ error: "Evento no encontrado" });
+
+      // Delete from Google Calendar if synced
+      if (ev.google_event_id) {
+        try {
+          const accessToken = await getCalendarToken();
+          if (accessToken) {
+            await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(ev.google_event_id)}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+          }
+        } catch (e) {
+          console.error("Calendar delete error:", e);
+        }
+      }
+
+      const { error } = await supabase.from("client_events").delete().eq("id", args.event_id).eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: `Evento "${ev.title}" eliminado${ev.google_event_id ? " (también de Google Calendar)" : ""}.` });
+    }
+
     default:
       return JSON.stringify({ error: "Tool not found" });
   }
@@ -1796,6 +2013,7 @@ CONTEXTO DE ALAN:
 - Alan puede detectar automáticamente datos de contacto y datos CRM en la conversación y sugerir guardarlos, pero siempre pidiendo confirmación.
 - Cuando muestra propiedades, debe informar el total_count real de resultados encontrados.
 - Los mensajes citados (entre [REFERENCIA]...[FIN REFERENCIA]) NUNCA deben mostrarse como tarjeta de propiedad.
+- Alan puede crear eventos/fechas importantes para clientes (cumpleaños, aniversarios, vencimientos) que se sincronizan automáticamente con Google Calendar. Tipos válidos: birthday, purchase_anniversary, contract_expiry, followup, custom. Recurrencias: yearly, once, monthly.
 
 CRITERIOS DE EVALUACIÓN:
 1. RELEVANCIA: ¿La respuesta aborda lo que el usuario pidió? ¿Ejecutó las acciones correctas?

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
@@ -27,6 +27,16 @@ interface ClientProperty {
     photo: string | null;
     operation: string | null;
   } | null;
+}
+
+interface ClientEvent {
+  id: string;
+  event_type: string;
+  title: string;
+  event_date: string;
+  recurrence: string;
+  google_event_id: string | null;
+  notes: string | null;
 }
 
 interface Client {
@@ -134,6 +144,7 @@ const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientProperties, setClientProperties] = useState<Record<string, ClientProperty[]>>({});
+  const [clientEvents, setClientEvents] = useState<Record<string, ClientEvent[]>>({});
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
@@ -184,6 +195,17 @@ const Clients = () => {
     setClientProperties(prev => ({ ...prev, [clientId]: (data as unknown as ClientProperty[]) ?? [] }));
   }, [user]);
 
+  const loadClientEvents = useCallback(async (clientId: string) => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("client_events")
+      .select("id, event_type, title, event_date, recurrence, google_event_id, notes")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: true });
+    setClientEvents(prev => ({ ...prev, [clientId]: (data as ClientEvent[]) ?? [] }));
+  }, [user]);
+
   const toggleExpand = (clientId: string) => {
     setExpandedClients(prev => {
       const next = new Set(prev);
@@ -193,6 +215,9 @@ const Clients = () => {
         next.add(clientId);
         if (!clientProperties[clientId]) {
           loadClientProperties(clientId);
+        }
+        if (!clientEvents[clientId]) {
+          loadClientEvents(clientId);
         }
       }
       return next;
@@ -522,6 +547,62 @@ const Clients = () => {
                         </div>
                       )}
                     </CollapsibleContent>
+
+                    {/* Events section */}
+                    {isExpanded && (
+                      <div className="pt-1">
+                        <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+                          <CalendarDays className="h-3 w-3" />
+                          <span>Fechas importantes</span>
+                          {clientEvents[client.id] && clientEvents[client.id].length > 0 && (
+                            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{clientEvents[client.id].length}</Badge>
+                          )}
+                        </div>
+                        {!clientEvents[client.id] ? (
+                          <Skeleton className="h-8 w-full rounded-lg mx-2" />
+                        ) : clientEvents[client.id].length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground/60 py-1 text-center">
+                            Sin eventos. Pedile a Alan que registre fechas importantes.
+                          </p>
+                        ) : (
+                          <div className="space-y-1 pt-0.5">
+                            {clientEvents[client.id].map((ev) => {
+                              const eventTypeEmoji: Record<string, string> = {
+                                birthday: "🎂",
+                                purchase_anniversary: "🏠",
+                                contract_expiry: "📄",
+                                followup: "📞",
+                                custom: "📌",
+                              };
+                              const recurrenceLabel: Record<string, string> = {
+                                yearly: "Anual",
+                                once: "Única vez",
+                                monthly: "Mensual",
+                              };
+                              return (
+                                <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
+                                  <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">{ev.title}</p>
+                                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                      <span>{new Date(ev.event_date + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                                      <span className="text-muted-foreground/50">·</span>
+                                      <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
+                                      {ev.google_event_id && (
+                                        <>
+                                          <span className="text-muted-foreground/50">·</span>
+                                          <span className="text-primary">📅 Calendar</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Collapsible>
               );
