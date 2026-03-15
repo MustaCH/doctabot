@@ -59,6 +59,9 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 21. **list_client_properties**: Ver las propiedades vinculadas a un cliente con sus estados y notas
 22. **remove_client_property**: Eliminar la vinculación de una propiedad con un cliente
 23. **update_client_property**: Actualizar el estado o las notas de una propiedad vinculada a un cliente
+24. **create_client_event**: Crear un evento/fecha importante para un cliente (cumpleaños, aniversario de compra, vencimientos, etc.) con sincronización automática a Google Calendar
+25. **list_client_events**: Ver los eventos/fechas importantes de un cliente
+26. **delete_client_event**: Eliminar un evento/fecha importante de un cliente (también lo elimina de Google Calendar)
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
