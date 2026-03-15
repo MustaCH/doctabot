@@ -244,7 +244,8 @@ const Clients = () => {
 
   useEffect(() => {
     loadClients();
-  }, [loadClients]);
+    loadAllEvents();
+  }, [loadClients, loadAllEvents]);
 
   const filteredClients = useMemo(() => {
     if (typeFilter === "all") return clients;
