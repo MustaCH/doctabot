@@ -29,6 +29,16 @@ interface ClientProperty {
   } | null;
 }
 
+interface ClientEvent {
+  id: string;
+  event_type: string;
+  title: string;
+  event_date: string;
+  recurrence: string;
+  google_event_id: string | null;
+  notes: string | null;
+}
+
 interface Client {
   id: string;
   full_name: string;
