@@ -206,6 +206,24 @@ const Clients = () => {
     setClientEvents(prev => ({ ...prev, [clientId]: (data as ClientEvent[]) ?? [] }));
   }, [user]);
 
+  const loadAllEvents = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("client_events")
+      .select("id, client_id, event_type, title, event_date, recurrence, google_event_id, notes")
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: true });
+    if (data) {
+      const grouped: Record<string, ClientEvent[]> = {};
+      for (const ev of data) {
+        const cid = (ev as any).client_id as string;
+        if (!grouped[cid]) grouped[cid] = [];
+        grouped[cid].push(ev as ClientEvent);
+      }
+      setClientEvents(grouped);
+    }
+  }, [user]);
+
   const toggleExpand = (clientId: string) => {
     setExpandedClients(prev => {
       const next = new Set(prev);
