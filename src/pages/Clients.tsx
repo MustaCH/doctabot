@@ -144,6 +144,7 @@ const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientProperties, setClientProperties] = useState<Record<string, ClientProperty[]>>({});
+  const [clientEvents, setClientEvents] = useState<Record<string, ClientEvent[]>>({});
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
