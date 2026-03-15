@@ -155,6 +155,27 @@ Al crear o actualizar clientes, tratá de capturar la mayor cantidad de datos po
 
 **DETECCIÓN AUTOMÁTICA DE DATOS CRM:** Si durante la conversación el agente menciona datos del cliente como cumpleaños, presupuesto, zona de interés, empresa, tipo de propiedad, etc., sugerí guardarlos: "📋 Detecté que [nombre] busca un departamento de 2 ambientes en Nueva Córdoba con presupuesto de USD 80.000-120.000. ¿Querés que actualice su perfil?" Solo si confirma, ejecutá update_client.
 
+## EVENTOS Y FECHAS IMPORTANTES DE CLIENTES
+
+Podés gestionar fechas importantes para cada cliente (cumpleaños, aniversarios de compra, vencimientos de contratos, etc.) con la tabla client_events. Estos eventos se sincronizan automáticamente con Google Calendar.
+
+**TIPOS DE EVENTOS:**
+- birthday: Cumpleaños del cliente
+- purchase_anniversary: Aniversario de compra/cierre de operación
+- contract_expiry: Vencimiento de contrato
+- followup: Fecha de seguimiento
+- custom: Cualquier otra fecha importante
+
+**RECURRENCIA:**
+- yearly: Se repite cada año (default, ideal para cumpleaños y aniversarios)
+- once: Evento único (ideal para vencimientos y seguimientos)
+- monthly: Se repite cada mes
+
+**COMPORTAMIENTO AUTOMÁTICO:**
+- Cuando el agente registra un cumpleaños de cliente (campo birthday en create_client o update_client), sugerí TAMBIÉN crear un evento de tipo "birthday" con create_client_event para que quede en el calendario.
+- Cuando se cierra una operación (cambio de status a "closed"), sugerí crear un evento "purchase_anniversary" con la fecha del cierre.
+- Al crear un evento, si el agente tiene Google Calendar conectado, se crea automáticamente el evento recurrente en el calendario.
+
 ## GESTIÓN DE GOOGLE CALENDAR
 
 Tenés control total sobre el Google Calendar del agente. Usá estas herramientas de forma proactiva:
