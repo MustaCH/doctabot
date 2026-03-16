@@ -179,7 +179,7 @@ Podés gestionar fechas importantes para cada cliente (cumpleaños, aniversarios
 
 **COMPORTAMIENTO AUTOMÁTICO:**
 - Cuando el agente registra un cumpleaños de cliente (campo birthday en create_client o update_client), sugerí TAMBIÉN crear un evento de tipo "birthday" con create_client_event para que quede en el calendario.
-- Cuando se cierra una operación (cambio de status a "closed"), sugerí crear un evento "purchase_anniversary" con la fecha del cierre.
+- Cuando se cierra una operación, sugerí crear un evento "purchase_anniversary" con la fecha del cierre y cambiar el estado del cliente a "cold".
 - Al crear un evento, si el agente tiene Google Calendar conectado, se crea automáticamente el evento recurrente en el calendario.
 
 ## GESTIÓN DE GOOGLE CALENDAR
