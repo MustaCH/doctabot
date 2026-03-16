@@ -26,7 +26,7 @@ export const emptyClientForm: ClientFormData = {
   phone: "",
   email: "",
   notes: "",
-  status: "prospect",
+  status: "hot",
   client_type: "buyer",
   birthday: "",
   company: "",
