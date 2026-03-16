@@ -54,10 +54,9 @@ interface DashboardData {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-  prospect: { label: "Prospectos", color: "text-amber-700 dark:text-amber-400", bgColor: "bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800" },
-  active: { label: "Activos", color: "text-emerald-700 dark:text-emerald-400", bgColor: "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800" },
-  inactive: { label: "Inactivos", color: "text-slate-600 dark:text-slate-400", bgColor: "bg-slate-100 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700" },
-  closed: { label: "Cerrados", color: "text-blue-700 dark:text-blue-400", bgColor: "bg-blue-100 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" },
+  hot: { label: "🔥 Calientes", color: "text-red-700 dark:text-red-400", bgColor: "bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800" },
+  warm: { label: "☀️ Tibios", color: "text-amber-700 dark:text-amber-400", bgColor: "bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800" },
+  cold: { label: "❄️ Fríos", color: "text-blue-700 dark:text-blue-400", bgColor: "bg-blue-100 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" },
 };
 
 const eventTypeEmoji: Record<string, string> = {
