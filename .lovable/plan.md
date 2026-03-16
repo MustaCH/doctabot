@@ -1,78 +1,132 @@
-# Mensajes de Audio estilo WhatsApp
+# Plan: Evolución a CRM Inmobiliario Completo
 
-## Resumen
+## Estado actual
 
-Agregar grabacion de audio al chat con reproductor inline en las burbujas de mensaje (como WhatsApp). El usuario graba, el audio queda visible y reproducible en el chat, y Alan recibe la transcripcion para responder.
+La app ya cuenta con: chat con IA (Alan), gestión de clientes con perfiles enriquecidos, propiedades con búsqueda/filtros/favoritos, vinculación cliente-propiedad, eventos con sync a Google Calendar, dashboard con pipeline/alertas, importación CSV/Excel, y panel de super admin.
 
-## Flujo del usuario
+---
 
-1. El usuario mantiene presionado (o toca) el boton de microfono que reemplaza al boton de enviar cuando no hay texto
-2. Se graba audio usando MediaRecorder API del navegador
-3. Al soltar/detener, el audio se muestra como burbuja de mensaje con reproductor inline
-4. En paralelo, se envia el audio a la edge function `transcribe` existente
-5. El texto transcripto se envia a Alan como mensaje (invisible para el usuario, que ve solo su burbuja de audio)
-6. Alan responde normalmente
+## Nuevas funcionalidades propuestas
 
-## Cambios planificados
+### 1. Búsqueda global unificada
+- Barra de búsqueda accesible desde cualquier pantalla (header global) que busque simultáneamente en clientes, propiedades y conversaciones.
+- Resultados agrupados por categoría con navegación directa.
 
-### 1. Ampliar tipos de mensaje (`src/lib/stream-chat.ts`)
+### 2. Ficha de cliente enriquecida (página dedicada)
+- Crear una ruta `/clients/:id` con vista completa del cliente: datos personales, propiedades vinculadas, timeline de interacciones, eventos, y notas.
+- **Timeline de actividad**: registro cronológico de acciones (propiedad vinculada, estado cambiado, evento creado, conversación iniciada).
+- Requiere nueva tabla `client_activity_log` (client_id, user_id, action_type, description, metadata jsonb, created_at).
 
-- Agregar campo opcional `audioUrl?: string` al tipo `Msg` para almacenar la URL del blob de audio en mensajes del usuario
+### 3. Notas y seguimiento por cliente
+- Agregar un sistema de notas rápidas (tipo sticky notes) vinculadas a cada cliente, con fecha y posibilidad de marcar como "acción pendiente".
+- Tabla `client_notes` (id, client_id, user_id, content, is_action, is_done, created_at).
+- Mostrar notas pendientes en el Dashboard como "Tareas del día".
 
-### 2. Hook de grabacion de audio (`src/hooks/use-audio-recorder.ts`) - NUEVO
+### 4. Matching automático propiedad-cliente
+- Cuando se carga una nueva propiedad o se actualiza una existente, Alan sugiere automáticamente clientes que podrían estar interesados basándose en: zonas preferidas, rango de presupuesto, tipo de propiedad buscada.
+- Botón "Ver matches" en cada propiedad y notificación en el dashboard.
+- Implementación: query en el frontend que cruza `clients.preferred_zones`, `budget_min/max`, y `property_type_interest` contra los datos de la propiedad.
 
-- Usa `navigator.mediaDevices.getUserMedia` para acceder al microfono
-- `MediaRecorder` para grabar en formato `audio/webm` (compatible con navegadores)
-- Estados: `idle`, `recording`, `processing`
-- Expone: `startRecording()`, `stopRecording()`, `isRecording`, `isTranscribing`
-- Al detener, devuelve `{ audioBlob, audioUrl }` via callback
-- Funcion `transcribeAudio(blob)` que envia al edge function `/functions/v1/transcribe` y retorna el texto
+### 5. Compartir propiedad por WhatsApp/Email
+- Botón en la tarjeta de propiedad para generar un mensaje pre-armado con foto, precio, ubicación y link, listo para enviar por WhatsApp (vía `wa.me` deep link) o copiar al portapapeles.
+- Opción de enviar por email usando la integración de Gmail ya existente (tool `send_email`).
 
-### 3. Modificar ChatInput (`src/components/ChatInput.tsx`)
+### 6. Kanban visual de propiedades por cliente
+- En la ficha del cliente, mostrar las propiedades vinculadas como un board Kanban con columnas: Sugerida → Enviada → Visitada → (Cerrada / Descartada).
+- Drag & drop para cambiar estado (en desktop), tap para cambiar en mobile.
 
-- Importar el hook `useAudioRecorder`
-- Cuando no hay texto ni adjuntos, mostrar boton de **microfono** en lugar del boton de enviar
-- Al presionar el microfono: iniciar grabacion, cambiar UI a estado "grabando" (indicador rojo pulsante + duracion + boton cancelar/enviar)
-- Al soltar/confirmar: detener grabacion y llamar `onSendAudio(audioBlob, audioUrl)`
-- Nueva prop `onSendAudio` en la interfaz
+### 7. Recordatorios y notificaciones push
+- Implementar notificaciones push vía Service Worker (ya existe `use-sw-update.ts`).
+- Notificar: eventos del día, clientes estancados, nuevas propiedades que matchean con algún cliente.
+- Tabla `notification_preferences` para configurar qué notificaciones recibir.
 
-### 4. Modificar use-chat-messages (`src/hooks/use-chat-messages.ts`)
+### 8. Reportes y métricas avanzadas
+- Expandir el Dashboard con:
+  - **Gráfico de embudo**: Prospectos → Activos → Cerrados (conversión).
+  - **Propiedades más compartidas/visitadas** (basado en `client_properties`).
+  - **Actividad semanal**: gráfico de barras con acciones por día.
+  - **Tasa de conversión**: % de prospectos que pasan a activos y a cerrados.
 
-- Agregar funcion `handleSendAudio(blob: Blob, localUrl: string)`
-- Agrega inmediatamente un mensaje de usuario con `audioUrl` y content placeholder `"(mensaje de voz)"`
-- Llama a la edge function `transcribe` para obtener el texto
-- Actualiza el contenido del mensaje del usuario con el texto transcripto (prefijado con icono de microfono)
-- Envia el texto transcripto a `streamChat` para que Alan responda
-- Guarda en la DB el texto transcripto (no el audio)
+### 9. Etiquetas/Tags personalizados
+- Permitir al agente crear tags de colores para organizar clientes (ej: "Urgente", "VIP", "Inversor", "Primera vivienda").
+- Tabla `tags` (id, user_id, name, color) y `client_tags` (client_id, tag_id).
+- Filtrar clientes por tags en la lista.
 
-### 5. Componente de reproductor de audio en ChatMessage (`src/components/ChatMessage.tsx`)
+### 10. Historial de interacciones con el cliente
+- Registrar automáticamente cuándo se envía una propiedad, se realiza una visita, se llama, etc.
+- Actualizar `last_contact_at` automáticamente al vincular propiedades o crear eventos.
+- Mostrar este historial en la ficha del cliente.
 
-- Nuevo sub-componente `AudioBubble` que renderiza:
-  - Boton play/pause
-  - Barra de progreso animada (estilo WhatsApp)
-  - Duracion del audio
-  - Indicador de "transcribiendo..." mientras se procesa
-- Se muestra cuando `msg.audioUrl` existe
-- Usa `HTMLAudioElement` para reproduccion
+---
 
-### 6. Pasar datos de audio por Chat.tsx
+## Mejoras generales de UX
 
-- Conectar `onSendAudio` del ChatInput con `handleSendAudio` del hook
-- Agregar estado `isTranscribing` al indicador de procesamiento
+### A. Navegación inferior persistente (mobile)
+- Reemplazar la navegación actual (que obliga a ir a Perfil para acceder a otras secciones) con una bottom navigation bar fija con iconos: Chat, Propiedades, Clientes, Dashboard, Perfil.
+- Esto reduce la fricción y mejora la navegabilidad drásticamente.
 
-## Detalles tecnicos
+### B. Modo oscuro persistente
+- Agregar toggle de tema claro/oscuro en Perfil, persistido en localStorage.
 
-- **Formato de audio**: `audio/webm;codecs=opus` (nativo del navegador), se convierte a WAV antes de enviar al transcribe function si es necesario, o se envia como webm ya que Gemini lo soporta
-- **Almacenamiento**: El audio NO se persiste en la DB/storage; solo se mantiene como blob URL en la sesion actual. Al recargar, se ve el texto transcripto
-- **Permisos**: Se solicita permiso de microfono al primer uso; si se deniega se muestra toast de error
-- **Limite**: Maximo 2 minutos de grabacion (auto-stop)
-- **Edge function transcribe**: Ya existe y funciona con Gemini, solo hay que asegurarse de que acepte webm ademas de wav (el formato se pasa como parametro)
+### C. Pull-to-refresh
+- En listas de clientes y propiedades, implementar pull-to-refresh para actualizar datos.
 
-# Sistema de Supervisión de Respuestas de Alan ✅
+### D. Estados vacíos mejorados
+- Ilustraciones y CTAs claros cuando no hay clientes, propiedades favoritas, o eventos.
 
-## Implementado
+### E. Búsqueda dentro de la lista de clientes
+- Agregar campo de búsqueda por nombre/teléfono/email en el header de Clientes (actualmente solo filtra por tipo).
 
-- **Tabla `supervisor_logs`**: Almacena cada evaluación (veredicto, score, motivo, reintentos, latencia)
-- **Capa de supervisión en `chat/index.ts`**: Usa `gemini-2.5-flash-lite` para evaluar respuestas antes de enviarlas. Máx 2 reintentos si rechazada. Fail-open si el supervisor falla.
-- **Acciones en `admin-stats`**: `supervisor-stats` y `supervisor-logs` para consultar datos
-- **Pestaña "Supervisor" en Super Admin**: KPIs, gráfico de 30 días, tabla de logs con detalle expandible, filtros y exportación CSV
+---
+
+## Esquema de base de datos (nuevas tablas)
+
+```text
+client_activity_log
+├── id (uuid, PK)
+├── client_id (uuid, FK → clients)
+├── user_id (uuid)
+├── action_type (text: 'property_linked', 'status_changed', 'note_added', 'event_created', 'call_logged')
+├── description (text)
+├── metadata (jsonb)
+└── created_at (timestamptz)
+
+client_notes
+├── id (uuid, PK)
+├── client_id (uuid, FK → clients)
+├── user_id (uuid)
+├── content (text)
+├── is_action (boolean, default false)
+├── is_done (boolean, default false)
+└── created_at (timestamptz)
+
+tags
+├── id (uuid, PK)
+├── user_id (uuid)
+├── name (text)
+├── color (text)
+└── created_at (timestamptz)
+
+client_tags
+├── id (uuid, PK)
+├── client_id (uuid, FK → clients)
+├── tag_id (uuid, FK → tags)
+└── created_at (timestamptz)
+```
+
+---
+
+## Orden de implementación sugerido
+
+| Prioridad | Feature | Impacto | Estado |
+|-----------|---------|---------|--------|
+| 1 | **Navegación inferior persistente** | Alto | ✅ Implementado |
+| 2 | **Búsqueda de clientes** | Alto | ✅ Implementado |
+| 3 | **Compartir propiedad por WhatsApp** | Alto | ⬜ Pendiente |
+| 4 | **Matching automático propiedad-cliente** | Alto | ⬜ Pendiente |
+| 5 | **Ficha de cliente dedicada con timeline** | Alto | ⬜ Pendiente |
+| 6 | **Notas/tareas por cliente** | Medio | ⬜ Pendiente |
+| 7 | **Tags personalizados** | Medio | ⬜ Pendiente |
+| 8 | **Kanban de propiedades por cliente** | Medio | ⬜ Pendiente |
+| 9 | **Reportes avanzados** | Medio | ⬜ Pendiente |
+| 10 | **Notificaciones push** | Medio | ⬜ Pendiente |
