@@ -122,7 +122,7 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 relative hidden md:inline-flex"
+            className="h-8 w-8 relative"
             onClick={() => navigate("/profile")}
           >
             <UserCircle className="h-5 w-5" />
