@@ -49,6 +49,11 @@ const Chat = () => {
     loadConversations();
   }, [loadConversations]);
 
+  const { pullDistance, refreshing } = usePullToRefresh({
+    onRefresh: loadConversations,
+    scrollRef,
+  });
+
   // Scroll listener for floating button
   useEffect(() => {
     const el = scrollRef.current;
