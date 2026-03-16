@@ -140,9 +140,6 @@ const Clients = () => {
     if (typeFilter !== "all") {
       result = result.filter(c => c.client_type === typeFilter || c.client_type === "both");
     }
-    if (tagFilter) {
-      result = result.filter(c => getClientTags(c.id).some(t => t.id === tagFilter));
-    }
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(c =>
