@@ -820,6 +820,56 @@ const toolDefinitions = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_client_note",
+      description: "Crear una nota o tarea pendiente para un cliente. Usar cuando el agente quiera dejar un recordatorio, una observación o una acción pendiente sobre un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
+          content: { type: "string", description: "Contenido de la nota o tarea" },
+          is_action: { type: "boolean", description: "true si es una tarea/acción pendiente, false si es solo una nota informativa (default false)" },
+        },
+        required: ["content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_client_notes",
+      description: "Listar las notas y tareas pendientes de un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          show_done: { type: "boolean", description: "Incluir tareas completadas (default false)" },
+        },
+        required: ["client_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "toggle_client_note",
+      description: "Marcar una tarea/nota de cliente como completada o pendiente.",
+      parameters: {
+        type: "object",
+        properties: {
+          note_id: { type: "string", description: "ID de la nota/tarea" },
+          is_done: { type: "boolean", description: "true para marcar como completada, false para pendiente" },
+        },
+        required: ["note_id", "is_done"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ============================================================================
