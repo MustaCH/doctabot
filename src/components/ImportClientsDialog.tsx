@@ -170,7 +170,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
       const batch = parsedClients.slice(i, i + BATCH).map(c => ({
         ...c,
         user_id: userId,
-        status: "prospect",
+        status: "hot",
       }));
 
       const { error } = await supabase.from("clients").insert(batch);

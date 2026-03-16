@@ -36,17 +36,15 @@ interface Client {
 }
 
 const statusLabel: Record<string, string> = {
-  prospect: "Prospecto",
-  active: "Activo",
-  inactive: "Inactivo",
-  closed: "Cerrado",
+  hot: "🔥 Caliente",
+  warm: "☀️ Tibio",
+  cold: "❄️ Frío",
 };
 
-const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  prospect: "secondary",
-  active: "default",
-  inactive: "outline",
-  closed: "destructive",
+const statusColor: Record<string, string> = {
+  hot: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
+  warm: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+  cold: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
 };
 
 const clientTypeLabel: Record<string, string> = {
@@ -299,9 +297,9 @@ const Clients = () => {
                         <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
                           {clientTypeLabel[client.client_type] ?? client.client_type}
                         </Badge>
-                        <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
                           {statusLabel[client.status] ?? client.status}
-                        </Badge>
+                        </span>
                         {client.source && (
                           <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                             {client.source}
