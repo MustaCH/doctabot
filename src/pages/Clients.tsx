@@ -368,6 +368,7 @@ const Clients = () => {
     }
   };
 
+  const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
     return `${currency ?? "USD"} ${price.toLocaleString("es-AR")}`;
   };
