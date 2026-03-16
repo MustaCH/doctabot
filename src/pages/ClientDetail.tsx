@@ -498,7 +498,7 @@ const ClientDetail = () => {
                 return (
                   <div key={cp.id} className="rounded-xl border border-border bg-card overflow-hidden">
                     {p.photo && (
-                      <div className="relative aspect-[3/1] w-full overflow-hidden bg-muted">
+                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
                         <img src={p.photo} alt={p.title ?? ""} className="h-full w-full object-cover" loading="lazy" />
                       </div>
                     )}
