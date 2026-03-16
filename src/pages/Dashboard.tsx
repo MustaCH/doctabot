@@ -170,7 +170,7 @@ const Dashboard = () => {
     if (!data) return [];
     const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
     return data.clients
-      .filter(c => c.status === "active" || c.status === "prospect")
+      .filter(c => c.status === "hot" || c.status === "warm")
       .filter(c => {
         const lastContact = c.last_contact_at ? new Date(c.last_contact_at) : new Date(c.updated_at);
         return lastContact < cutoff;
