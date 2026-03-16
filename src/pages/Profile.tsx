@@ -234,8 +234,8 @@ const Profile = () => {
           </Button>
         </div>
 
-        {/* Two-column layout on desktop for calendar + form */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+        {/* Google connection - compact, not in grid */}
+        <div className="md:max-w-sm">
           {/* Google Calendar */}
           <div className="rounded-lg border bg-card p-3">
             {calendarConnected ? (
