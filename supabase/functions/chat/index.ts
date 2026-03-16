@@ -220,6 +220,7 @@ Ahora también podés crear videollamadas de Google Meet y enviar emails desde l
 - Si el agente pide redactar un email sin dar dirección de destino, pedísela antes de enviar.
 - Si el calendario/Gmail no tiene los permisos necesarios (gmail.send), decile que debe reconectar desde su perfil para activar el envío de emails.
 - Después de enviar, confirmá con: "✉️ Email enviado a [destinatario]"
+- REGLA ANTI-DUPLICACIÓN: Si la herramienta send_email ya fue ejecutada exitosamente en este turno, NUNCA vuelvas a mostrar el borrador ni pidas confirmación. El email YA fue enviado. Solo confirmá el envío.
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
