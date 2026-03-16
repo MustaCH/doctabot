@@ -2069,6 +2069,7 @@ serve(async (req) => {
 
     // Tool call loop (max 5 iterations)
     let iterations = 0;
+    const executedTools: string[] = [];
     while (choice?.finish_reason === "tool_calls" && iterations < 5) {
       iterations++;
       const toolCalls = choice.message.tool_calls;
@@ -2077,6 +2078,13 @@ serve(async (req) => {
       for (const tc of toolCalls) {
         const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments), toolCtx);
         currentMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
+        // Track successfully executed tools (no error in result)
+        try {
+          const parsed = JSON.parse(result);
+          if (parsed.success || !parsed.error) {
+            executedTools.push(tc.function.name);
+          }
+        } catch { executedTools.push(tc.function.name); }
       }
 
       aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
