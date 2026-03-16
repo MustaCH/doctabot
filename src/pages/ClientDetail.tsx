@@ -653,7 +653,7 @@ const ClientDetail = () => {
                           disabled={!client.phone}
                           title={client.phone ? "Enviar por WhatsApp" : "Sin teléfono"}
                         >
-                          <Share2 className="h-3 w-3" />
+                          <WhatsAppIcon className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="icon"
