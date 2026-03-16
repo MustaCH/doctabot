@@ -252,7 +252,8 @@ const Clients = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+        <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
