@@ -31,6 +31,15 @@ interface ClientEvent {
   clients: { full_name: string } | null;
 }
 
+interface PendingNote {
+  id: string;
+  content: string;
+  is_done: boolean;
+  created_at: string;
+  client_id: string;
+  client_name?: string;
+}
+
 interface DashboardData {
   totalProperties: number;
   totalClients: number;
@@ -39,6 +48,7 @@ interface DashboardData {
   clients: Client[];
   events: ClientEvent[];
   recentConversations: { id: string; title: string; updated_at: string }[];
+  pendingNotes: PendingNote[];
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
