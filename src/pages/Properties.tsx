@@ -9,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PropertyCard from "@/components/PropertyCard";
 import { LinkPropertyToClientDialog } from "@/components/LinkPropertyToClientDialog";
-import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus } from "lucide-react";
+import { PropertyMatchesDialog } from "@/components/PropertyMatchesDialog";
+import { usePropertyMatches } from "@/hooks/use-property-matches";
+import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 interface PropertyRow {
