@@ -487,7 +487,7 @@ const toolDefinitions = [
           phone: { type: "string", description: "Nuevo teléfono" },
           email: { type: "string", description: "Nuevo email" },
           notes: { type: "string", description: "Nuevas notas" },
-          status: { type: "string", description: "Nuevo estado: prospect, active, inactive, closed" },
+          status: { type: "string", description: "Nuevo estado: hot (caliente), warm (tibio), cold (frío)" },
           client_type: { type: "string", description: "Tipo: buyer, seller, both" },
           birthday: { type: "string", description: "Cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
