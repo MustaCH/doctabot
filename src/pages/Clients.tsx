@@ -257,9 +257,20 @@ const Clients = () => {
   }, [loadClients, loadAllEvents]);
 
   const filteredClients = useMemo(() => {
-    if (typeFilter === "all") return clients;
-    return clients.filter(c => c.client_type === typeFilter || c.client_type === "both");
-  }, [clients, typeFilter]);
+    let result = clients;
+    if (typeFilter !== "all") {
+      result = result.filter(c => c.client_type === typeFilter || c.client_type === "both");
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(c =>
+        c.full_name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [clients, typeFilter, searchQuery]);
 
   const openEdit = (client: Client) => {
     setEditClient(client);
