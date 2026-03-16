@@ -1,4 +1,4 @@
-import { ExternalLink, Copy, Check, BadgeCheck, Home, Heart } from "lucide-react";
+import { ExternalLink, Copy, Check, BadgeCheck, Home, Heart, Share2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
