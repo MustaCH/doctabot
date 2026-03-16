@@ -119,7 +119,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   };
 
   const handleWhatsApp = () => {
-    if (!finalUrl) return;
+    if (!finalUrl || !whatsappPhone) return;
     const lines = [
       title && `🏠 *${title}*`,
       price && `💰 ${price}`,
@@ -128,7 +128,8 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
       `\n🔗 ${finalUrl}`,
     ].filter(Boolean);
     const text = lines.join("\n");
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    const phone = whatsappPhone.replace(/\D/g, "");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
   };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
