@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Heart, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw } from "lucide-react";
+import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -198,10 +198,10 @@ const Profile = () => {
             type="button"
             variant="outline"
             className="flex-1"
-            onClick={() => navigate("/favorites")}
+            onClick={() => navigate("/properties")}
           >
-            <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
-            Favoritos
+            <Building2 className="mr-2 h-4 w-4 text-primary" />
+            Propiedades
           </Button>
           <Button
             type="button"

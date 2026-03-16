@@ -8,7 +8,7 @@ import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
-import Favorites from "./pages/Favorites";
+import Properties from "./pages/Properties";
 import Clients from "./pages/Clients";
 import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
@@ -79,7 +79,7 @@ const App = () => (
             <Route path="/tutorial" element={<TutorialRoute><Tutorial /></TutorialRoute>} />
             <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
+            <Route path="/properties" element={<ProtectedRoute><Properties /></ProtectedRoute>} />
             <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/superadminpanel" element={<SuperAdmin />} />
