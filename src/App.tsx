@@ -1,20 +1,22 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import Login from "./pages/Login";
-import Chat from "./pages/Chat";
-import Onboarding from "./pages/Onboarding";
-import Profile from "./pages/Profile";
-import Properties from "./pages/Properties";
-import Clients from "./pages/Clients";
-import ClientDetail from "./pages/ClientDetail";
-import Dashboard from "./pages/Dashboard";
-import SuperAdmin from "./pages/SuperAdmin";
-import Tutorial from "./pages/Tutorial";
-import NotFound from "./pages/NotFound";
+
+const Login = lazy(() => import("./pages/Login"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Properties = lazy(() => import("./pages/Properties"));
+const Clients = lazy(() => import("./pages/Clients"));
+const ClientDetail = lazy(() => import("./pages/ClientDetail"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const Tutorial = lazy(() => import("./pages/Tutorial"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
