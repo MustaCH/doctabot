@@ -240,23 +240,6 @@ const Clients = () => {
               {fb.label}
             </Button>
           ))}
-          {tags.length > 0 && (
-            <>
-              <div className="w-px h-5 bg-border shrink-0 mx-1" />
-              {tags.map(tag => (
-                <Button
-                  key={tag.id}
-                  size="sm"
-                  variant={tagFilter === tag.id ? "default" : "ghost"}
-                  className="h-7 text-xs px-3 shrink-0 gap-1"
-                  onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}
-                >
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                  {tag.name}
-                </Button>
-              ))}
-            </>
-          )}
         </div>
       </div>
 
