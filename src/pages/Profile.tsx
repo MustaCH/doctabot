@@ -152,8 +152,8 @@ const Profile = () => {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-4 py-6 md:px-8 md:py-10">
-      <form onSubmit={handleSave} className="w-full max-w-sm md:max-w-2xl lg:max-w-3xl space-y-6">
+    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-4 py-6 md:px-12 md:py-10">
+      <form onSubmit={handleSave} className="w-full max-w-sm md:max-w-3xl lg:max-w-5xl space-y-6 md:space-y-8">
         {/* Header */}
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" size="icon" onClick={() => navigate("/")}>
