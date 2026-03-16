@@ -442,18 +442,6 @@ const ClientDetail = () => {
           </DropdownMenu>
         </div>
 
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="mt-2 ml-[4.5rem]">
-            <ClientTagPicker
-              clientId={client.id}
-              allTags={tags}
-              assignedTags={getClientTags(client.id)}
-              onAssign={assignTag}
-              onRemove={removeTag}
-            />
-          </div>
-        )}
       </div>
 
       {/* Quick action bar */}
