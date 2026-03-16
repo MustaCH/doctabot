@@ -179,7 +179,7 @@ Podés gestionar fechas importantes para cada cliente (cumpleaños, aniversarios
 
 **COMPORTAMIENTO AUTOMÁTICO:**
 - Cuando el agente registra un cumpleaños de cliente (campo birthday en create_client o update_client), sugerí TAMBIÉN crear un evento de tipo "birthday" con create_client_event para que quede en el calendario.
-- Cuando se cierra una operación (cambio de status a "closed"), sugerí crear un evento "purchase_anniversary" con la fecha del cierre.
+- Cuando se cierra una operación, sugerí crear un evento "purchase_anniversary" con la fecha del cierre y cambiar el estado del cliente a "cold".
 - Al crear un evento, si el agente tiene Google Calendar conectado, se crea automáticamente el evento recurrente en el calendario.
 
 ## GESTIÓN DE GOOGLE CALENDAR
@@ -457,7 +457,7 @@ const toolDefinitions = [
           phone: { type: "string", description: "Teléfono del cliente" },
           email: { type: "string", description: "Email del cliente" },
           notes: { type: "string", description: "Notas libres sobre el cliente" },
-          status: { type: "string", description: "Estado: prospect (default), active, inactive, closed" },
+          status: { type: "string", description: "Estado: hot (caliente/interesado, default), warm (tibio/en seguimiento), cold (frío/sin actividad)" },
           client_type: { type: "string", description: "Tipo: buyer (compra/alquila, default), seller (vende/alquila su propiedad), both" },
           birthday: { type: "string", description: "Fecha de cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
@@ -487,7 +487,7 @@ const toolDefinitions = [
           phone: { type: "string", description: "Nuevo teléfono" },
           email: { type: "string", description: "Nuevo email" },
           notes: { type: "string", description: "Nuevas notas" },
-          status: { type: "string", description: "Nuevo estado: prospect, active, inactive, closed" },
+          status: { type: "string", description: "Nuevo estado: hot (caliente), warm (tibio), cold (frío)" },
           client_type: { type: "string", description: "Tipo: buyer, seller, both" },
           birthday: { type: "string", description: "Cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
@@ -513,7 +513,7 @@ const toolDefinitions = [
         type: "object",
         properties: {
           search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
-          status: { type: "string", description: "Filtrar por estado: prospect, active, closed" },
+          status: { type: "string", description: "Filtrar por estado: hot, warm, cold" },
           limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
         },
         additionalProperties: false,
@@ -881,7 +881,7 @@ const toolDefinitions = [
 // ============================================================================
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VALID_CLIENT_STATUSES = ["prospect", "active", "inactive", "closed"];
+const VALID_CLIENT_STATUSES = ["hot", "warm", "cold"];
 const VALID_CLIENT_TYPES = ["buyer", "seller", "both"];
 const VALID_BUDGET_CURRENCIES = ["USD", "ARS"];
 const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
@@ -1218,7 +1218,7 @@ async function executeTool(
       const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
-      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "prospect";
+      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "hot";
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
