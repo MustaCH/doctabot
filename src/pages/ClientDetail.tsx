@@ -9,14 +9,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
   Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
   Clock, CheckCircle2, Circle, Send, Share2, StickyNote, ChevronDown,
+  Pencil, MoreVertical,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useTags } from "@/hooks/use-tags";
 import { ClientTagPicker } from "@/components/TagComponents";
+import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 
 interface Client {
   id: string;
@@ -118,6 +123,11 @@ const ClientDetail = () => {
   const [newNote, setNewNote] = useState("");
   const [isAction, setIsAction] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState<ClientFormData>(emptyClientForm);
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { tags, getClientTags, assignTag, removeTag } = useTags();
 
@@ -262,6 +272,84 @@ const ClientDetail = () => {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
   };
 
+  const clientToForm = (c: Client): ClientFormData => ({
+    full_name: c.full_name,
+    phone: c.phone ?? "",
+    email: c.email ?? "",
+    notes: c.notes ?? "",
+    status: c.status,
+    client_type: c.client_type ?? "buyer",
+    birthday: c.birthday ?? "",
+    company: c.company ?? "",
+    address: c.address ?? "",
+    preferred_zones: c.preferred_zones ?? "",
+    budget_min: c.budget_min != null ? String(c.budget_min) : "",
+    budget_max: c.budget_max != null ? String(c.budget_max) : "",
+    budget_currency: c.budget_currency ?? "USD",
+    property_type_interest: c.property_type_interest ?? "",
+    source: c.source ?? "",
+  });
+
+  const formToDb = (form: ClientFormData) => ({
+    full_name: form.full_name.trim(),
+    phone: form.phone.trim() || null,
+    email: form.email.trim() || null,
+    notes: form.notes.trim() || null,
+    status: form.status,
+    client_type: form.client_type,
+    birthday: form.birthday || null,
+    company: form.company.trim() || null,
+    address: form.address.trim() || null,
+    preferred_zones: form.preferred_zones.trim() || null,
+    budget_min: form.budget_min ? Number(form.budget_min) : null,
+    budget_max: form.budget_max ? Number(form.budget_max) : null,
+    budget_currency: form.budget_currency || "USD",
+    property_type_interest: form.property_type_interest.trim() || null,
+    source: form.source || null,
+  });
+
+  const openEdit = () => {
+    if (!client) return;
+    setEditForm(clientToForm(client));
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!client) return;
+    if (!editForm.full_name.trim()) {
+      toast.error("El nombre no puede estar vacío");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("clients").update(formToDb(editForm)).eq("id", client.id);
+      if (error) throw error;
+      toast.success("Cliente actualizado");
+      setShowEdit(false);
+      loadClient();
+    } catch {
+      toast.error("Error al guardar los cambios");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!client) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("clients").delete().eq("id", client.id);
+      if (error) throw error;
+      toast.success("Cliente eliminado");
+      navigate("/clients");
+    } catch {
+      toast.error("Error al eliminar el cliente");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+
   const formatDate = (d: string) => {
     try {
       return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
@@ -331,6 +419,23 @@ const ClientDetail = () => {
               </span>
             </div>
           </div>
+
+          {/* Edit/Delete menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={openEdit} className="gap-2">
+                <Pencil className="h-3.5 w-3.5" /> Editar cliente
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowDeleteConfirm(true)} className="gap-2 text-destructive focus:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" /> Eliminar cliente
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Tags */}
@@ -695,6 +800,40 @@ const ClientDetail = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEdit} onOpenChange={setShowEdit}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-5 pt-5 pb-2">
+            <DialogTitle>Editar cliente</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-5 pb-2 min-h-0">
+            <ClientFormFields form={editForm} onChange={setEditForm} />
+          </div>
+          <DialogFooter className="px-5 pb-5 pt-3 border-t border-border/40 gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setShowEdit(false)} disabled={saving}>Cancelar</Button>
+            <Button className="flex-1" onClick={handleSaveEdit} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará permanentemente a <strong>{client.full_name}</strong>. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
