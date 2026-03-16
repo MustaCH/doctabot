@@ -97,6 +97,12 @@ const Clients = () => {
 
   // Import state
   const [showImport, setShowImport] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { pullDistance, refreshing } = usePullToRefresh({
+    onRefresh: async () => { await loadClients(); await loadPropertyCounts(); },
+    scrollRef,
+  });
 
   const loadClients = useCallback(async () => {
     if (!user) return;
