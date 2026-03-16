@@ -11,6 +11,8 @@ import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2,
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 interface Client {
   id: string;
