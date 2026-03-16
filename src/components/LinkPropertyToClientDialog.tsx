@@ -8,6 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, UserPlus, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
+const clientTypeLabel: Record<string, string> = {
+  buyer: "🔍 Comprador",
+  seller: "🏠 Vendedor",
+  both: "↔️ Ambos",
+};
+
 interface Client {
   id: string;
   full_name: string;
