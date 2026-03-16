@@ -62,6 +62,9 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 24. **create_client_event**: Crear un evento/fecha importante para un cliente (cumpleaños, aniversario de compra, vencimientos, etc.) con sincronización automática a Google Calendar
 25. **list_client_events**: Ver los eventos/fechas importantes de un cliente
 26. **delete_client_event**: Eliminar un evento/fecha importante de un cliente (también lo elimina de Google Calendar)
+27. **create_client_note**: Crear una nota o tarea pendiente para un cliente. Si is_action=true, se trata de una tarea/acción pendiente que aparece en el dashboard.
+28. **list_client_notes**: Ver las notas y tareas pendientes de un cliente
+29. **toggle_client_note**: Marcar una tarea como completada o pendiente
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -129,6 +132,9 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 - Cuando el agente mencione guardar una propiedad "para un cliente", usá save_property_to_client. Podés sugerir proactivamente guardar propiedades que se estén buscando para un cliente vinculado.
 - Los estados de propiedades vinculadas son: sugerida (default), enviada, visitada, descartada.
 - Cuando el agente pida ver las propiedades de un cliente, usá list_client_properties.
+- Cuando el agente mencione "anotá", "recordame", "pendiente", "tarea" para un cliente → usá create_client_note con is_action=true.
+- Cuando el agente quiera dejar una observación o nota sobre un cliente → usá create_client_note con is_action=false.
+- Podés sugerir crear notas/tareas cuando detectes información relevante durante la conversación.
 
 **ESTADOS DE CLIENTES:**
 - prospect: Cliente potencial (default)
@@ -813,6 +819,56 @@ const toolDefinitions = [
           event_id: { type: "string", description: "ID del evento a eliminar" },
         },
         required: ["event_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_client_note",
+      description: "Crear una nota o tarea pendiente para un cliente. Usar cuando el agente quiera dejar un recordatorio, una observación o una acción pendiente sobre un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
+          content: { type: "string", description: "Contenido de la nota o tarea" },
+          is_action: { type: "boolean", description: "true si es una tarea/acción pendiente, false si es solo una nota informativa (default false)" },
+        },
+        required: ["content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_client_notes",
+      description: "Listar las notas y tareas pendientes de un cliente.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente" },
+          show_done: { type: "boolean", description: "Incluir tareas completadas (default false)" },
+        },
+        required: ["client_id"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "toggle_client_note",
+      description: "Marcar una tarea/nota de cliente como completada o pendiente.",
+      parameters: {
+        type: "object",
+        properties: {
+          note_id: { type: "string", description: "ID de la nota/tarea" },
+          is_done: { type: "boolean", description: "true para marcar como completada, false para pendiente" },
+        },
+        required: ["note_id", "is_done"],
         additionalProperties: false,
       },
     },
@@ -1739,6 +1795,60 @@ async function executeTool(
       const { error } = await supabase.from("client_events").delete().eq("id", args.event_id).eq("user_id", userId);
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, message: `Evento "${ev.title}" eliminado${ev.google_event_id ? " (también de Google Calendar)" : ""}.` });
+    }
+
+    // ---- Client Notes / Tasks ----
+    case "create_client_note": {
+      let clientId = args.client_id;
+      // Resolve by name if no ID
+      if (!clientId && args.client_name) {
+        const search = sanitizePattern(args.client_name);
+        if (search) {
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
+          if (found?.length) clientId = found[0].id;
+          else return JSON.stringify({ error: `No encontré un cliente con nombre "${args.client_name}"` });
+        }
+      }
+      if (!clientId || !UUID_REGEX.test(clientId)) return JSON.stringify({ error: "Se necesita un client_id o client_name válido" });
+      const content = typeof args.content === "string" ? args.content.trim().slice(0, 2000) : null;
+      if (!content) return JSON.stringify({ error: "El contenido de la nota es requerido" });
+      const isAction = args.is_action === true;
+      const { data, error } = await supabase
+        .from("client_notes")
+        .insert({ client_id: clientId, user_id: userId, content, is_action: isAction, is_done: false })
+        .select("id, content, is_action, is_done, created_at")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, note: data, message: isAction ? `Tarea pendiente creada: "${content}"` : `Nota guardada: "${content}"` });
+    }
+
+    case "list_client_notes": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      let query = supabase
+        .from("client_notes")
+        .select("id, content, is_action, is_done, created_at")
+        .eq("client_id", args.client_id)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!args.show_done) query = query.eq("is_done", false);
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ notes: data ?? [], total: data?.length ?? 0 });
+    }
+
+    case "toggle_client_note": {
+      if (!args.note_id || !UUID_REGEX.test(args.note_id)) return JSON.stringify({ error: "ID de nota inválido" });
+      const isDone = args.is_done === true;
+      const { data, error } = await supabase
+        .from("client_notes")
+        .update({ is_done: isDone })
+        .eq("id", args.note_id)
+        .eq("user_id", userId)
+        .select("id, content, is_done")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, note: data, message: isDone ? `Tarea completada ✅` : `Tarea marcada como pendiente` });
     }
 
     default:
