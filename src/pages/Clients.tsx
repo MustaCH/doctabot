@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, CalendarDays } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, CalendarDays, X } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
@@ -165,6 +168,11 @@ const Clients = () => {
   // Import state
   const [showImport, setShowImport] = useState(false);
 
+  // Event creation state
+  const [eventForClient, setEventForClient] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+  const [creatingEvent, setCreatingEvent] = useState(false);
+
   const loadClients = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -317,6 +325,46 @@ const Clients = () => {
       toast.error("Error al crear el cliente");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    if (!user || !eventForClient) return;
+    if (!eventForm.title.trim() || !eventForm.event_date) {
+      toast.error("Completá título y fecha");
+      return;
+    }
+    setCreatingEvent(true);
+    try {
+      const { error } = await supabase.from("client_events").insert({
+        client_id: eventForClient,
+        user_id: user.id,
+        title: eventForm.title.trim(),
+        event_type: eventForm.event_type,
+        event_date: eventForm.event_date,
+        recurrence: eventForm.recurrence,
+        notes: eventForm.notes.trim() || null,
+      });
+      if (error) throw error;
+      toast.success("Evento creado");
+      setEventForClient(null);
+      setEventForm({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+      loadAllEvents();
+    } catch {
+      toast.error("Error al crear el evento");
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      const { error } = await supabase.from("client_events").delete().eq("id", eventId);
+      if (error) throw error;
+      toast.success("Evento eliminado");
+      loadAllEvents();
+    } catch {
+      toast.error("Error al eliminar el evento");
     }
   };
 
@@ -501,18 +549,32 @@ const Clients = () => {
                   {/* Events section - always visible when loaded */}
                   {(() => {
                     const events = clientEvents[client.id];
-                    if (!events || events.length === 0) return null;
                     const eventTypeEmoji: Record<string, string> = { birthday: "🎂", purchase_anniversary: "🏠", contract_expiry: "📄", followup: "📞", custom: "📌" };
                     const recurrenceLabel: Record<string, string> = { yearly: "Anual", once: "Única vez", monthly: "Mensual" };
                     return (
                       <div className="space-y-1 pt-0.5">
-                        <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>Fechas importantes</span>
-                          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                        <div className="flex items-center justify-between px-1 py-0.5">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <CalendarDays className="h-3 w-3" />
+                            <span>Fechas importantes</span>
+                            {events && events.length > 0 && (
+                              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5"
+                            onClick={() => {
+                              setEventForClient(client.id);
+                              setEventForm({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+                            }}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
                         </div>
-                        {events.map((ev) => (
-                          <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
+                        {events && events.map((ev) => (
+                          <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5 group">
                             <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium truncate">{ev.title}</p>
@@ -528,6 +590,14 @@ const Clients = () => {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
+                              onClick={() => handleDeleteEvent(ev.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -643,6 +713,71 @@ const Clients = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Event Creation Dialog */}
+      <Dialog open={!!eventForClient} onOpenChange={(open) => { if (!open) setEventForClient(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nueva fecha importante</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Título</Label>
+              <Input
+                placeholder="Ej: Cumpleaños de Juan"
+                value={eventForm.title}
+                onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo</Label>
+                <Select value={eventForm.event_type} onValueChange={(v) => setEventForm(f => ({ ...f, event_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="birthday">🎂 Cumpleaños</SelectItem>
+                    <SelectItem value="purchase_anniversary">🏠 Aniversario compra</SelectItem>
+                    <SelectItem value="contract_expiry">📄 Vencimiento</SelectItem>
+                    <SelectItem value="followup">📞 Seguimiento</SelectItem>
+                    <SelectItem value="custom">📌 Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Recurrencia</Label>
+                <Select value={eventForm.recurrence} onValueChange={(v) => setEventForm(f => ({ ...f, recurrence: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yearly">Anual</SelectItem>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                    <SelectItem value="once">Única vez</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Fecha</Label>
+              <Input
+                type="date"
+                value={eventForm.event_date}
+                onChange={(e) => setEventForm(f => ({ ...f, event_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notas (opcional)</Label>
+              <Input
+                placeholder="Notas adicionales..."
+                value={eventForm.notes}
+                onChange={(e) => setEventForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEventForClient(null)} disabled={creatingEvent}>Cancelar</Button>
+            <Button onClick={handleCreateEvent} disabled={creatingEvent}>{creatingEvent ? "Creando..." : "Crear evento"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Import Dialog */}
       {user && (
