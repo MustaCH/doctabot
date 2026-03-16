@@ -286,6 +286,41 @@ const Dashboard = () => {
               )}
             </section>
 
+            {/* Pending tasks */}
+            {data!.pendingNotes.length > 0 && (
+              <section className="space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold">Tareas pendientes</h2>
+                  <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                    {data!.pendingNotes.length}
+                  </Badge>
+                </div>
+
+                <div className="rounded-xl border border-primary/20 bg-primary/5 divide-y divide-primary/10 overflow-hidden">
+                  {data!.pendingNotes.map(note => (
+                    <div key={note.id} className="flex items-start gap-3 px-3.5 py-2.5">
+                      <button
+                        onClick={() => handleToggleNote(note.id)}
+                        className="mt-0.5 shrink-0"
+                      >
+                        <Circle className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs">{note.content}</p>
+                        <p
+                          className="text-[10px] text-primary cursor-pointer hover:underline"
+                          onClick={() => navigate(`/clients/${note.client_id}`)}
+                        >
+                          {note.client_name}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Client Pipeline */}
             <section className="space-y-2.5">
               <div className="flex items-center gap-2">
