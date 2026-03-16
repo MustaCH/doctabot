@@ -87,11 +87,6 @@ const Clients = () => {
   const [propertyCounts, setPropertyCounts] = useState<Record<string, number>>({});
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [showTagManager, setShowTagManager] = useState(false);
-
-  // Tags
-  const { tags, getClientTags, createTag, deleteTag, assignTag, removeTag } = useTags();
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
