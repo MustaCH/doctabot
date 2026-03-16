@@ -168,6 +168,11 @@ const Clients = () => {
   // Import state
   const [showImport, setShowImport] = useState(false);
 
+  // Event creation state
+  const [eventForClient, setEventForClient] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+  const [creatingEvent, setCreatingEvent] = useState(false);
+
   const loadClients = useCallback(async () => {
     if (!user) return;
     setLoading(true);
