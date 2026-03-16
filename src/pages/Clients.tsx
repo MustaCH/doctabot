@@ -426,6 +426,7 @@ const Clients = () => {
       }));
       toast.success("Propiedad desvinculada");
     }
+  };
 
   const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
