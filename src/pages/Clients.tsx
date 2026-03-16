@@ -548,18 +548,32 @@ const Clients = () => {
                   {/* Events section - always visible when loaded */}
                   {(() => {
                     const events = clientEvents[client.id];
-                    if (!events || events.length === 0) return null;
                     const eventTypeEmoji: Record<string, string> = { birthday: "🎂", purchase_anniversary: "🏠", contract_expiry: "📄", followup: "📞", custom: "📌" };
                     const recurrenceLabel: Record<string, string> = { yearly: "Anual", once: "Única vez", monthly: "Mensual" };
                     return (
                       <div className="space-y-1 pt-0.5">
-                        <div className="flex items-center gap-1.5 px-1 py-0.5 text-xs text-muted-foreground">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>Fechas importantes</span>
-                          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                        <div className="flex items-center justify-between px-1 py-0.5">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <CalendarDays className="h-3 w-3" />
+                            <span>Fechas importantes</span>
+                            {events && events.length > 0 && (
+                              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{events.length}</Badge>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5"
+                            onClick={() => {
+                              setEventForClient(client.id);
+                              setEventForm({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+                            }}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
                         </div>
-                        {events.map((ev) => (
-                          <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5">
+                        {events && events.map((ev) => (
+                          <div key={ev.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-2.5 py-1.5 group">
                             <span className="text-sm">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium truncate">{ev.title}</p>
@@ -575,6 +589,14 @@ const Clients = () => {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
+                              onClick={() => handleDeleteEvent(ev.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
                           </div>
                         ))}
                       </div>
