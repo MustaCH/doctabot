@@ -336,7 +336,7 @@ const Clients = () => {
     }
     setCreatingEvent(true);
     try {
-      const { error } = await supabase.from("client_events").insert({
+      const { data: inserted, error } = await supabase.from("client_events").insert({
         client_id: eventForClient,
         user_id: user.id,
         title: eventForm.title.trim(),
@@ -344,9 +344,39 @@ const Clients = () => {
         event_date: eventForm.event_date,
         recurrence: eventForm.recurrence,
         notes: eventForm.notes.trim() || null,
-      });
+      }).select("id").single();
       if (error) throw error;
-      toast.success("Evento creado");
+
+      // Sync to Google Calendar in background
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (token && inserted?.id) {
+          const SUPABASE_FUNCTIONS_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
+          const syncRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/sync-calendar-event`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_id: inserted.id,
+              title: eventForm.title.trim(),
+              event_date: eventForm.event_date,
+              recurrence: eventForm.recurrence,
+              notes: eventForm.notes.trim() || null,
+            }),
+          });
+          const syncData = await syncRes.json();
+          if (syncData.synced) {
+            toast.success("Evento creado y sincronizado con Google Calendar 📅");
+          } else {
+            toast.success("Evento creado (sin calendario conectado)");
+          }
+        } else {
+          toast.success("Evento creado");
+        }
+      } catch {
+        toast.success("Evento creado (no se pudo sincronizar con calendario)");
+      }
+
       setEventForClient(null);
       setEventForm({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
       loadAllEvents();
