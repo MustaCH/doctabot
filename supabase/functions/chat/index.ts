@@ -2216,10 +2216,15 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
         console.log(`Supervisor rejected (attempt ${supervisorRetryCount}), regenerating...`);
 
         // Regenerate with feedback
+        // Build context about tools already executed to prevent duplicate actions
+        const toolWarning = executedTools.includes("send_email")
+          ? ' IMPORTANTE: La herramienta send_email YA fue ejecutada exitosamente en este turno. El email YA fue enviado. NO vuelvas a mostrar el borrador ni pidas confirmación. Solo confirmá el envío.'
+          : '';
+
         const retryMessages = [
           ...currentMessages,
           { role: "assistant", content: finalContent },
-          { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.` }
+          { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.${toolWarning}` }
         ];
 
         const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
