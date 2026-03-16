@@ -328,6 +328,8 @@ const Profile = () => {
           <LogOut className="mr-2 h-4 w-4" />
           Cerrar sesión
         </Button>
+
+        <p className="text-center text-[11px] text-muted-foreground">v1.4.0</p>
       </form>
     </div>
   );
