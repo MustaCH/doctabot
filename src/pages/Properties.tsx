@@ -46,6 +46,8 @@ const Properties = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [operationFilter, setOperationFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState<number | null>(null);
@@ -77,6 +79,12 @@ const Properties = () => {
       if (typeFilter !== "all") {
         query = query.eq("property_type", typeFilter);
       }
+      if (priceMin) {
+        query = query.gte("price", Number(priceMin));
+      }
+      if (priceMax) {
+        query = query.lte("price", Number(priceMax));
+      }
 
       query = query
         .order("created_at", { ascending: false })
@@ -95,14 +103,28 @@ const Properties = () => {
     } finally {
       setLoadingProps(false);
     }
-  }, [user, searchQuery, operationFilter, typeFilter]);
+  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
+
+  // Debounce price inputs
+  const [debouncedPriceMin, setDebouncedPriceMin] = useState("");
+  const [debouncedPriceMax, setDebouncedPriceMax] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => { setPriceMin(debouncedPriceMin); }, 500);
+    return () => clearTimeout(t);
+  }, [debouncedPriceMin]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setPriceMax(debouncedPriceMax); }, 500);
+    return () => clearTimeout(t);
+  }, [debouncedPriceMax]);
 
   // Load on filter/search change
   useEffect(() => {
     if (activeTab === "search") {
       loadProperties(0);
     }
-  }, [activeTab, searchQuery, operationFilter, typeFilter]);
+  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
 
   // --- Load favorites ---
   const loadFavorites = useCallback(async () => {
@@ -184,11 +206,15 @@ const Properties = () => {
     return extras;
   };
 
-  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all";
+  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all" || priceMin !== "" || priceMax !== "";
 
   const clearFilters = () => {
     setOperationFilter("all");
     setTypeFilter("all");
+    setPriceMin("");
+    setPriceMax("");
+    setDebouncedPriceMin("");
+    setDebouncedPriceMax("");
     setSearchQuery("");
   };
 
@@ -302,37 +328,57 @@ const Properties = () => {
             </div>
 
             {showFilters && (
-              <div className="flex gap-2">
-                <Select value={operationFilter} onValueChange={setOperationFilter}>
-                  <SelectTrigger className="flex-1 h-9 text-xs">
-                    <SelectValue placeholder="Operación" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las operaciones</SelectItem>
-                    <SelectItem value="Venta">Venta</SelectItem>
-                    <SelectItem value="Alquiler">Alquiler</SelectItem>
-                    <SelectItem value="Alquiler temporario">Alquiler temporario</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="flex-1 h-9 text-xs">
-                    <SelectValue placeholder="Tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los tipos</SelectItem>
-                    <SelectItem value="Casa">Casa</SelectItem>
-                    <SelectItem value="Departamento">Departamento</SelectItem>
-                    <SelectItem value="Terreno">Terreno</SelectItem>
-                    <SelectItem value="Local">Local</SelectItem>
-                    <SelectItem value="Oficina">Oficina</SelectItem>
-                    <SelectItem value="Galpón">Galpón</SelectItem>
-                  </SelectContent>
-                </Select>
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" className="h-9 text-xs shrink-0" onClick={clearFilters}>
-                    Limpiar
-                  </Button>
-                )}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Select value={operationFilter} onValueChange={setOperationFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Operación" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las operaciones</SelectItem>
+                      <SelectItem value="Venta">Venta</SelectItem>
+                      <SelectItem value="Alquiler">Alquiler</SelectItem>
+                      <SelectItem value="Alquiler temporario">Alquiler temporario</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los tipos</SelectItem>
+                      <SelectItem value="Casa">Casa</SelectItem>
+                      <SelectItem value="Departamento">Departamento</SelectItem>
+                      <SelectItem value="Terreno">Terreno</SelectItem>
+                      <SelectItem value="Local">Local</SelectItem>
+                      <SelectItem value="Oficina">Oficina</SelectItem>
+                      <SelectItem value="Galpón">Galpón</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground shrink-0">💰 Precio:</span>
+                  <Input
+                    type="number"
+                    placeholder="Desde"
+                    value={debouncedPriceMin}
+                    onChange={(e) => setDebouncedPriceMin(e.target.value)}
+                    className="h-9 text-xs flex-1"
+                  />
+                  <span className="text-xs text-muted-foreground">—</span>
+                  <Input
+                    type="number"
+                    placeholder="Hasta"
+                    value={debouncedPriceMax}
+                    onChange={(e) => setDebouncedPriceMax(e.target.value)}
+                    className="h-9 text-xs flex-1"
+                  />
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" className="h-9 text-xs shrink-0" onClick={clearFilters}>
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
