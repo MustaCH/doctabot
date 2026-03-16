@@ -557,7 +557,7 @@ const ClientDetail = () => {
       </details>
 
       {/* Tabs */}
-      <Tabs defaultValue="properties" className="flex flex-1 flex-col min-h-0 [&>[data-state=active]]:flex [&>[data-state=active]]:flex-1 [&>[data-state=active]]:flex-col [&>[data-state=active]]:min-h-0">
+      <Tabs defaultValue="properties" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div className="border-b border-border bg-card px-4">
           <TabsList className="w-full bg-transparent h-10">
             <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
@@ -586,7 +586,7 @@ const ClientDetail = () => {
         </div>
 
         {/* Properties Tab */}
-        <TabsContent value="properties" className="flex-1 overflow-y-auto m-0 p-4">
+        <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
           {properties.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/30" />
@@ -676,7 +676,7 @@ const ClientDetail = () => {
         </TabsContent>
 
         {/* Notes Tab */}
-        <TabsContent value="notes" className="flex-1 overflow-y-auto m-0 flex flex-col">
+        <TabsContent value="notes" className="m-0 flex flex-col overflow-hidden" style={{ flex: 1, minHeight: 0 }}>
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {notes.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
@@ -757,7 +757,7 @@ const ClientDetail = () => {
         </TabsContent>
 
         {/* Timeline Tab */}
-        <TabsContent value="timeline" className="flex-1 overflow-y-auto m-0 px-4 pt-2 pb-4">
+        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
           {/* Events section */}
           {events.length > 0 && (
             <div className="mb-4">
