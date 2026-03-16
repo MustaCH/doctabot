@@ -345,7 +345,7 @@ const Properties = () => {
         {/* Search Tab */}
         <TabsContent value="search" className="flex-1 overflow-y-auto m-0">
           {/* Search bar + filters */}
-          <div className="sticky top-0 z-10 space-y-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
+          <div className="sticky top-0 z-20 space-y-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
