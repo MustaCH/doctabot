@@ -483,6 +483,9 @@ const Clients = () => {
           </p>
         </div>
         <div className="flex items-center gap-1.5">
+          <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowTagManager(true)} title="Gestionar etiquetas">
+            <TagIcon className="h-4 w-4" />
+          </Button>
           <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowImport(true)} title="Importar desde Excel/CSV">
             <Upload className="h-4 w-4" />
           </Button>
