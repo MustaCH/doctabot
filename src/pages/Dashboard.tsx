@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import {
   AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 interface Client {
   id: string;
@@ -82,39 +84,46 @@ const Dashboard = () => {
     } : prev);
   };
 
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes, notesRes] = await Promise.all([
-        supabase.from("properties").select("id", { count: "exact", head: true }),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
-        supabase.from("favorites").select("id", { count: "exact", head: true }),
-        supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
-        supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
-        supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
-        supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
-      ]);
-      // Enrich notes with client names
-      const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
-      const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
-        ...n,
-        client_name: clientMap.get(n.client_id) ?? "Cliente",
-      }));
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-      setData({
-        totalProperties: propsRes.count ?? 0,
-        totalClients: clientsRes.count ?? 0,
-        totalFavorites: favsRes.count ?? 0,
-        totalConversations: convsRes.data?.length ?? 0,
-        clients: (allClientsRes.data as Client[]) ?? [],
-        events: (eventsRes.data as unknown as ClientEvent[]) ?? [],
-        recentConversations: convsRes.data ?? [],
-        pendingNotes,
-      });
-      setLoading(false);
-    };
-    load();
+  const loadDashboard = useCallback(async () => {
+    if (!user) return;
+    const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes, notesRes] = await Promise.all([
+      supabase.from("properties").select("id", { count: "exact", head: true }),
+      supabase.from("clients").select("id", { count: "exact", head: true }),
+      supabase.from("favorites").select("id", { count: "exact", head: true }),
+      supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
+      supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
+      supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
+    ]);
+    const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
+    const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
+      ...n,
+      client_name: clientMap.get(n.client_id) ?? "Cliente",
+    }));
+
+    setData({
+      totalProperties: propsRes.count ?? 0,
+      totalClients: clientsRes.count ?? 0,
+      totalFavorites: favsRes.count ?? 0,
+      totalConversations: convsRes.data?.length ?? 0,
+      clients: (allClientsRes.data as Client[]) ?? [],
+      events: (eventsRes.data as unknown as ClientEvent[]) ?? [],
+      recentConversations: convsRes.data ?? [],
+      pendingNotes,
+    });
+    setLoading(false);
   }, [user]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const { pullDistance, refreshing } = usePullToRefresh({
+    onRefresh: loadDashboard,
+    scrollRef,
+  });
 
   // Pipeline: group clients by status
   const pipeline = useMemo(() => {
@@ -218,7 +227,8 @@ const Dashboard = () => {
         <h1 className="text-base font-bold tracking-tight">Centro de Control</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5 pt-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8 space-y-5 pt-4">
+        <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">

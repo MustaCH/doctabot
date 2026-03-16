@@ -11,6 +11,8 @@ import { Menu, UserCircle, ChevronDown, Loader2, Search, CalendarDays, Users } f
 import { useNavigate } from "react-router-dom";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useSwUpdate } from "@/hooks/use-sw-update";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 const Chat = () => {
   const { user } = useAuth();
@@ -46,6 +48,11 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  const { pullDistance, refreshing } = usePullToRefresh({
+    onRefresh: loadConversations,
+    scrollRef,
+  });
 
   // Scroll listener for floating button
   useEffect(() => {
@@ -134,6 +141,7 @@ const Chat = () => {
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden py-4">
+          <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
               <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />

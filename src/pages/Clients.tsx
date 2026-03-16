@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +11,8 @@ import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2,
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 interface Client {
   id: string;
@@ -95,6 +97,12 @@ const Clients = () => {
 
   // Import state
   const [showImport, setShowImport] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { pullDistance, refreshing } = usePullToRefresh({
+    onRefresh: async () => { await loadClients(); await loadPropertyCounts(); },
+    scrollRef,
+  });
 
   const loadClients = useCallback(async () => {
     if (!user) return;
@@ -244,7 +252,8 @@ const Clients = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+        <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
