@@ -323,6 +323,17 @@ const ClientDetail = () => {
               {clientTypeLabel[client.client_type] ?? client.client_type}
             </span>
           </div>
+          {tags.length > 0 && (
+            <div className="mt-1">
+              <ClientTagPicker
+                clientId={client.id}
+                allTags={tags}
+                assignedTags={getClientTags(client.id)}
+                onAssign={assignTag}
+                onRemove={removeTag}
+              />
+            </div>
+          )}
         </div>
       </div>
 
