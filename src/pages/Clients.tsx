@@ -149,7 +149,7 @@ const Clients = () => {
       );
     }
     return result;
-  }, [clients, typeFilter, tagFilter, searchQuery, getClientTags]);
+  }, [clients, typeFilter, searchQuery]);
 
   const handleCreate = async () => {
     if (!user) return;
