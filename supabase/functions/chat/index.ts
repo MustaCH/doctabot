@@ -220,6 +220,7 @@ Ahora también podés crear videollamadas de Google Meet y enviar emails desde l
 - Si el agente pide redactar un email sin dar dirección de destino, pedísela antes de enviar.
 - Si el calendario/Gmail no tiene los permisos necesarios (gmail.send), decile que debe reconectar desde su perfil para activar el envío de emails.
 - Después de enviar, confirmá con: "✉️ Email enviado a [destinatario]"
+- REGLA ANTI-DUPLICACIÓN: Si la herramienta send_email ya fue ejecutada exitosamente en este turno, NUNCA vuelvas a mostrar el borrador ni pidas confirmación. El email YA fue enviado. Solo confirmá el envío.
 
 REGLAS PARA REDACTAR BORRADORES (emails, mensajes de WhatsApp, textos para clientes):
 Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto que el agente va a copiar y enviar, SIEMPRE usá este formato exacto, sin excepciones:
@@ -2068,6 +2069,7 @@ serve(async (req) => {
 
     // Tool call loop (max 5 iterations)
     let iterations = 0;
+    const executedTools: string[] = [];
     while (choice?.finish_reason === "tool_calls" && iterations < 5) {
       iterations++;
       const toolCalls = choice.message.tool_calls;
@@ -2076,6 +2078,13 @@ serve(async (req) => {
       for (const tc of toolCalls) {
         const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments), toolCtx);
         currentMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
+        // Track successfully executed tools (no error in result)
+        try {
+          const parsed = JSON.parse(result);
+          if (parsed.success || !parsed.error) {
+            executedTools.push(tc.function.name);
+          }
+        } catch { executedTools.push(tc.function.name); }
       }
 
       aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
@@ -2207,16 +2216,21 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
         console.log(`Supervisor rejected (attempt ${supervisorRetryCount}), regenerating...`);
 
         // Regenerate with feedback
+        // Build context about tools already executed to prevent duplicate actions
+        const toolWarning = executedTools.includes("send_email")
+          ? ' IMPORTANTE: La herramienta send_email YA fue ejecutada exitosamente en este turno. El email YA fue enviado. NO vuelvas a mostrar el borrador ni pidas confirmación. Solo confirmá el envío.'
+          : '';
+
         const retryMessages = [
           ...currentMessages,
           { role: "assistant", content: finalContent },
-          { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.` }
+          { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.${toolWarning}` }
         ];
 
         const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gemini-2.5-flash", messages: retryMessages, tools: toolDefinitions, stream: false }),
+          body: JSON.stringify({ model: "gemini-2.5-flash", messages: retryMessages, stream: false }),
         });
 
         if (retryRes.ok) {
