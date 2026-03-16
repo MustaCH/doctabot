@@ -65,6 +65,11 @@ const Properties = () => {
   const [linkPropertyId, setLinkPropertyId] = useState("");
   const [linkPropertyTitle, setLinkPropertyTitle] = useState<string | undefined>();
 
+  // Matches dialog
+  const { matches, loading: matchesLoading, findMatches } = usePropertyMatches();
+  const [matchesOpen, setMatchesOpen] = useState(false);
+  const [matchesPropertyTitle, setMatchesPropertyTitle] = useState<string | undefined>();
+
   // Active tab
   const [activeTab, setActiveTab] = useState("search");
 
