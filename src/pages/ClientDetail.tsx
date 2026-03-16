@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
   Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
-  Clock, CheckCircle2, Circle, Send, Share2, StickyNote,
+  Clock, CheckCircle2, Circle, Send, Share2, StickyNote, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTags } from "@/hooks/use-tags";
@@ -309,95 +309,147 @@ const ClientDetail = () => {
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate("/clients")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{client.full_name}</p>
-          <div className="flex items-center gap-1.5">
-            <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
-              {statusLabel[client.status] ?? client.status}
-            </Badge>
-            <span className="text-[10px] text-muted-foreground">
-              {clientTypeLabel[client.client_type] ?? client.client_type}
-            </span>
+      <div className="border-b border-border bg-card px-4 py-3 safe-top">
+        <div className="flex items-center gap-3">
+          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => navigate("/clients")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+
+          {/* Avatar circle */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm">
+            {client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
           </div>
-          {tags.length > 0 && (
-            <div className="mt-1">
-              <ClientTagPicker
-                clientId={client.id}
-                allTags={tags}
-                assignedTags={getClientTags(client.id)}
-                onAssign={assignTag}
-                onRemove={removeTag}
-              />
+
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold truncate">{client.full_name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+                {statusLabel[client.status] ?? client.status}
+              </Badge>
+              <span className="text-[10px] text-muted-foreground">
+                {clientTypeLabel[client.client_type] ?? client.client_type}
+              </span>
             </div>
-          )}
+          </div>
         </div>
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="mt-2 ml-[4.5rem]">
+            <ClientTagPicker
+              clientId={client.id}
+              allTags={tags}
+              assignedTags={getClientTags(client.id)}
+              onAssign={assignTag}
+              onRemove={removeTag}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Client info card */}
-      <div className="border-b border-border bg-card/50 px-4 py-3 space-y-2">
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {client.phone && (
-            <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-              <Phone className="h-3 w-3" /> {client.phone}
-            </a>
-          )}
-          {client.email && (
-            <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground truncate">
-              <Mail className="h-3 w-3" /> {client.email}
-            </a>
-          )}
-          {client.company && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Building2 className="h-3 w-3" /> {client.company}
-            </span>
-          )}
-          {client.birthday && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Cake className="h-3 w-3" /> {formatDate(client.birthday)}
-            </span>
-          )}
-          {client.address && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="h-3 w-3" /> {client.address}
-            </span>
-          )}
-        </div>
-        {(client.preferred_zones || budget || client.property_type_interest) && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 border-t border-border">
-            {client.preferred_zones && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <MapPin className="h-3 w-3" /> {client.preferred_zones}
-              </span>
-            )}
-            {budget && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <DollarSign className="h-3 w-3" /> {budget}
-              </span>
-            )}
-            {client.property_type_interest && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Home className="h-3 w-3" /> {client.property_type_interest}
-              </span>
-            )}
-          </div>
+      {/* Quick action bar */}
+      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-2">
+        {client.phone && (
+          <a href={`tel:${client.phone}`} className="flex-1">
+            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
+              <Phone className="h-3 w-3" /> Llamar
+            </Button>
+          </a>
         )}
-        {pendingActions.length > 0 && (
-          <div className="pt-1 border-t border-border">
-            <p className="text-[10px] font-medium text-destructive mb-1">
-              ⚡ {pendingActions.length} acción{pendingActions.length > 1 ? "es" : ""} pendiente{pendingActions.length > 1 ? "s" : ""}
-            </p>
-          </div>
+        {client.phone && (
+          <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="flex-1">
+            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
+              <Share2 className="h-3 w-3" /> WhatsApp
+            </Button>
+          </a>
         )}
-        {client.notes && (
-          <p className="text-xs text-muted-foreground italic pt-1 border-t border-border">
-            <FileText className="inline h-3 w-3 mr-1" />{client.notes}
-          </p>
+        {client.email && (
+          <a href={`mailto:${client.email}`} className="flex-1">
+            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
+              <Mail className="h-3 w-3" /> Email
+            </Button>
+          </a>
         )}
       </div>
+
+      {/* Client info — collapsible details */}
+      <details className="border-b border-border bg-card/30 group">
+        <summary className="px-4 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none flex items-center gap-1.5 hover:text-foreground transition-colors">
+          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+          Información del cliente
+          {pendingActions.length > 0 && (
+            <Badge variant="destructive" className="text-[9px] h-4 px-1 ml-auto">
+              {pendingActions.length} tarea{pendingActions.length > 1 ? "s" : ""}
+            </Badge>
+          )}
+        </summary>
+        <div className="px-4 pb-3 space-y-2.5">
+          {/* Contact details grid */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {client.phone && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Phone className="h-3 w-3 shrink-0 text-primary/60" />
+                <span className="truncate">{client.phone}</span>
+              </div>
+            )}
+            {client.email && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground col-span-2">
+                <Mail className="h-3 w-3 shrink-0 text-primary/60" />
+                <span className="truncate">{client.email}</span>
+              </div>
+            )}
+            {client.company && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3 shrink-0 text-primary/60" />
+                <span className="truncate">{client.company}</span>
+              </div>
+            )}
+            {client.birthday && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Cake className="h-3 w-3 shrink-0 text-primary/60" />
+                <span>{formatDate(client.birthday)}</span>
+              </div>
+            )}
+            {client.address && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground col-span-2">
+                <MapPin className="h-3 w-3 shrink-0 text-primary/60" />
+                <span className="truncate">{client.address}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Search preferences */}
+          {(client.preferred_zones || budget || client.property_type_interest) && (
+            <div className="rounded-lg bg-muted/50 p-2.5 space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Búsqueda</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {client.preferred_zones && (
+                  <span className="flex items-center gap-1.5 text-xs">
+                    <MapPin className="h-3 w-3 text-primary/60" /> {client.preferred_zones}
+                  </span>
+                )}
+                {budget && (
+                  <span className="flex items-center gap-1.5 text-xs">
+                    <DollarSign className="h-3 w-3 text-primary/60" /> {budget}
+                  </span>
+                )}
+                {client.property_type_interest && (
+                  <span className="flex items-center gap-1.5 text-xs">
+                    <Home className="h-3 w-3 text-primary/60" /> {client.property_type_interest}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          {client.notes && (
+            <p className="text-xs text-muted-foreground italic">
+              <FileText className="inline h-3 w-3 mr-1 text-primary/60" />{client.notes}
+            </p>
+          )}
+        </div>
+      </details>
 
       {/* Tabs */}
       <Tabs defaultValue="properties" className="flex flex-1 flex-col overflow-hidden">
