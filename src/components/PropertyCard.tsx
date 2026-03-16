@@ -115,6 +115,19 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleWhatsApp = () => {
+    if (!finalUrl) return;
+    const lines = [
+      title && `🏠 *${title}*`,
+      price && `💰 ${price}`,
+      location && `📍 ${location}`,
+      surface && `📐 ${surface}`,
+      `\n🔗 ${finalUrl}`,
+    ].filter(Boolean);
+    const text = lines.join("\n");
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {photo && !imgError ? (
