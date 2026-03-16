@@ -1,0 +1,635 @@
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
+  Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
+  Clock, CheckCircle2, Circle, Send, Share2, StickyNote,
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface Client {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+  client_type: string;
+  birthday: string | null;
+  company: string | null;
+  address: string | null;
+  preferred_zones: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  budget_currency: string | null;
+  property_type_interest: string | null;
+  source: string | null;
+  last_contact_at: string | null;
+}
+
+interface ClientProperty {
+  id: string;
+  property_id: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  properties: {
+    title: string | null;
+    address: string | null;
+    price: number | null;
+    currency: string | null;
+    url: string | null;
+    photo: string | null;
+    operation: string | null;
+  } | null;
+}
+
+interface ClientEvent {
+  id: string;
+  event_type: string;
+  title: string;
+  event_date: string;
+  recurrence: string;
+  notes: string | null;
+}
+
+interface ActivityLog {
+  id: string;
+  action_type: string;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+interface ClientNote {
+  id: string;
+  content: string;
+  is_action: boolean;
+  is_done: boolean;
+  created_at: string;
+}
+
+const statusLabel: Record<string, string> = {
+  prospect: "Prospecto", active: "Activo", inactive: "Inactivo", closed: "Cerrado",
+};
+const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  prospect: "secondary", active: "default", inactive: "outline", closed: "destructive",
+};
+const clientTypeLabel: Record<string, string> = {
+  buyer: "🔍 Comprador", seller: "🏠 Vendedor", both: "↔️ Ambos",
+};
+const propStatusLabel: Record<string, string> = {
+  sugerida: "Sugerida", enviada: "Enviada", visitada: "Visitada", descartada: "Descartada",
+};
+const propStatusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  sugerida: "secondary", enviada: "default", visitada: "outline", descartada: "destructive",
+};
+const actionIcons: Record<string, React.ReactNode> = {
+  property_linked: <Home className="h-3.5 w-3.5 text-primary" />,
+  status_changed: <CheckCircle2 className="h-3.5 w-3.5 text-accent-foreground" />,
+  note_added: <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />,
+  event_created: <CalendarDays className="h-3.5 w-3.5 text-primary" />,
+  call_logged: <Phone className="h-3.5 w-3.5 text-primary" />,
+};
+
+const ClientDetail = () => {
+  const { id } = useParams<{ id: string }>();
+  const { user, agentCode } = useAuth();
+  const navigate = useNavigate();
+
+  const [client, setClient] = useState<Client | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [properties, setProperties] = useState<ClientProperty[]>([]);
+  const [events, setEvents] = useState<ClientEvent[]>([]);
+  const [activity, setActivity] = useState<ActivityLog[]>([]);
+  const [notes, setNotes] = useState<ClientNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [isAction, setIsAction] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
+  const loadClient = useCallback(async () => {
+    if (!id || !user) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error("Cliente no encontrado");
+      navigate("/clients");
+      return;
+    }
+    setClient(data as Client);
+    setLoading(false);
+  }, [id, user, navigate]);
+
+  const loadProperties = useCallback(async () => {
+    if (!id || !user) return;
+    const { data } = await supabase
+      .from("client_properties")
+      .select("id, property_id, status, notes, created_at, properties(title, address, price, currency, url, photo, operation)")
+      .eq("client_id", id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    setProperties((data as unknown as ClientProperty[]) ?? []);
+  }, [id, user]);
+
+  const loadEvents = useCallback(async () => {
+    if (!id || !user) return;
+    const { data } = await supabase
+      .from("client_events")
+      .select("id, event_type, title, event_date, recurrence, notes")
+      .eq("client_id", id)
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: true });
+    setEvents((data as ClientEvent[]) ?? []);
+  }, [id, user]);
+
+  const loadActivity = useCallback(async () => {
+    if (!id || !user) return;
+    const { data } = await supabase
+      .from("client_activity_log")
+      .select("id, action_type, description, metadata, created_at")
+      .eq("client_id", id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setActivity((data as ActivityLog[]) ?? []);
+  }, [id, user]);
+
+  const loadNotes = useCallback(async () => {
+    if (!id || !user) return;
+    const { data } = await supabase
+      .from("client_notes")
+      .select("id, content, is_action, is_done, created_at")
+      .eq("client_id", id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    setNotes((data as ClientNote[]) ?? []);
+  }, [id, user]);
+
+  useEffect(() => {
+    loadClient();
+    loadProperties();
+    loadEvents();
+    loadActivity();
+    loadNotes();
+  }, [loadClient, loadProperties, loadEvents, loadActivity, loadNotes]);
+
+  const handleAddNote = async () => {
+    if (!id || !user || !newNote.trim()) return;
+    setSavingNote(true);
+    const { error } = await supabase.from("client_notes").insert({
+      client_id: id,
+      user_id: user.id,
+      content: newNote.trim(),
+      is_action: isAction,
+    });
+    if (error) {
+      toast.error("Error al guardar nota");
+    } else {
+      setNewNote("");
+      setIsAction(false);
+      loadNotes();
+      // Log activity
+      await supabase.from("client_activity_log").insert({
+        client_id: id,
+        user_id: user.id,
+        action_type: "note_added",
+        description: `Nota agregada: ${newNote.trim().slice(0, 60)}`,
+      });
+      loadActivity();
+    }
+    setSavingNote(false);
+  };
+
+  const handleToggleNoteDone = async (note: ClientNote) => {
+    await supabase.from("client_notes").update({ is_done: !note.is_done }).eq("id", note.id);
+    loadNotes();
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    await supabase.from("client_notes").delete().eq("id", noteId);
+    loadNotes();
+  };
+
+  const handleUnlinkProperty = async (cpId: string) => {
+    const { error } = await supabase.from("client_properties").delete().eq("id", cpId);
+    if (error) {
+      toast.error("Error al desvincular");
+    } else {
+      toast.success("Propiedad desvinculada");
+      loadProperties();
+    }
+  };
+
+  const handleWhatsApp = (prop: ClientProperty) => {
+    if (!client?.phone || !prop.properties?.url) return;
+    const phone = client.phone.replace(/\D/g, "");
+    let url = prop.properties.url;
+    if (agentCode) {
+      try {
+        const u = new URL(url);
+        u.searchParams.set("associate", agentCode);
+        url = u.toString();
+      } catch {
+        const sep = url.includes("?") ? "&" : "?";
+        url = `${url}${sep}associate=${encodeURIComponent(agentCode)}`;
+      }
+    }
+    const lines = [
+      prop.properties.title && `🏠 *${prop.properties.title}*`,
+      prop.properties.price && `💰 ${prop.properties.currency ?? "USD"} ${prop.properties.price.toLocaleString("es-AR")}`,
+      prop.properties.address && `📍 ${prop.properties.address}`,
+      `\n🔗 ${url}`,
+    ].filter(Boolean);
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+  };
+
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+    } catch {
+      return d;
+    }
+  };
+
+  const formatDateTime = (d: string) => {
+    try {
+      return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return d;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-[100dvh] flex-col bg-background">
+        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+          <Skeleton className="h-8 w-8 rounded" />
+          <Skeleton className="h-5 w-40" />
+        </div>
+        <div className="flex-1 p-4 space-y-4">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!client) return null;
+
+  const budget = (() => {
+    const { budget_min: min, budget_max: max, budget_currency: cur } = client;
+    if (!min && !max) return null;
+    const sym = cur ?? "USD";
+    if (min && max) return `${sym} ${min.toLocaleString("es-AR")} – ${max.toLocaleString("es-AR")}`;
+    if (min) return `Desde ${sym} ${min.toLocaleString("es-AR")}`;
+    return `Hasta ${sym} ${max!.toLocaleString("es-AR")}`;
+  })();
+
+  const pendingActions = notes.filter(n => n.is_action && !n.is_done);
+
+  return (
+    <div className="flex h-[100dvh] flex-col bg-background">
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate("/clients")}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate">{client.full_name}</p>
+          <div className="flex items-center gap-1.5">
+            <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+              {statusLabel[client.status] ?? client.status}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">
+              {clientTypeLabel[client.client_type] ?? client.client_type}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Client info card */}
+      <div className="border-b border-border bg-card/50 px-4 py-3 space-y-2">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {client.phone && (
+            <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+              <Phone className="h-3 w-3" /> {client.phone}
+            </a>
+          )}
+          {client.email && (
+            <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground truncate">
+              <Mail className="h-3 w-3" /> {client.email}
+            </a>
+          )}
+          {client.company && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Building2 className="h-3 w-3" /> {client.company}
+            </span>
+          )}
+          {client.birthday && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Cake className="h-3 w-3" /> {formatDate(client.birthday)}
+            </span>
+          )}
+          {client.address && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3" /> {client.address}
+            </span>
+          )}
+        </div>
+        {(client.preferred_zones || budget || client.property_type_interest) && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 border-t border-border">
+            {client.preferred_zones && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="h-3 w-3" /> {client.preferred_zones}
+              </span>
+            )}
+            {budget && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <DollarSign className="h-3 w-3" /> {budget}
+              </span>
+            )}
+            {client.property_type_interest && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Home className="h-3 w-3" /> {client.property_type_interest}
+              </span>
+            )}
+          </div>
+        )}
+        {pendingActions.length > 0 && (
+          <div className="pt-1 border-t border-border">
+            <p className="text-[10px] font-medium text-destructive mb-1">
+              ⚡ {pendingActions.length} acción{pendingActions.length > 1 ? "es" : ""} pendiente{pendingActions.length > 1 ? "s" : ""}
+            </p>
+          </div>
+        )}
+        {client.notes && (
+          <p className="text-xs text-muted-foreground italic pt-1 border-t border-border">
+            <FileText className="inline h-3 w-3 mr-1" />{client.notes}
+          </p>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <Tabs defaultValue="properties" className="flex flex-1 flex-col overflow-hidden">
+        <div className="border-b border-border bg-card px-4">
+          <TabsList className="w-full bg-transparent h-10">
+            <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
+              <Home className="h-3.5 w-3.5" />
+              Propiedades
+              {properties.length > 0 && (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                  {properties.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
+              <StickyNote className="h-3.5 w-3.5" />
+              Notas
+              {notes.length > 0 && (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted-foreground/20 px-1 text-[9px] font-bold">
+                  {notes.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="timeline" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
+              <Clock className="h-3.5 w-3.5" />
+              Actividad
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Properties Tab */}
+        <TabsContent value="properties" className="flex-1 overflow-y-auto m-0 p-4">
+          {properties.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <Home className="h-12 w-12 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Sin propiedades vinculadas</p>
+              <p className="text-xs text-muted-foreground/70 max-w-xs">
+                Vinculá propiedades desde el explorador o pedile a Alan en el chat.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {properties.map((cp) => {
+                const p = cp.properties;
+                if (!p) return null;
+                return (
+                  <div key={cp.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                    {p.photo && (
+                      <div className="relative aspect-[3/1] w-full overflow-hidden bg-muted">
+                        <img src={p.photo} alt={p.title ?? ""} className="h-full w-full object-cover" loading="lazy" />
+                      </div>
+                    )}
+                    <div className="p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{p.title ?? "Sin título"}</p>
+                          {p.address && <p className="text-xs text-muted-foreground truncate">📍 {p.address}</p>}
+                          {p.price && (
+                            <p className="text-xs font-medium text-primary">
+                              💰 {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="text-[10px] shrink-0">
+                          {propStatusLabel[cp.status] ?? cp.status}
+                        </Badge>
+                      </div>
+                      {cp.notes && (
+                        <p className="text-xs text-muted-foreground italic">💬 {cp.notes}</p>
+                      )}
+                      <div className="flex gap-1.5 pt-1">
+                        {p.url && (
+                          <a
+                            href={(() => {
+                              let url = p.url;
+                              if (agentCode) {
+                                try {
+                                  const u = new URL(url);
+                                  u.searchParams.set("associate", agentCode);
+                                  url = u.toString();
+                                } catch { /* keep original */ }
+                              }
+                              return url;
+                            })()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1"
+                          >
+                            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
+                              <ExternalLink className="h-3 w-3" /> Ver
+                            </Button>
+                          </a>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs h-8"
+                          onClick={() => handleWhatsApp(cp)}
+                          disabled={!client.phone}
+                          title={client.phone ? "Enviar por WhatsApp" : "El cliente no tiene teléfono"}
+                        >
+                          <Share2 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive shrink-0"
+                          onClick={() => handleUnlinkProperty(cp.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Notes Tab */}
+        <TabsContent value="notes" className="flex-1 overflow-y-auto m-0 flex flex-col">
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {notes.length === 0 && (
+              <div className="flex flex-col items-center gap-3 py-16 text-center">
+                <StickyNote className="h-12 w-12 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">Sin notas</p>
+              </div>
+            )}
+            {notes.map((note) => (
+              <div
+                key={note.id}
+                className={`rounded-lg border p-3 space-y-1 ${
+                  note.is_action && !note.is_done
+                    ? "border-primary/30 bg-primary/5"
+                    : note.is_done
+                    ? "border-border bg-muted/50 opacity-60"
+                    : "border-border bg-card"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    {note.is_action && (
+                      <button
+                        onClick={() => handleToggleNoteDone(note)}
+                        className="mt-0.5 shrink-0"
+                      >
+                        {note.is_done ? (
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        ) : (
+                          <Circle className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    )}
+                    <p className={`text-xs ${note.is_done ? "line-through" : ""}`}>
+                      {note.content}
+                    </p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteNote(note.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at)}</p>
+              </div>
+            ))}
+          </div>
+          {/* Add note */}
+          <div className="border-t border-border bg-card px-4 py-3 space-y-2">
+            <Textarea
+              placeholder="Escribí una nota..."
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              className="min-h-[60px] text-xs resize-none"
+            />
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <Checkbox
+                  checked={isAction}
+                  onCheckedChange={(v) => setIsAction(v === true)}
+                  className="h-3.5 w-3.5"
+                />
+                Marcar como acción pendiente
+              </label>
+              <Button
+                size="sm"
+                className="gap-1.5 h-8"
+                onClick={handleAddNote}
+                disabled={!newNote.trim() || savingNote}
+              >
+                <Send className="h-3 w-3" />
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Timeline Tab */}
+        <TabsContent value="timeline" className="flex-1 overflow-y-auto m-0 p-4">
+          {/* Events section */}
+          {events.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-muted-foreground mb-2">📅 Eventos</p>
+              <div className="space-y-2">
+                {events.map((ev) => (
+                  <div key={ev.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5">
+                    <CalendarDays className="h-4 w-4 text-primary shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{ev.title}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatDate(ev.event_date)} · {ev.recurrence === "yearly" ? "Anual" : ev.recurrence === "monthly" ? "Mensual" : "Una vez"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Activity log */}
+          <p className="text-xs font-medium text-muted-foreground mb-2">🕐 Historial de actividad</p>
+          {activity.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <Clock className="h-12 w-12 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Sin actividad registrada</p>
+            </div>
+          ) : (
+            <div className="relative ml-2 border-l-2 border-border pl-4 space-y-4">
+              {activity.map((a) => (
+                <div key={a.id} className="relative">
+                  <div className="absolute -left-[1.35rem] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background border-2 border-border">
+                    {actionIcons[a.action_type] ?? <Circle className="h-3 w-3 text-muted-foreground" />}
+                  </div>
+                  <p className="text-xs">{a.description}</p>
+                  <p className="text-[10px] text-muted-foreground">{formatDateTime(a.created_at)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default ClientDetail;
