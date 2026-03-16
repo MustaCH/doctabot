@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.test-webhook]
 verify_jwt = false
+
+[functions.sync-calendar-event]
+verify_jwt = false
