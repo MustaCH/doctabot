@@ -14,6 +14,8 @@ interface PropertyCardProps {
   url?: string;
   extras?: string[];
   agentCode?: string | null;
+  /** If provided, shows a WhatsApp share button targeting this phone number. Empty string = disabled button. */
+  whatsappPhone?: string;
 }
 
 function buildPropertyUrl(url: string, agentCode?: string | null): string {
@@ -102,7 +104,7 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
   return { photo, title, office, price, location, surface, url, extras };
 }
 
-const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
@@ -117,7 +119,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   };
 
   const handleWhatsApp = () => {
-    if (!finalUrl) return;
+    if (!finalUrl || !whatsappPhone) return;
     const lines = [
       title && `🏠 *${title}*`,
       price && `💰 ${price}`,
@@ -126,7 +128,8 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
       `\n🔗 ${finalUrl}`,
     ].filter(Boolean);
     const text = lines.join("\n");
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    const phone = whatsappPhone.replace(/\D/g, "");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
   };
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -222,14 +225,17 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             >
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={handleWhatsApp}
-            >
-              <Share2 className="h-3.5 w-3.5" />
-            </Button>
+            {whatsappPhone !== undefined && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                onClick={handleWhatsApp}
+                disabled={!whatsappPhone}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         )}
       </div>
