@@ -415,6 +415,18 @@ const Clients = () => {
     }
   };
 
+  const handleUnlinkProperty = async (clientPropertyId: string, clientId: string) => {
+    const { error } = await supabase.from("client_properties").delete().eq("id", clientPropertyId);
+    if (error) {
+      toast.error("Error al desvincular la propiedad");
+    } else {
+      setClientProperties(prev => ({
+        ...prev,
+        [clientId]: (prev[clientId] ?? []).filter(cp => cp.id !== clientPropertyId),
+      }));
+      toast.success("Propiedad desvinculada");
+    }
+
   const formatPrice = (price: number | null, currency: string | null) => {
     if (!price) return null;
     return `${currency ?? "USD"} ${price.toLocaleString("es-AR")}`;
