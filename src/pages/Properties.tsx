@@ -459,6 +459,13 @@ const Properties = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <LinkPropertyToClientDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        propertyId={linkPropertyId}
+        propertyTitle={linkPropertyTitle}
+      />
     </div>
   );
 };
