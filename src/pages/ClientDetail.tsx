@@ -470,7 +470,7 @@ const ClientDetail = () => {
         {client.phone && (
           <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="flex-1">
             <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
-              <Share2 className="h-3 w-3" /> WhatsApp
+              <WhatsAppIcon className="h-3.5 w-3.5 text-[#25D366]" /> WhatsApp
             </Button>
           </a>
         )}
