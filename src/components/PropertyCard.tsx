@@ -225,14 +225,17 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             >
               {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={handleWhatsApp}
-            >
-              <Share2 className="h-3.5 w-3.5" />
-            </Button>
+            {whatsappPhone !== undefined && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                onClick={handleWhatsApp}
+                disabled={!whatsappPhone}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         )}
       </div>
