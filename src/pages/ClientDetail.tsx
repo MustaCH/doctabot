@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
   Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
-  Clock, CheckCircle2, Circle, Send, Share2, StickyNote,
+  Clock, CheckCircle2, Circle, Send, Share2, StickyNote, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTags } from "@/hooks/use-tags";
