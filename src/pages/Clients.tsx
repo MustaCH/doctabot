@@ -581,7 +581,7 @@ const Clients = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0">
                       <p
-                        className="font-semibold text-sm leading-tight cursor-pointer hover:text-primary transition-colors"
+                        className="font-bold text-base leading-snug cursor-pointer hover:text-primary transition-colors py-0.5"
                         onClick={() => navigate(`/clients/${client.id}`)}
                       >
                         {client.full_name}
