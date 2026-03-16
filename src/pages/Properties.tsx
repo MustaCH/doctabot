@@ -254,7 +254,7 @@ const Properties = () => {
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
-              className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow backdrop-blur-sm transition-all hover:opacity-90 opacity-0 group-hover:opacity-100"
+              className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow backdrop-blur-sm transition-all hover:opacity-90 sm:opacity-0 sm:group-hover:opacity-100"
               title="Quitar de favoritos"
             >
               <Trash2 className="h-3.5 w-3.5" />
