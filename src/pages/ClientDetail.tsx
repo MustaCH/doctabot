@@ -15,6 +15,8 @@ import {
   Clock, CheckCircle2, Circle, Send, Share2, StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTags } from "@/hooks/use-tags";
+import { ClientTagPicker } from "@/components/TagComponents";
 
 interface Client {
   id: string;
@@ -116,6 +118,8 @@ const ClientDetail = () => {
   const [newNote, setNewNote] = useState("");
   const [isAction, setIsAction] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+
+  const { tags, getClientTags, assignTag, removeTag } = useTags();
 
   const loadClient = useCallback(async () => {
     if (!id || !user) return;
@@ -319,6 +323,17 @@ const ClientDetail = () => {
               {clientTypeLabel[client.client_type] ?? client.client_type}
             </span>
           </div>
+          {tags.length > 0 && (
+            <div className="mt-1">
+              <ClientTagPicker
+                clientId={client.id}
+                allTags={tags}
+                assignedTags={getClientTags(client.id)}
+                onAssign={assignTag}
+                onRemove={removeTag}
+              />
+            </div>
+          )}
         </div>
       </div>
 
