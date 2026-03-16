@@ -133,7 +133,7 @@ const ClientDetail = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const { tags, getClientTags, assignTag, removeTag } = useTags();
+  
 
   const loadClient = useCallback(async () => {
     if (!id || !user) return;
