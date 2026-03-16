@@ -8,6 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, UserPlus, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
+const clientTypeLabel: Record<string, string> = {
+  buyer: "🔍 Comprador",
+  seller: "🏠 Vendedor",
+  both: "↔️ Ambos",
+};
+
 interface Client {
   id: string;
   full_name: string;
@@ -159,7 +165,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
                   >
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{c.full_name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{c.client_type}</p>
+                      <p className="text-xs text-muted-foreground">{clientTypeLabel[c.client_type] ?? c.client_type}</p>
                     </div>
                     {isLinked ? (
                       <span className="text-xs text-muted-foreground shrink-0">Ya vinculada</span>
