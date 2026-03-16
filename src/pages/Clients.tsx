@@ -646,7 +646,7 @@ const Clients = () => {
                               size="icon"
                               variant="ghost"
                               className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
-                              onClick={() => handleDeleteEvent(ev.id)}
+                              onClick={() => handleDeleteEvent(ev.id, ev.google_event_id)}
                             >
                               <X className="h-3 w-3" />
                             </Button>
