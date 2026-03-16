@@ -150,6 +150,7 @@ const Clients = () => {
   const [clientEvents, setClientEvents] = useState<Record<string, ClientEvent[]>>({});
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Edit state
   const [editClient, setEditClient] = useState<Client | null>(null);
