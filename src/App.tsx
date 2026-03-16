@@ -85,7 +85,6 @@ const App = () => (
             <Route path="/superadminpanel" element={<SuperAdmin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <BottomNav />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
