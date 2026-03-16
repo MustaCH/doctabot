@@ -550,7 +550,12 @@ const Clients = () => {
                   {/* Header row */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0">
-                      <p className="font-semibold text-sm leading-tight">{client.full_name}</p>
+                      <p
+                        className="font-semibold text-sm leading-tight cursor-pointer hover:text-primary transition-colors"
+                        onClick={() => navigate(`/clients/${client.id}`)}
+                      >
+                        {client.full_name}
+                      </p>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
                           {clientTypeLabel[client.client_type] ?? client.client_type}

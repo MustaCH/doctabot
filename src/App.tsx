@@ -10,6 +10,7 @@ import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
 import Properties from "./pages/Properties";
 import Clients from "./pages/Clients";
+import ClientDetail from "./pages/ClientDetail";
 import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
 import Tutorial from "./pages/Tutorial";
@@ -81,6 +82,7 @@ const App = () => (
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/properties" element={<ProtectedRoute><Properties /></ProtectedRoute>} />
             <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+            <Route path="/clients/:id" element={<ProtectedRoute><ClientDetail /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/superadminpanel" element={<SuperAdmin />} />
             <Route path="*" element={<NotFound />} />
