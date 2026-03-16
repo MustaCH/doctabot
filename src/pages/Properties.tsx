@@ -239,6 +239,18 @@ const Properties = () => {
             extras={buildExtras(p)}
             agentCode={agentCode}
           />
+          {/* Link to client button */}
+          <button
+            onClick={() => {
+              setLinkPropertyId(p.id);
+              setLinkPropertyTitle(p.title ?? undefined);
+              setLinkDialogOpen(true);
+            }}
+            className="absolute bottom-[4.5rem] right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-primary/80 text-primary-foreground shadow backdrop-blur-sm transition-all hover:bg-primary opacity-0 group-hover:opacity-100"
+            title="Vincular a cliente"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+          </button>
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
