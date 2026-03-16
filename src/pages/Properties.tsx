@@ -9,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PropertyCard from "@/components/PropertyCard";
 import { LinkPropertyToClientDialog } from "@/components/LinkPropertyToClientDialog";
-import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus } from "lucide-react";
+import { PropertyMatchesDialog } from "@/components/PropertyMatchesDialog";
+import { usePropertyMatches } from "@/hooks/use-property-matches";
+import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 interface PropertyRow {
@@ -62,6 +64,12 @@ const Properties = () => {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkPropertyId, setLinkPropertyId] = useState("");
   const [linkPropertyTitle, setLinkPropertyTitle] = useState<string | undefined>();
+
+  // Matches dialog
+  const { matches, loading: matchesLoading, findMatches } = usePropertyMatches();
+  const [matchesOpen, setMatchesOpen] = useState(false);
+  const [matchesPropertyId, setMatchesPropertyId] = useState("");
+  const [matchesPropertyTitle, setMatchesPropertyTitle] = useState<string | undefined>();
 
   // Active tab
   const [activeTab, setActiveTab] = useState("search");
@@ -239,6 +247,24 @@ const Properties = () => {
             extras={buildExtras(p)}
             agentCode={agentCode}
           />
+          {/* Match clients button */}
+          <button
+            onClick={() => {
+              setMatchesPropertyId(p.id);
+              setMatchesPropertyTitle(p.title ?? undefined);
+              setMatchesOpen(true);
+              findMatches({
+                zone: p.zone,
+                price: p.price,
+                currency: p.currency,
+                property_type: p.property_type,
+              });
+            }}
+            className="absolute bottom-[4.5rem] right-12 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground shadow backdrop-blur-sm transition-all hover:bg-accent/80 sm:opacity-0 sm:group-hover:opacity-100"
+            title="Ver clientes compatibles"
+          >
+            <Users className="h-3.5 w-3.5" />
+          </button>
           {/* Link to client button */}
           <button
             onClick={() => {
@@ -465,6 +491,20 @@ const Properties = () => {
         onOpenChange={setLinkDialogOpen}
         propertyId={linkPropertyId}
         propertyTitle={linkPropertyTitle}
+      />
+
+      <PropertyMatchesDialog
+        open={matchesOpen}
+        onOpenChange={setMatchesOpen}
+        matches={matches}
+        loading={matchesLoading}
+        propertyTitle={matchesPropertyTitle}
+        onLinkClient={() => {
+          setMatchesOpen(false);
+          setLinkPropertyId(matchesPropertyId);
+          setLinkPropertyTitle(matchesPropertyTitle);
+          setLinkDialogOpen(true);
+        }}
       />
     </div>
   );
