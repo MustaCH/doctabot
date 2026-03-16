@@ -77,13 +77,14 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes] = await Promise.all([
+      const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes, notesRes] = await Promise.all([
         supabase.from("properties").select("id", { count: "exact", head: true }),
         supabase.from("clients").select("id", { count: "exact", head: true }),
         supabase.from("favorites").select("id", { count: "exact", head: true }),
         supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
         supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
         supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
+        supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
       ]);
       setData({
         totalProperties: propsRes.count ?? 0,
