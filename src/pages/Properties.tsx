@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PropertyCard from "@/components/PropertyCard";
-import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X } from "lucide-react";
+import { LinkPropertyToClientDialog } from "@/components/LinkPropertyToClientDialog";
+import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 interface PropertyRow {
@@ -56,6 +57,11 @@ const Properties = () => {
   // Favorites state
   const [favorites, setFavorites] = useState<FavoriteProperty[]>([]);
   const [loadingFavs, setLoadingFavs] = useState(true);
+
+  // Link to client dialog
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkPropertyId, setLinkPropertyId] = useState("");
+  const [linkPropertyTitle, setLinkPropertyTitle] = useState<string | undefined>();
 
   // Active tab
   const [activeTab, setActiveTab] = useState("search");
@@ -233,6 +239,18 @@ const Properties = () => {
             extras={buildExtras(p)}
             agentCode={agentCode}
           />
+          {/* Link to client button */}
+          <button
+            onClick={() => {
+              setLinkPropertyId(p.id);
+              setLinkPropertyTitle(p.title ?? undefined);
+              setLinkDialogOpen(true);
+            }}
+            className="absolute bottom-[4.5rem] right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-primary/80 text-primary-foreground shadow backdrop-blur-sm transition-all hover:bg-primary opacity-0 group-hover:opacity-100"
+            title="Vincular a cliente"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+          </button>
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
@@ -441,6 +459,13 @@ const Properties = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <LinkPropertyToClientDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        propertyId={linkPropertyId}
+        propertyTitle={linkPropertyTitle}
+      />
     </div>
   );
 };
