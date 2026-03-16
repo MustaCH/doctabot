@@ -198,10 +198,10 @@ const Profile = () => {
             type="button"
             variant="outline"
             className="flex-1"
-            onClick={() => navigate("/favorites")}
+            onClick={() => navigate("/properties")}
           >
-            <Heart className="mr-2 h-4 w-4 fill-destructive text-destructive" />
-            Favoritos
+            <Building2 className="mr-2 h-4 w-4 text-primary" />
+            Propiedades
           </Button>
           <Button
             type="button"
