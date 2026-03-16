@@ -2,54 +2,18 @@ import { useState, useEffect, useCallback } from "react";
 
 /**
  * Detects when a new Service Worker is waiting to activate.
- * Returns `updateAvailable` flag and an `applyUpdate` function
- * that clears caches and reloads the app.
+ * Auto-applies the update immediately without user intervention.
+ * Still exposes `updateAvailable` and `applyUpdate` as fallback.
  */
 export function useSwUpdate() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-
-    const checkRegistration = async () => {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) return;
-
-      // If there's already a waiting worker
-      if (reg.waiting) {
-        setWaitingWorker(reg.waiting);
-        setUpdateAvailable(true);
-      }
-
-      // Listen for new SW installs
-      reg.addEventListener("updatefound", () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            setWaitingWorker(newWorker);
-            setUpdateAvailable(true);
-          }
-        });
-      });
-    };
-
-    checkRegistration();
-
-    // Periodically check for updates (every 60s)
-    const interval = setInterval(async () => {
-      const reg = await navigator.serviceWorker.getRegistration();
-      reg?.update();
-    }, 60_000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const applyUpdate = useCallback(async () => {
+  const applyUpdate = useCallback(async (worker?: ServiceWorker | null) => {
+    const sw = worker ?? waitingWorker;
     // Tell the waiting SW to skip waiting
-    if (waitingWorker) {
-      waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    if (sw) {
+      sw.postMessage({ type: "SKIP_WAITING" });
     }
 
     // Clear all caches
@@ -64,6 +28,49 @@ export function useSwUpdate() {
 
     window.location.reload();
   }, [waitingWorker]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+
+    const autoUpdate = (worker: ServiceWorker) => {
+      console.log("[SW] New version detected, auto-updating...");
+      setWaitingWorker(worker);
+      setUpdateAvailable(true);
+      // Small delay to let any in-flight requests finish
+      setTimeout(() => applyUpdate(worker), 1500);
+    };
+
+    const checkRegistration = async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+
+      // If there's already a waiting worker, auto-update
+      if (reg.waiting) {
+        autoUpdate(reg.waiting);
+      }
+
+      // Listen for new SW installs
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            autoUpdate(newWorker);
+          }
+        });
+      });
+    };
+
+    checkRegistration();
+
+    // Periodically check for updates (every 60s)
+    const interval = setInterval(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      reg?.update();
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, [applyUpdate]);
 
   return { updateAvailable, applyUpdate };
 }
