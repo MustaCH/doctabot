@@ -1794,6 +1794,60 @@ async function executeTool(
       return JSON.stringify({ success: true, message: `Evento "${ev.title}" eliminado${ev.google_event_id ? " (también de Google Calendar)" : ""}.` });
     }
 
+    // ---- Client Notes / Tasks ----
+    case "create_client_note": {
+      let clientId = args.client_id;
+      // Resolve by name if no ID
+      if (!clientId && args.client_name) {
+        const search = sanitizePattern(args.client_name);
+        if (search) {
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
+          if (found?.length) clientId = found[0].id;
+          else return JSON.stringify({ error: `No encontré un cliente con nombre "${args.client_name}"` });
+        }
+      }
+      if (!clientId || !UUID_REGEX.test(clientId)) return JSON.stringify({ error: "Se necesita un client_id o client_name válido" });
+      const content = typeof args.content === "string" ? args.content.trim().slice(0, 2000) : null;
+      if (!content) return JSON.stringify({ error: "El contenido de la nota es requerido" });
+      const isAction = args.is_action === true;
+      const { data, error } = await supabase
+        .from("client_notes")
+        .insert({ client_id: clientId, user_id: userId, content, is_action: isAction, is_done: false })
+        .select("id, content, is_action, is_done, created_at")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, note: data, message: isAction ? `Tarea pendiente creada: "${content}"` : `Nota guardada: "${content}"` });
+    }
+
+    case "list_client_notes": {
+      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
+      let query = supabase
+        .from("client_notes")
+        .select("id, content, is_action, is_done, created_at")
+        .eq("client_id", args.client_id)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!args.show_done) query = query.eq("is_done", false);
+      const { data, error } = await query;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ notes: data ?? [], total: data?.length ?? 0 });
+    }
+
+    case "toggle_client_note": {
+      if (!args.note_id || !UUID_REGEX.test(args.note_id)) return JSON.stringify({ error: "ID de nota inválido" });
+      const isDone = args.is_done === true;
+      const { data, error } = await supabase
+        .from("client_notes")
+        .update({ is_done: isDone })
+        .eq("id", args.note_id)
+        .eq("user_id", userId)
+        .select("id, content, is_done")
+        .single();
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, note: data, message: isDone ? `Tarea completada ✅` : `Tarea marcada como pendiente` });
+    }
+
     default:
       return JSON.stringify({ error: "Tool not found" });
   }
