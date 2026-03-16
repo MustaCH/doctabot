@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft, Search, Heart, Users, MessageSquare, CalendarDays,
-  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight
+  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -31,6 +31,15 @@ interface ClientEvent {
   clients: { full_name: string } | null;
 }
 
+interface PendingNote {
+  id: string;
+  content: string;
+  is_done: boolean;
+  created_at: string;
+  client_id: string;
+  client_name?: string;
+}
+
 interface DashboardData {
   totalProperties: number;
   totalClients: number;
@@ -39,6 +48,7 @@ interface DashboardData {
   clients: Client[];
   events: ClientEvent[];
   recentConversations: { id: string; title: string; updated_at: string }[];
+  pendingNotes: PendingNote[];
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
@@ -64,17 +74,33 @@ const Dashboard = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const handleToggleNote = async (noteId: string) => {
+    await supabase.from("client_notes").update({ is_done: true }).eq("id", noteId);
+    setData(prev => prev ? {
+      ...prev,
+      pendingNotes: prev.pendingNotes.filter(n => n.id !== noteId),
+    } : prev);
+  };
+
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes] = await Promise.all([
+      const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes, notesRes] = await Promise.all([
         supabase.from("properties").select("id", { count: "exact", head: true }),
         supabase.from("clients").select("id", { count: "exact", head: true }),
         supabase.from("favorites").select("id", { count: "exact", head: true }),
         supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
         supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
         supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
+        supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
       ]);
+      // Enrich notes with client names
+      const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
+      const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
+        ...n,
+        client_name: clientMap.get(n.client_id) ?? "Cliente",
+      }));
+
       setData({
         totalProperties: propsRes.count ?? 0,
         totalClients: clientsRes.count ?? 0,
@@ -83,6 +109,7 @@ const Dashboard = () => {
         clients: (allClientsRes.data as Client[]) ?? [],
         events: (eventsRes.data as unknown as ClientEvent[]) ?? [],
         recentConversations: convsRes.data ?? [],
+        pendingNotes,
       });
       setLoading(false);
     };
@@ -258,6 +285,41 @@ const Dashboard = () => {
                 </div>
               )}
             </section>
+
+            {/* Pending tasks */}
+            {data!.pendingNotes.length > 0 && (
+              <section className="space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold">Tareas pendientes</h2>
+                  <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                    {data!.pendingNotes.length}
+                  </Badge>
+                </div>
+
+                <div className="rounded-xl border border-primary/20 bg-primary/5 divide-y divide-primary/10 overflow-hidden">
+                  {data!.pendingNotes.map(note => (
+                    <div key={note.id} className="flex items-start gap-3 px-3.5 py-2.5">
+                      <button
+                        onClick={() => handleToggleNote(note.id)}
+                        className="mt-0.5 shrink-0"
+                      >
+                        <Circle className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs">{note.content}</p>
+                        <p
+                          className="text-[10px] text-primary cursor-pointer hover:underline"
+                          onClick={() => navigate(`/clients/${note.client_id}`)}
+                        >
+                          {note.client_name}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Client Pipeline */}
             <section className="space-y-2.5">
