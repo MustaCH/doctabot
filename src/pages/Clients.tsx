@@ -934,6 +934,14 @@ const Clients = () => {
           onImported={loadClients}
         />
       )}
+
+      <TagManagerDialog
+        open={showTagManager}
+        onOpenChange={setShowTagManager}
+        tags={tags}
+        onCreateTag={createTag}
+        onDeleteTag={deleteTag}
+      />
     </div>
   );
 };
