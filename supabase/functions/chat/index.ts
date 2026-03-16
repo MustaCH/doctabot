@@ -457,7 +457,7 @@ const toolDefinitions = [
           phone: { type: "string", description: "Teléfono del cliente" },
           email: { type: "string", description: "Email del cliente" },
           notes: { type: "string", description: "Notas libres sobre el cliente" },
-          status: { type: "string", description: "Estado: prospect (default), active, inactive, closed" },
+          status: { type: "string", description: "Estado: hot (caliente/interesado, default), warm (tibio/en seguimiento), cold (frío/sin actividad)" },
           client_type: { type: "string", description: "Tipo: buyer (compra/alquila, default), seller (vende/alquila su propiedad), both" },
           birthday: { type: "string", description: "Fecha de cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
