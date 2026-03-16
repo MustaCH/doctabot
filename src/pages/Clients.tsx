@@ -7,12 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, X, Tag as TagIcon } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
-import { useTags } from "@/hooks/use-tags";
-import { TagManagerDialog, ClientTagPicker } from "@/components/TagComponents";
 
 interface Client {
   id: string;
@@ -89,11 +87,6 @@ const Clients = () => {
   const [propertyCounts, setPropertyCounts] = useState<Record<string, number>>({});
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [showTagManager, setShowTagManager] = useState(false);
-
-  // Tags
-  const { tags, getClientTags, createTag, deleteTag, assignTag, removeTag } = useTags();
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
@@ -147,9 +140,6 @@ const Clients = () => {
     if (typeFilter !== "all") {
       result = result.filter(c => c.client_type === typeFilter || c.client_type === "both");
     }
-    if (tagFilter) {
-      result = result.filter(c => getClientTags(c.id).some(t => t.id === tagFilter));
-    }
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(c =>
@@ -159,7 +149,7 @@ const Clients = () => {
       );
     }
     return result;
-  }, [clients, typeFilter, tagFilter, searchQuery, getClientTags]);
+  }, [clients, typeFilter, searchQuery]);
 
   const handleCreate = async () => {
     if (!user) return;
@@ -213,9 +203,6 @@ const Clients = () => {
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowTagManager(true)} title="Gestionar etiquetas">
-            <TagIcon className="h-4 w-4" />
-          </Button>
           <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={() => setShowImport(true)} title="Importar desde Excel/CSV">
             <Upload className="h-4 w-4" />
           </Button>
@@ -253,23 +240,6 @@ const Clients = () => {
               {fb.label}
             </Button>
           ))}
-          {tags.length > 0 && (
-            <>
-              <div className="w-px h-5 bg-border shrink-0 mx-1" />
-              {tags.map(tag => (
-                <Button
-                  key={tag.id}
-                  size="sm"
-                  variant={tagFilter === tag.id ? "default" : "ghost"}
-                  className="h-7 text-xs px-3 shrink-0 gap-1"
-                  onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}
-                >
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                  {tag.name}
-                </Button>
-              ))}
-            </>
-          )}
         </div>
       </div>
 
@@ -329,17 +299,6 @@ const Clients = () => {
                           </span>
                         )}
                       </div>
-                      {tags.length > 0 && (
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <ClientTagPicker
-                            clientId={client.id}
-                            allTags={tags}
-                            assignedTags={getClientTags(client.id)}
-                            onAssign={assignTag}
-                            onRemove={removeTag}
-                          />
-                        </div>
-                      )}
                     </div>
                     {propCount > 0 && (
                       <div className="flex items-center gap-1 shrink-0 rounded-full bg-primary/10 px-2 py-1">
@@ -440,13 +399,6 @@ const Clients = () => {
         />
       )}
 
-      <TagManagerDialog
-        open={showTagManager}
-        onOpenChange={setShowTagManager}
-        tags={tags}
-        onCreateTag={createTag}
-        onDeleteTag={deleteTag}
-      />
     </div>
   );
 };

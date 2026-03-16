@@ -19,8 +19,6 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { useTags } from "@/hooks/use-tags";
-import { ClientTagPicker } from "@/components/TagComponents";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 
 interface Client {
@@ -135,7 +133,7 @@ const ClientDetail = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const { tags, getClientTags, assignTag, removeTag } = useTags();
+  
 
   const loadClient = useCallback(async () => {
     if (!id || !user) return;
@@ -444,18 +442,6 @@ const ClientDetail = () => {
           </DropdownMenu>
         </div>
 
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="mt-2 ml-[4.5rem]">
-            <ClientTagPicker
-              clientId={client.id}
-              allTags={tags}
-              assignedTags={getClientTags(client.id)}
-              onAssign={assignTag}
-              onRemove={removeTag}
-            />
-          </div>
-        )}
       </div>
 
       {/* Quick action bar */}
