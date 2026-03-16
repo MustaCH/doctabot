@@ -513,7 +513,7 @@ const toolDefinitions = [
         type: "object",
         properties: {
           search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
-          status: { type: "string", description: "Filtrar por estado: prospect, active, closed" },
+          status: { type: "string", description: "Filtrar por estado: hot, warm, cold" },
           limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
         },
         additionalProperties: false,
