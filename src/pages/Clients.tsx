@@ -539,7 +539,7 @@ const Clients = () => {
                 </Button>
               ))}
             </>
-          )
+          )}
         </div>
       </div>
 
