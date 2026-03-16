@@ -299,17 +299,6 @@ const Clients = () => {
                           </span>
                         )}
                       </div>
-                      {tags.length > 0 && (
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <ClientTagPicker
-                            clientId={client.id}
-                            allTags={tags}
-                            assignedTags={getClientTags(client.id)}
-                            onAssign={assignTag}
-                            onRemove={removeTag}
-                          />
-                        </div>
-                      )}
                     </div>
                     {propCount > 0 && (
                       <div className="flex items-center gap-1 shrink-0 rounded-full bg-primary/10 px-2 py-1">
