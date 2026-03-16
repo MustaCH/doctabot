@@ -226,37 +226,22 @@ const Profile = () => {
 
         {/* Google Calendar */}
         <div className="rounded-lg border bg-card p-4 space-y-2">
-          <p className="text-sm font-medium">Google Calendar, Meet y Gmail</p>
-          <p className="text-xs text-muted-foreground">
-            {calendarConnected
-              ? "Tu cuenta de Google está conectada. Alan puede crear eventos, reuniones por Meet y enviar emails."
-              : "Conectá tu cuenta de Google para que Alan pueda crear eventos, videollamadas y enviar emails."}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Google Workspace</p>
+            {calendarConnected && (
+              <span className="text-xs text-green-600 font-medium">Conectado ✅</span>
+            )}
+          </div>
           {calendarConnected ? (
-            <div className="space-y-2 pt-1">
-              {/* Scope indicators */}
-              <div className="flex gap-2 flex-wrap">
-                <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                  <CalendarCheck className="h-3.5 w-3.5" />
-                  Calendar
-                </span>
-                <span className={`flex items-center gap-1 text-xs font-medium ${hasGmailScope ? "text-primary" : "text-muted-foreground"}`}>
-                  <Mail className="h-3.5 w-3.5" />
-                  Gmail & Meet
-                </span>
-              </div>
-              {/* Warning if missing gmail scope */}
+            <div className="space-y-2">
               {!hasGmailScope && (
-                <div className="flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground">Permisos insuficientes</p>
-                    <p className="text-xs text-muted-foreground">Reconectá para activar el envío de emails y Google Meet.</p>
-                  </div>
+                <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+                  <p className="text-xs text-muted-foreground flex-1">Faltan permisos de Gmail</p>
                   <Button
                     type="button"
                     size="sm"
-                    className="h-7 px-2 text-xs shrink-0"
+                    className="h-6 px-2 text-xs shrink-0"
                     onClick={handleConnectCalendar}
                     disabled={calendarLoading}
                   >
@@ -264,22 +249,17 @@ const Profile = () => {
                   </Button>
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">
-                  {hasGmailScope ? "Todos los permisos activos ✅" : ""}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-destructive hover:text-destructive h-7 px-2"
-                  onClick={handleDisconnectCalendar}
-                  disabled={calendarLoading}
-                >
-                  {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
-                  Desconectar
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                onClick={handleDisconnectCalendar}
+                disabled={calendarLoading}
+              >
+                {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
+                Desconectar
+              </Button>
             </div>
           ) : (
             <Button
