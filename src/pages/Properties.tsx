@@ -79,6 +79,12 @@ const Properties = () => {
       if (typeFilter !== "all") {
         query = query.eq("property_type", typeFilter);
       }
+      if (priceMin) {
+        query = query.gte("price", Number(priceMin));
+      }
+      if (priceMax) {
+        query = query.lte("price", Number(priceMax));
+      }
 
       query = query
         .order("created_at", { ascending: false })
