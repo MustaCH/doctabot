@@ -10,6 +10,7 @@ import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
 import Properties from "./pages/Properties";
 import Clients from "./pages/Clients";
+import ClientDetail from "./pages/ClientDetail";
 import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
 import Tutorial from "./pages/Tutorial";
