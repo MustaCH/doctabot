@@ -281,12 +281,9 @@ const Properties = () => {
   );
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-background">
+    <div className="flex h-[100dvh] flex-col bg-background pb-14 md:pb-0">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <Building2 className="h-5 w-5 text-primary" />
         <div className="flex-1">
           <p className="text-sm font-semibold">Propiedades</p>
