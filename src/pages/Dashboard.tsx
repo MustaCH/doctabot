@@ -181,9 +181,12 @@ const Dashboard = () => {
   const pipelineOrder = ["prospect", "active", "inactive", "closed"];
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-background pb-14 md:pb-0">
+    <div className="flex min-h-[100dvh] flex-col bg-background">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3 safe-top">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/profile")}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
         <TrendingUp className="h-5 w-5 text-primary" />
         <h1 className="text-base font-bold tracking-tight">Centro de Control</h1>
       </div>
