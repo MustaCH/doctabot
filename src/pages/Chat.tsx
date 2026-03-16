@@ -11,6 +11,8 @@ import { Menu, UserCircle, ChevronDown, Loader2, Search, CalendarDays, Users } f
 import { useNavigate } from "react-router-dom";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useSwUpdate } from "@/hooks/use-sw-update";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 const Chat = () => {
   const { user } = useAuth();
