@@ -499,11 +499,9 @@ const Properties = () => {
         matches={matches}
         loading={matchesLoading}
         propertyTitle={matchesPropertyTitle}
-        onLinkClient={(clientId, clientName) => {
+        onLinkClient={() => {
           setMatchesOpen(false);
-          setLinkPropertyId(
-            properties.find((p) => p.title === matchesPropertyTitle)?.id ?? ""
-          );
+          setLinkPropertyId(matchesPropertyId);
           setLinkPropertyTitle(matchesPropertyTitle);
           setLinkDialogOpen(true);
         }}
