@@ -246,6 +246,23 @@ const Properties = () => {
             extras={buildExtras(p)}
             agentCode={agentCode}
           />
+          {/* Match clients button */}
+          <button
+            onClick={() => {
+              setMatchesPropertyTitle(p.title ?? undefined);
+              setMatchesOpen(true);
+              findMatches({
+                zone: p.zone,
+                price: p.price,
+                currency: p.currency,
+                property_type: p.property_type,
+              });
+            }}
+            className="absolute bottom-[4.5rem] right-12 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground shadow backdrop-blur-sm transition-all hover:bg-accent/80 sm:opacity-0 sm:group-hover:opacity-100"
+            title="Ver clientes compatibles"
+          >
+            <Users className="h-3.5 w-3.5" />
+          </button>
           {/* Link to client button */}
           <button
             onClick={() => {
