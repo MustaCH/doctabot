@@ -213,7 +213,7 @@ const Dashboard = () => {
     { label: "Conversaciones", value: data.totalConversations, icon: MessageSquare, color: "text-violet-500" },
   ] : [];
 
-  const pipelineOrder = ["prospect", "active", "inactive", "closed"];
+  const pipelineOrder = ["hot", "warm", "cold"];
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-background">

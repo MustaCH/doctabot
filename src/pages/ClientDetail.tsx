@@ -85,10 +85,12 @@ interface ClientNote {
 }
 
 const statusLabel: Record<string, string> = {
-  prospect: "Prospecto", active: "Activo", inactive: "Inactivo", closed: "Cerrado",
+  hot: "🔥 Caliente", warm: "☀️ Tibio", cold: "❄️ Frío",
 };
-const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  prospect: "secondary", active: "default", inactive: "outline", closed: "destructive",
+const statusColor: Record<string, string> = {
+  hot: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
+  warm: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+  cold: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
 };
 const clientTypeLabel: Record<string, string> = {
   buyer: "🔍 Comprador", seller: "🏠 Vendedor", both: "↔️ Ambos",

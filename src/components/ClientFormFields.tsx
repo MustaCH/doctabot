@@ -111,10 +111,9 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
           <Select value={form.status} onValueChange={(v) => set("status", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="prospect">Prospecto</SelectItem>
-              <SelectItem value="active">Activo</SelectItem>
-              <SelectItem value="inactive">Inactivo</SelectItem>
-              <SelectItem value="closed">Cerrado</SelectItem>
+              <SelectItem value="hot">🔥 Caliente</SelectItem>
+              <SelectItem value="warm">☀️ Tibio</SelectItem>
+              <SelectItem value="cold">❄️ Frío</SelectItem>
             </SelectContent>
           </Select>
         </div>

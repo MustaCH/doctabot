@@ -15,10 +15,9 @@ interface Props {
 }
 
 const statusLabels: Record<string, string> = {
-  prospect: "Prospecto",
-  active: "Activo",
-  closed: "Cerrado",
-  inactive: "Inactivo",
+  hot: "🔥 Caliente",
+  warm: "☀️ Tibio",
+  cold: "❄️ Frío",
 };
 
 export function PropertyMatchesDialog({
