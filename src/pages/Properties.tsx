@@ -250,6 +250,7 @@ const Properties = () => {
           {/* Match clients button */}
           <button
             onClick={() => {
+              setMatchesPropertyId(p.id);
               setMatchesPropertyTitle(p.title ?? undefined);
               setMatchesOpen(true);
               findMatches({
