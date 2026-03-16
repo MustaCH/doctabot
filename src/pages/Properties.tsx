@@ -490,6 +490,22 @@ const Properties = () => {
         propertyId={linkPropertyId}
         propertyTitle={linkPropertyTitle}
       />
+
+      <PropertyMatchesDialog
+        open={matchesOpen}
+        onOpenChange={setMatchesOpen}
+        matches={matches}
+        loading={matchesLoading}
+        propertyTitle={matchesPropertyTitle}
+        onLinkClient={(clientId, clientName) => {
+          setMatchesOpen(false);
+          setLinkPropertyId(
+            properties.find((p) => p.title === matchesPropertyTitle)?.id ?? ""
+          );
+          setLinkPropertyTitle(matchesPropertyTitle);
+          setLinkDialogOpen(true);
+        }}
+      />
     </div>
   );
 };
