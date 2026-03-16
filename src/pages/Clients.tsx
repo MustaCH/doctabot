@@ -11,10 +11,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, CalendarDays, X } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Pencil, Trash2, Home, ChevronDown, ExternalLink, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, CalendarDays, X, Tag as TagIcon } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
+import { useTags } from "@/hooks/use-tags";
+import { TagManagerDialog, ClientTagPicker } from "@/components/TagComponents";
 
 interface ClientProperty {
   id: string;
