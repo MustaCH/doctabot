@@ -8,7 +8,7 @@ import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import Onboarding from "./pages/Onboarding";
 import Profile from "./pages/Profile";
-import Favorites from "./pages/Favorites";
+import Properties from "./pages/Properties";
 import Clients from "./pages/Clients";
 import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
