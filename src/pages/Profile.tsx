@@ -317,7 +317,6 @@ const Profile = () => {
                 required
               />
             </div>
-          </div>
         </div>
 
         {/* Actions */}
