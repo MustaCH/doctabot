@@ -7,12 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, X, Tag as TagIcon } from "lucide-react";
+import { ArrowLeft, Users, Phone, Mail, FileText, Home, Plus, Upload, Building2, MapPin, Cake, DollarSign, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import ImportClientsDialog from "@/components/ImportClientsDialog";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
-import { useTags } from "@/hooks/use-tags";
-import { TagManagerDialog, ClientTagPicker } from "@/components/TagComponents";
 
 interface Client {
   id: string;
