@@ -18,6 +18,15 @@ const typeConfig: Record<EntryType, { icon: typeof Sparkles; label: string; clas
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "1.5.0",
+    date: "16 de marzo de 2026",
+    entries: [
+      { type: "feature", text: "Nuevos estados de cliente: 🔥 Caliente, ☀️ Tibio y ❄️ Frío con badges de colores" },
+      { type: "feature", text: "Pull-to-refresh en Chat, Clientes y Dashboard" },
+      { type: "improvement", text: "Auto-actualización de la PWA sin intervención del usuario" },
+    ],
+  },
+  {
     version: "1.4.0",
     date: "16 de marzo de 2026",
     entries: [
