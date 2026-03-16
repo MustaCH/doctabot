@@ -1,20 +1,22 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import Login from "./pages/Login";
-import Chat from "./pages/Chat";
-import Onboarding from "./pages/Onboarding";
-import Profile from "./pages/Profile";
-import Properties from "./pages/Properties";
-import Clients from "./pages/Clients";
-import ClientDetail from "./pages/ClientDetail";
-import Dashboard from "./pages/Dashboard";
-import SuperAdmin from "./pages/SuperAdmin";
-import Tutorial from "./pages/Tutorial";
-import NotFound from "./pages/NotFound";
+
+const Login = lazy(() => import("./pages/Login"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Properties = lazy(() => import("./pages/Properties"));
+const Clients = lazy(() => import("./pages/Clients"));
+const ClientDetail = lazy(() => import("./pages/ClientDetail"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const Tutorial = lazy(() => import("./pages/Tutorial"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
@@ -74,19 +76,21 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
-            <Route path="/tutorial" element={<TutorialRoute><Tutorial /></TutorialRoute>} />
-            <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/properties" element={<ProtectedRoute><Properties /></ProtectedRoute>} />
-            <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-            <Route path="/clients/:id" element={<ProtectedRoute><ClientDetail /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/superadminpanel" element={<SuperAdmin />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<Spinner />}>
+            <Routes>
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
+              <Route path="/tutorial" element={<TutorialRoute><Tutorial /></TutorialRoute>} />
+              <Route path="/" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/properties" element={<ProtectedRoute><Properties /></ProtectedRoute>} />
+              <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+              <Route path="/clients/:id" element={<ProtectedRoute><ClientDetail /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/superadminpanel" element={<SuperAdmin />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
