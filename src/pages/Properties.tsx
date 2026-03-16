@@ -235,7 +235,7 @@ const Properties = () => {
   const PropertyGrid = ({ items, isFavView = false }: { items: (PropertyRow | FavoriteProperty)[]; isFavView?: boolean }) => (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((p) => (
-        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative">
+        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative overflow-hidden rounded-xl">
           <PropertyCard
             photo={p.photo ?? undefined}
             title={p.title ?? undefined}
