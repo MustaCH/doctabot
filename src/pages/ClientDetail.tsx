@@ -9,14 +9,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
   Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
   Clock, CheckCircle2, Circle, Send, Share2, StickyNote, ChevronDown,
+  Pencil, MoreVertical,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useTags } from "@/hooks/use-tags";
 import { ClientTagPicker } from "@/components/TagComponents";
+import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 
 interface Client {
   id: string;
