@@ -153,6 +153,11 @@ const Clients = () => {
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [showTagManager, setShowTagManager] = useState(false);
+
+  // Tags
+  const { tags, getClientTags, createTag, deleteTag, assignTag, removeTag } = useTags();
 
   // Edit state
   const [editClient, setEditClient] = useState<Client | null>(null);
