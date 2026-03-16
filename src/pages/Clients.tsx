@@ -711,7 +711,7 @@ const Clients = () => {
                                 </div>
                                 {cp.notes && <p className="text-[11px] text-muted-foreground/70 line-clamp-1">{cp.notes}</p>}
                               </div>
-                              <div className="flex flex-col items-center gap-1 shrink-0 self-center">
+                              <div className="flex flex-col items-center gap-3 shrink-0 self-center">
                                 {cp.properties?.url && (
                                   <a href={cp.properties.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
                                     <ExternalLink className="h-3.5 w-3.5" />
