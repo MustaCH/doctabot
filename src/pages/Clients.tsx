@@ -713,6 +713,71 @@ const Clients = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Event Creation Dialog */}
+      <Dialog open={!!eventForClient} onOpenChange={(open) => { if (!open) setEventForClient(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nueva fecha importante</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Título</Label>
+              <Input
+                placeholder="Ej: Cumpleaños de Juan"
+                value={eventForm.title}
+                onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo</Label>
+                <Select value={eventForm.event_type} onValueChange={(v) => setEventForm(f => ({ ...f, event_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="birthday">🎂 Cumpleaños</SelectItem>
+                    <SelectItem value="purchase_anniversary">🏠 Aniversario compra</SelectItem>
+                    <SelectItem value="contract_expiry">📄 Vencimiento</SelectItem>
+                    <SelectItem value="followup">📞 Seguimiento</SelectItem>
+                    <SelectItem value="custom">📌 Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Recurrencia</Label>
+                <Select value={eventForm.recurrence} onValueChange={(v) => setEventForm(f => ({ ...f, recurrence: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yearly">Anual</SelectItem>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                    <SelectItem value="once">Única vez</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Fecha</Label>
+              <Input
+                type="date"
+                value={eventForm.event_date}
+                onChange={(e) => setEventForm(f => ({ ...f, event_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notas (opcional)</Label>
+              <Input
+                placeholder="Notas adicionales..."
+                value={eventForm.notes}
+                onChange={(e) => setEventForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEventForClient(null)} disabled={creatingEvent}>Cancelar</Button>
+            <Button onClick={handleCreateEvent} disabled={creatingEvent}>{creatingEvent ? "Creando..." : "Crear evento"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Import Dialog */}
       {user && (
         <ImportClientsDialog
