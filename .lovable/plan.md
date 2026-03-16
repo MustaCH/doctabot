@@ -1,5 +1,3 @@
-
-
 # Plan: Evolución a CRM Inmobiliario Completo
 
 ## Estado actual
@@ -120,16 +118,15 @@ client_tags
 
 ## Orden de implementación sugerido
 
-| Prioridad | Feature | Impacto |
-|-----------|---------|---------|
-| 1 | **Navegación inferior persistente** | Alto — mejora toda la experiencia |
-| 2 | **Búsqueda de clientes** | Alto — funcionalidad básica faltante |
-| 3 | **Compartir propiedad por WhatsApp** | Alto — uso diario del agente |
-| 4 | **Matching automático propiedad-cliente** | Alto — diferenciador clave |
-| 5 | **Ficha de cliente dedicada con timeline** | Alto — visión 360° del cliente |
-| 6 | **Notas/tareas por cliente** | Medio — seguimiento estructurado |
-| 7 | **Tags personalizados** | Medio — organización flexible |
-| 8 | **Kanban de propiedades por cliente** | Medio — visualización del proceso |
-| 9 | **Reportes avanzados** | Medio — insights para el agente |
-| 10 | **Notificaciones push** | Medio — engagement y retención |
-
+| Prioridad | Feature | Impacto | Estado |
+|-----------|---------|---------|--------|
+| 1 | **Navegación inferior persistente** | Alto | ✅ Implementado |
+| 2 | **Búsqueda de clientes** | Alto | ✅ Implementado |
+| 3 | **Compartir propiedad por WhatsApp** | Alto | ⬜ Pendiente |
+| 4 | **Matching automático propiedad-cliente** | Alto | ⬜ Pendiente |
+| 5 | **Ficha de cliente dedicada con timeline** | Alto | ⬜ Pendiente |
+| 6 | **Notas/tareas por cliente** | Medio | ⬜ Pendiente |
+| 7 | **Tags personalizados** | Medio | ⬜ Pendiente |
+| 8 | **Kanban de propiedades por cliente** | Medio | ⬜ Pendiente |
+| 9 | **Reportes avanzados** | Medio | ⬜ Pendiente |
+| 10 | **Notificaciones push** | Medio | ⬜ Pendiente |

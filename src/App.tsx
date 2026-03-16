@@ -14,6 +14,7 @@ import Dashboard from "./pages/Dashboard";
 import SuperAdmin from "./pages/SuperAdmin";
 import Tutorial from "./pages/Tutorial";
 import NotFound from "./pages/NotFound";
+import BottomNav from "./components/BottomNav";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +86,7 @@ const App = () => (
             <Route path="/superadminpanel" element={<SuperAdmin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <BottomNav />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

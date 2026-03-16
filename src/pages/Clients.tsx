@@ -150,6 +150,7 @@ const Clients = () => {
   const [clientEvents, setClientEvents] = useState<Record<string, ClientEvent[]>>({});
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Edit state
   const [editClient, setEditClient] = useState<Client | null>(null);
@@ -256,9 +257,20 @@ const Clients = () => {
   }, [loadClients, loadAllEvents]);
 
   const filteredClients = useMemo(() => {
-    if (typeFilter === "all") return clients;
-    return clients.filter(c => c.client_type === typeFilter || c.client_type === "both");
-  }, [clients, typeFilter]);
+    let result = clients;
+    if (typeFilter !== "all") {
+      result = result.filter(c => c.client_type === typeFilter || c.client_type === "both");
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(c =>
+        c.full_name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [clients, typeFilter, searchQuery]);
 
   const openEdit = (client: Client) => {
     setEditClient(client);
@@ -447,12 +459,9 @@ const Clients = () => {
   ];
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-background">
+    <div className="flex h-[100dvh] flex-col bg-background pb-14 md:pb-0">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigate("/profile")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <Users className="h-5 w-5 text-primary" />
         <div className="flex-1">
           <p className="text-sm font-semibold">Mis Clientes</p>
@@ -470,19 +479,35 @@ const Clients = () => {
         </div>
       </div>
 
-      {/* Type filter tabs */}
-      <div className="flex gap-1 px-4 py-2 border-b border-border bg-card/50 overflow-x-auto">
-        {filterButtons.map(fb => (
-          <Button
-            key={fb.key}
-            size="sm"
-            variant={typeFilter === fb.key ? "default" : "ghost"}
-            className="h-7 text-xs px-3 shrink-0"
-            onClick={() => setTypeFilter(fb.key)}
-          >
-            {fb.label}
-          </Button>
-        ))}
+      {/* Search + Type filter */}
+      <div className="border-b border-border bg-card/50 px-4 py-2 space-y-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nombre, teléfono o email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 pl-9 text-sm bg-background"
+          />
+          {searchQuery && (
+            <Button size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setSearchQuery("")}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-1 overflow-x-auto">
+          {filterButtons.map(fb => (
+            <Button
+              key={fb.key}
+              size="sm"
+              variant={typeFilter === fb.key ? "default" : "ghost"}
+              className="h-7 text-xs px-3 shrink-0"
+              onClick={() => setTypeFilter(fb.key)}
+            >
+              {fb.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}

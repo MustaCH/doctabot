@@ -122,7 +122,7 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 relative"
+            className="h-8 w-8 relative hidden md:inline-flex"
             onClick={() => navigate("/profile")}
           >
             <UserCircle className="h-5 w-5" />
@@ -223,6 +223,8 @@ const Chat = () => {
           quotedText={quotedText}
           onClearQuote={() => setQuotedText(null)}
         />
+        {/* Spacer for bottom nav on mobile */}
+        <div className="h-14 md:hidden shrink-0" />
       </div>
     </div>
   );
