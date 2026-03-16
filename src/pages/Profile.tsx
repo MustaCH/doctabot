@@ -214,26 +214,15 @@ const Profile = () => {
           </Button>
         </div>
 
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => navigate("/dashboard")}
-          >
-            <BarChart3 className="mr-2 h-4 w-4 text-primary" />
-            Dashboard
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => navigate("/changelog")}
-          >
-            <Newspaper className="mr-2 h-4 w-4 text-primary" />
-            Novedades
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => navigate("/dashboard")}
+        >
+          <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+          Dashboard
+        </Button>
 
         {/* Google Calendar */}
         <div className="rounded-lg border bg-card p-4 space-y-2">
