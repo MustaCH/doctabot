@@ -297,9 +297,9 @@ const Clients = () => {
                         <Badge variant={clientTypeVariant[client.client_type] ?? "secondary"} className="text-[10px] h-5">
                           {clientTypeLabel[client.client_type] ?? client.client_type}
                         </Badge>
-                        <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
                           {statusLabel[client.status] ?? client.status}
-                        </Badge>
+                        </span>
                         {client.source && (
                           <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                             {client.source}

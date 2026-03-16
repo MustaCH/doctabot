@@ -417,9 +417,9 @@ const ClientDetail = () => {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold truncate">{client.full_name}</p>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <Badge variant={statusVariant[client.status] ?? "secondary"} className="text-[10px] h-5">
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
                 {statusLabel[client.status] ?? client.status}
-              </Badge>
+              </span>
               <span className="text-[10px] text-muted-foreground">
                 {clientTypeLabel[client.client_type] ?? client.client_type}
               </span>
