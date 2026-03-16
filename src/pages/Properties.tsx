@@ -328,37 +328,57 @@ const Properties = () => {
             </div>
 
             {showFilters && (
-              <div className="flex gap-2">
-                <Select value={operationFilter} onValueChange={setOperationFilter}>
-                  <SelectTrigger className="flex-1 h-9 text-xs">
-                    <SelectValue placeholder="Operación" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las operaciones</SelectItem>
-                    <SelectItem value="Venta">Venta</SelectItem>
-                    <SelectItem value="Alquiler">Alquiler</SelectItem>
-                    <SelectItem value="Alquiler temporario">Alquiler temporario</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger className="flex-1 h-9 text-xs">
-                    <SelectValue placeholder="Tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los tipos</SelectItem>
-                    <SelectItem value="Casa">Casa</SelectItem>
-                    <SelectItem value="Departamento">Departamento</SelectItem>
-                    <SelectItem value="Terreno">Terreno</SelectItem>
-                    <SelectItem value="Local">Local</SelectItem>
-                    <SelectItem value="Oficina">Oficina</SelectItem>
-                    <SelectItem value="Galpón">Galpón</SelectItem>
-                  </SelectContent>
-                </Select>
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" className="h-9 text-xs shrink-0" onClick={clearFilters}>
-                    Limpiar
-                  </Button>
-                )}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Select value={operationFilter} onValueChange={setOperationFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Operación" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las operaciones</SelectItem>
+                      <SelectItem value="Venta">Venta</SelectItem>
+                      <SelectItem value="Alquiler">Alquiler</SelectItem>
+                      <SelectItem value="Alquiler temporario">Alquiler temporario</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los tipos</SelectItem>
+                      <SelectItem value="Casa">Casa</SelectItem>
+                      <SelectItem value="Departamento">Departamento</SelectItem>
+                      <SelectItem value="Terreno">Terreno</SelectItem>
+                      <SelectItem value="Local">Local</SelectItem>
+                      <SelectItem value="Oficina">Oficina</SelectItem>
+                      <SelectItem value="Galpón">Galpón</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground shrink-0">💰 Precio:</span>
+                  <Input
+                    type="number"
+                    placeholder="Desde"
+                    value={debouncedPriceMin}
+                    onChange={(e) => setDebouncedPriceMin(e.target.value)}
+                    className="h-9 text-xs flex-1"
+                  />
+                  <span className="text-xs text-muted-foreground">—</span>
+                  <Input
+                    type="number"
+                    placeholder="Hasta"
+                    value={debouncedPriceMax}
+                    onChange={(e) => setDebouncedPriceMax(e.target.value)}
+                    className="h-9 text-xs flex-1"
+                  />
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" className="h-9 text-xs shrink-0" onClick={clearFilters}>
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
