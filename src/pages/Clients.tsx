@@ -613,10 +613,15 @@ const Clients = () => {
                                 <span className="text-muted-foreground/50">·</span>
                                 <span>{recurrenceLabel[ev.recurrence] ?? ev.recurrence}</span>
                                 {ev.google_event_id && (
-                                  <>
-                                    <span className="text-muted-foreground/50">·</span>
-                                    <span className="text-primary">📅 Calendar</span>
-                                  </>
+                                  <span title="Sincronizado con Google Calendar" className="inline-flex items-center ml-0.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-3.5 w-3.5">
+                                      <path fill="#4285F4" d="M35.8 42H12.2C10.4 42 9 40.6 9 38.8V12.2C9 10.4 10.4 9 12.2 9h23.5C37.6 9 39 10.4 39 12.2v26.5c0 1.8-1.4 3.3-3.2 3.3z"/>
+                                      <path fill="#fff" d="M33.3 25.8c0-.6-.1-1.2-.3-1.7h-9v3.2h5.2c-.2 1.1-.9 2.1-1.9 2.7v2.3h3c1.8-1.6 2.9-4 2.9-6.5z"/>
+                                      <path fill="#34A853" d="M24 34c2.6 0 4.7-.8 6.3-2.3l-3-2.3c-.8.6-1.9.9-3.2.9-2.5 0-4.6-1.7-5.3-3.9h-3.1v2.4C17.1 31.8 20.3 34 24 34z"/>
+                                      <path fill="#FBBC05" d="M18.7 27.3c-.2-.6-.3-1.2-.3-1.8s.1-1.3.3-1.8v-2.4h-3.1C14.6 23 14 24.4 14 26s.6 3 1.6 4.3l3.1-3z"/>
+                                      <path fill="#EA4335" d="M24 19.6c1.4 0 2.7.5 3.7 1.5l2.8-2.8C28.7 16.5 26.5 15.5 24 15.5c-3.7 0-6.9 2.2-8.4 5.3l3.1 2.4c.8-2.3 2.9-3.6 5.3-3.6z"/>
+                                    </svg>
+                                  </span>
                                 )}
                               </div>
                             </div>
