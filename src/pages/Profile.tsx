@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw } from "lucide-react";
+import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
@@ -214,15 +214,26 @@ const Profile = () => {
           </Button>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate("/dashboard")}
-        >
-          <BarChart3 className="mr-2 h-4 w-4 text-primary" />
-          Dashboard
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => navigate("/dashboard")}
+          >
+            <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+            Dashboard
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => navigate("/changelog")}
+          >
+            <Newspaper className="mr-2 h-4 w-4 text-primary" />
+            Novedades
+          </Button>
+        </div>
 
         {/* Google Calendar */}
         <div className="rounded-lg border bg-card p-4 space-y-2">
