@@ -58,6 +58,11 @@ const Properties = () => {
   const [favorites, setFavorites] = useState<FavoriteProperty[]>([]);
   const [loadingFavs, setLoadingFavs] = useState(true);
 
+  // Link to client dialog
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkPropertyId, setLinkPropertyId] = useState("");
+  const [linkPropertyTitle, setLinkPropertyTitle] = useState<string | undefined>();
+
   // Active tab
   const [activeTab, setActiveTab] = useState("search");
 
