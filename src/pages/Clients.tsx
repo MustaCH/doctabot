@@ -698,11 +698,20 @@ const Clients = () => {
                                 </div>
                                 {cp.notes && <p className="text-[11px] text-muted-foreground/70 line-clamp-1">{cp.notes}</p>}
                               </div>
-                              {cp.properties?.url && (
-                                <a href={cp.properties.url} target="_blank" rel="noopener noreferrer" className="shrink-0 self-center text-muted-foreground hover:text-primary transition-colors">
-                                  <ExternalLink className="h-3.5 w-3.5" />
-                                </a>
-                              )}
+                              <div className="flex flex-col items-center gap-1 shrink-0 self-center">
+                                {cp.properties?.url && (
+                                  <a href={cp.properties.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  onClick={() => handleUnlinkProperty(cp.id, client.id)}
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  title="Desvincular propiedad"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
