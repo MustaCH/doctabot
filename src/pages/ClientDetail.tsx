@@ -123,6 +123,11 @@ const ClientDetail = () => {
   const [newNote, setNewNote] = useState("");
   const [isAction, setIsAction] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState<ClientFormData>(emptyClientForm);
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { tags, getClientTags, assignTag, removeTag } = useTags();
 
