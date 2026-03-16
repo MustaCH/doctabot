@@ -586,7 +586,7 @@ const ClientDetail = () => {
         </div>
 
         {/* Properties Tab */}
-        <TabsContent value="properties" className="flex-1 overflow-y-auto m-0 p-4">
+        <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
           {properties.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/30" />
