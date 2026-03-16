@@ -676,7 +676,7 @@ const ClientDetail = () => {
         </TabsContent>
 
         {/* Notes Tab */}
-        <TabsContent value="notes" className="flex-1 overflow-y-auto m-0 flex flex-col">
+        <TabsContent value="notes" className="m-0 flex flex-col overflow-hidden" style={{ flex: 1, minHeight: 0 }}>
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {notes.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
