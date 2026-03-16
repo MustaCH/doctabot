@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import PropertyCard from "@/components/PropertyCard";
-import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X } from "lucide-react";
+import { LinkPropertyToClientDialog } from "@/components/LinkPropertyToClientDialog";
+import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 interface PropertyRow {
