@@ -119,6 +119,8 @@ const ClientDetail = () => {
   const [isAction, setIsAction] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
 
+  const { tags, getClientTags, assignTag, removeTag } = useTags();
+
   const loadClient = useCallback(async () => {
     if (!id || !user) return;
     setLoading(true);
