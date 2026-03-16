@@ -74,6 +74,14 @@ const Dashboard = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const handleToggleNote = async (noteId: string) => {
+    await supabase.from("client_notes").update({ is_done: true }).eq("id", noteId);
+    setData(prev => prev ? {
+      ...prev,
+      pendingNotes: prev.pendingNotes.filter(n => n.id !== noteId),
+    } : prev);
+  };
+
   useEffect(() => {
     if (!user) return;
     const load = async () => {
