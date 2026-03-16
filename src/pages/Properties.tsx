@@ -103,7 +103,7 @@ const Properties = () => {
     } finally {
       setLoadingProps(false);
     }
-  }, [user, searchQuery, operationFilter, typeFilter]);
+  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
 
   // Load on filter/search change
   useEffect(() => {
