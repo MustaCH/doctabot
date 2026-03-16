@@ -9,6 +9,8 @@ import {
   AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 
 interface Client {
   id: string;
