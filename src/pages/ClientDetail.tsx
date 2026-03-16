@@ -452,7 +452,7 @@ const ClientDetail = () => {
       </details>
 
       {/* Tabs */}
-      <Tabs defaultValue="properties" className="flex flex-1 flex-col overflow-hidden">
+      <Tabs defaultValue="properties" className="flex flex-1 flex-col min-h-0">
         <div className="border-b border-border bg-card px-4">
           <TabsList className="w-full bg-transparent h-10">
             <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
