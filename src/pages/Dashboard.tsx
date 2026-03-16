@@ -86,6 +86,13 @@ const Dashboard = () => {
         supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
         supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
       ]);
+      // Enrich notes with client names
+      const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
+      const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
+        ...n,
+        client_name: clientMap.get(n.client_id) ?? "Cliente",
+      }));
+
       setData({
         totalProperties: propsRes.count ?? 0,
         totalClients: clientsRes.count ?? 0,
@@ -94,6 +101,7 @@ const Dashboard = () => {
         clients: (allClientsRes.data as Client[]) ?? [],
         events: (eventsRes.data as unknown as ClientEvent[]) ?? [],
         recentConversations: convsRes.data ?? [],
+        pendingNotes,
       });
       setLoading(false);
     };
