@@ -230,7 +230,7 @@ const Dashboard = () => {
         ) : (
           <>
             {/* Metric cards */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {metricCards.map(card => (
                 <div key={card.label} className="rounded-xl border border-border bg-card p-3 text-center shadow-sm">
                   <card.icon className={`h-4 w-4 mx-auto mb-1 ${card.color}`} />
