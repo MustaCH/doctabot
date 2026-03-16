@@ -599,6 +599,15 @@ const Clients = () => {
                           </span>
                         )}
                       </div>
+                      {tags.length > 0 && (
+                        <ClientTagPicker
+                          clientId={client.id}
+                          allTags={tags}
+                          assignedTags={getClientTags(client.id)}
+                          onAssign={assignTag}
+                          onRemove={removeTag}
+                        />
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(client)}>
