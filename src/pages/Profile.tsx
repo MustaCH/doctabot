@@ -280,6 +280,16 @@ const Profile = () => {
           )}
         </div>
 
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => navigate("/changelog")}
+        >
+          <Newspaper className="mr-2 h-4 w-4 text-primary" />
+          Novedades
+        </Button>
+
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="fullName">Nombre completo</Label>
