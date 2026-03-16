@@ -387,11 +387,28 @@ const Clients = () => {
     }
   };
 
-  const handleDeleteEvent = async (eventId: string) => {
+  const handleDeleteEvent = async (eventId: string, googleEventId: string | null) => {
     try {
+      // Delete from Google Calendar first if synced
+      if (googleEventId) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (token) {
+            const SUPABASE_FUNCTIONS_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
+            await fetch(`${SUPABASE_FUNCTIONS_URL}/sync-calendar-event`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ google_event_id: googleEventId }),
+            });
+          }
+        } catch {
+          // Calendar delete failed, continue with local delete
+        }
+      }
       const { error } = await supabase.from("client_events").delete().eq("id", eventId);
       if (error) throw error;
-      toast.success("Evento eliminado");
+      toast.success(googleEventId ? "Evento eliminado de la app y Google Calendar" : "Evento eliminado");
       loadAllEvents();
     } catch {
       toast.error("Error al eliminar el evento");

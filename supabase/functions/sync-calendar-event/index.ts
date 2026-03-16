@@ -63,6 +63,32 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // --- DELETE: remove from Google Calendar ---
+    if (req.method === "DELETE") {
+      const { google_event_id } = await req.json();
+      if (!google_event_id) {
+        return new Response(JSON.stringify({ deleted: false, reason: "no_event_id" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const accessToken = await getValidCalendarToken(supabase, user.id, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) {
+        return new Response(JSON.stringify({ deleted: false, reason: "no_calendar" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(google_event_id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!calRes.ok && calRes.status !== 410) {
+        console.error("Calendar delete error:", await calRes.text());
+        return new Response(JSON.stringify({ deleted: false, reason: "calendar_error" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      return new Response(JSON.stringify({ deleted: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- POST: create in Google Calendar ---
     const { event_id, title, event_date, recurrence, notes } = await req.json();
     if (!event_id || !title || !event_date) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -110,7 +136,6 @@ serve(async (req) => {
 
     const calEvent = await calRes.json();
 
-    // Update the client_event with the google_event_id using service role
     const serviceSupabase = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     await serviceSupabase
       .from("client_events")
