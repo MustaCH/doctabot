@@ -223,6 +223,8 @@ const Chat = () => {
           quotedText={quotedText}
           onClearQuote={() => setQuotedText(null)}
         />
+        {/* Spacer for bottom nav on mobile */}
+        <div className="h-14 md:hidden shrink-0" />
       </div>
     </div>
   );
