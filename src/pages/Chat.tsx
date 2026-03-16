@@ -141,6 +141,7 @@ const Chat = () => {
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden py-4">
+          <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
               <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />
