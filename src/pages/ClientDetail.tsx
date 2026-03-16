@@ -19,8 +19,6 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { useTags } from "@/hooks/use-tags";
-import { ClientTagPicker } from "@/components/TagComponents";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 
 interface Client {
