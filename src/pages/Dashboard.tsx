@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft, Search, Heart, Users, MessageSquare, CalendarDays,
-  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight
+  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
