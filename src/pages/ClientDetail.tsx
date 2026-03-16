@@ -596,72 +596,63 @@ const ClientDetail = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {properties.map((cp) => {
                 const p = cp.properties;
                 if (!p) return null;
+                const propUrl = (() => {
+                  if (!p.url) return null;
+                  let url = p.url;
+                  if (agentCode) {
+                    try {
+                      const u = new URL(url);
+                      u.searchParams.set("associate", agentCode);
+                      url = u.toString();
+                    } catch { /* keep original */ }
+                  }
+                  return url;
+                })();
                 return (
-                  <div key={cp.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div key={cp.id} className="flex gap-2.5 rounded-lg border border-border bg-card p-2.5 group">
                     {p.photo && (
-                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-                        <img src={p.photo} alt={p.title ?? ""} className="h-full w-full object-cover" loading="lazy" />
-                      </div>
+                      <img src={p.photo} alt="" className="h-16 w-16 rounded-md object-cover shrink-0 bg-muted" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     )}
-                    <div className="p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold truncate">{p.title ?? "Sin título"}</p>
-                          {p.address && <p className="text-xs text-muted-foreground truncate">📍 {p.address}</p>}
-                          {p.price && (
-                            <p className="text-xs font-medium text-primary">
-                              💰 {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
-                            </p>
-                          )}
-                        </div>
-                        <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="text-[10px] shrink-0">
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex items-start justify-between gap-1.5">
+                        <p className="text-xs font-semibold leading-tight truncate">{p.title ?? "Sin título"}</p>
+                        <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="text-[9px] h-4 px-1.5 shrink-0">
                           {propStatusLabel[cp.status] ?? cp.status}
                         </Badge>
                       </div>
-                      {cp.notes && (
-                        <p className="text-xs text-muted-foreground italic">💬 {cp.notes}</p>
+                      {p.address && <p className="text-[11px] text-muted-foreground truncate">📍 {p.address}</p>}
+                      {p.price && (
+                        <p className="text-[11px] font-medium text-primary">
+                          💰 {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
+                        </p>
                       )}
-                      <div className="flex gap-1.5 pt-1">
-                        {p.url && (
-                          <a
-                            href={(() => {
-                              let url = p.url;
-                              if (agentCode) {
-                                try {
-                                  const u = new URL(url);
-                                  u.searchParams.set("associate", agentCode);
-                                  url = u.toString();
-                                } catch { /* keep original */ }
-                              }
-                              return url;
-                            })()}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1"
-                          >
-                            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
-                              <ExternalLink className="h-3 w-3" /> Ver
+                      {cp.notes && <p className="text-[10px] text-muted-foreground italic truncate">💬 {cp.notes}</p>}
+                      <div className="flex items-center gap-1 pt-0.5">
+                        {propUrl && (
+                          <a href={propUrl} target="_blank" rel="noopener noreferrer">
+                            <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-primary">
+                              <ExternalLink className="h-3 w-3" />
                             </Button>
                           </a>
                         )}
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 text-xs h-8"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-muted-foreground hover:text-primary"
                           onClick={() => handleWhatsApp(cp)}
                           disabled={!client.phone}
-                          title={client.phone ? "Enviar por WhatsApp" : "El cliente no tiene teléfono"}
+                          title={client.phone ? "Enviar por WhatsApp" : "Sin teléfono"}
                         >
                           <Share2 className="h-3 w-3" />
                         </Button>
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="ghost"
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive shrink-0"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
                           onClick={() => handleUnlinkProperty(cp.id)}
                         >
                           <Trash2 className="h-3 w-3" />
