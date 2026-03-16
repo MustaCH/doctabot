@@ -419,6 +419,23 @@ const ClientDetail = () => {
               </span>
             </div>
           </div>
+
+          {/* Edit/Delete menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={openEdit} className="gap-2">
+                <Pencil className="h-3.5 w-3.5" /> Editar cliente
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowDeleteConfirm(true)} className="gap-2 text-destructive focus:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" /> Eliminar cliente
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Tags */}
