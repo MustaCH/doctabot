@@ -68,6 +68,7 @@ const Properties = () => {
   // Matches dialog
   const { matches, loading: matchesLoading, findMatches } = usePropertyMatches();
   const [matchesOpen, setMatchesOpen] = useState(false);
+  const [matchesPropertyId, setMatchesPropertyId] = useState("");
   const [matchesPropertyTitle, setMatchesPropertyTitle] = useState<string | undefined>();
 
   // Active tab
