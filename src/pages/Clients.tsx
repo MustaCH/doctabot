@@ -328,7 +328,46 @@ const Clients = () => {
     }
   };
 
-  const formatPrice = (price: number | null, currency: string | null) => {
+  const handleCreateEvent = async () => {
+    if (!user || !eventForClient) return;
+    if (!eventForm.title.trim() || !eventForm.event_date) {
+      toast.error("Completá título y fecha");
+      return;
+    }
+    setCreatingEvent(true);
+    try {
+      const { error } = await supabase.from("client_events").insert({
+        client_id: eventForClient,
+        user_id: user.id,
+        title: eventForm.title.trim(),
+        event_type: eventForm.event_type,
+        event_date: eventForm.event_date,
+        recurrence: eventForm.recurrence,
+        notes: eventForm.notes.trim() || null,
+      });
+      if (error) throw error;
+      toast.success("Evento creado");
+      setEventForClient(null);
+      setEventForm({ title: "", event_type: "birthday", event_date: "", recurrence: "yearly", notes: "" });
+      loadAllEvents();
+    } catch {
+      toast.error("Error al crear el evento");
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      const { error } = await supabase.from("client_events").delete().eq("id", eventId);
+      if (error) throw error;
+      toast.success("Evento eliminado");
+      loadAllEvents();
+    } catch {
+      toast.error("Error al eliminar el evento");
+    }
+  };
+
     if (!price) return null;
     return `${currency ?? "USD"} ${price.toLocaleString("es-AR")}`;
   };
