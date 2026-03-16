@@ -272,6 +272,84 @@ const ClientDetail = () => {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
   };
 
+  const clientToForm = (c: Client): ClientFormData => ({
+    full_name: c.full_name,
+    phone: c.phone ?? "",
+    email: c.email ?? "",
+    notes: c.notes ?? "",
+    status: c.status,
+    client_type: c.client_type ?? "buyer",
+    birthday: c.birthday ?? "",
+    company: c.company ?? "",
+    address: c.address ?? "",
+    preferred_zones: c.preferred_zones ?? "",
+    budget_min: c.budget_min != null ? String(c.budget_min) : "",
+    budget_max: c.budget_max != null ? String(c.budget_max) : "",
+    budget_currency: c.budget_currency ?? "USD",
+    property_type_interest: c.property_type_interest ?? "",
+    source: c.source ?? "",
+  });
+
+  const formToDb = (form: ClientFormData) => ({
+    full_name: form.full_name.trim(),
+    phone: form.phone.trim() || null,
+    email: form.email.trim() || null,
+    notes: form.notes.trim() || null,
+    status: form.status,
+    client_type: form.client_type,
+    birthday: form.birthday || null,
+    company: form.company.trim() || null,
+    address: form.address.trim() || null,
+    preferred_zones: form.preferred_zones.trim() || null,
+    budget_min: form.budget_min ? Number(form.budget_min) : null,
+    budget_max: form.budget_max ? Number(form.budget_max) : null,
+    budget_currency: form.budget_currency || "USD",
+    property_type_interest: form.property_type_interest.trim() || null,
+    source: form.source || null,
+  });
+
+  const openEdit = () => {
+    if (!client) return;
+    setEditForm(clientToForm(client));
+    setShowEdit(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!client) return;
+    if (!editForm.full_name.trim()) {
+      toast.error("El nombre no puede estar vacío");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("clients").update(formToDb(editForm)).eq("id", client.id);
+      if (error) throw error;
+      toast.success("Cliente actualizado");
+      setShowEdit(false);
+      loadClient();
+    } catch {
+      toast.error("Error al guardar los cambios");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!client) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("clients").delete().eq("id", client.id);
+      if (error) throw error;
+      toast.success("Cliente eliminado");
+      navigate("/clients");
+    } catch {
+      toast.error("Error al eliminar el cliente");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+
   const formatDate = (d: string) => {
     try {
       return new Date(d).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
