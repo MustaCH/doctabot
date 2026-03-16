@@ -1218,7 +1218,7 @@ async function executeTool(
       const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
-      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "prospect";
+      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "hot";
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
