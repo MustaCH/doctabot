@@ -15,6 +15,7 @@ const Clients = lazy(() => import("./pages/Clients"));
 const ClientDetail = lazy(() => import("./pages/ClientDetail"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const Changelog = lazy(() => import("./pages/Changelog"));
 const Tutorial = lazy(() => import("./pages/Tutorial"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
