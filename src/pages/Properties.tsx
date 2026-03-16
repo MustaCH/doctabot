@@ -105,12 +105,26 @@ const Properties = () => {
     }
   }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
 
+  // Debounce price inputs
+  const [debouncedPriceMin, setDebouncedPriceMin] = useState("");
+  const [debouncedPriceMax, setDebouncedPriceMax] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => { setPriceMin(debouncedPriceMin); }, 500);
+    return () => clearTimeout(t);
+  }, [debouncedPriceMin]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setPriceMax(debouncedPriceMax); }, 500);
+    return () => clearTimeout(t);
+  }, [debouncedPriceMax]);
+
   // Load on filter/search change
   useEffect(() => {
     if (activeTab === "search") {
       loadProperties(0);
     }
-  }, [activeTab, searchQuery, operationFilter, typeFilter]);
+  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
 
   // --- Load favorites ---
   const loadFavorites = useCallback(async () => {
