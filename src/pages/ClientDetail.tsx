@@ -15,6 +15,8 @@ import {
   Clock, CheckCircle2, Circle, Send, Share2, StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTags } from "@/hooks/use-tags";
+import { ClientTagPicker } from "@/components/TagComponents";
 
 interface Client {
   id: string;
