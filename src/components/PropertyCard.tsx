@@ -104,7 +104,7 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
   return { photo, title, office, price, location, surface, url, extras };
 }
 
-const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
