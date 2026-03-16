@@ -152,25 +152,26 @@ const Profile = () => {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 py-6">
-      <form onSubmit={handleSave} className="w-full max-w-sm space-y-6">
+    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-4 py-6 md:px-8 md:py-10">
+      <form onSubmit={handleSave} className="w-full max-w-sm md:max-w-2xl lg:max-w-3xl space-y-6">
+        {/* Header */}
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" size="icon" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold tracking-tight">Mi perfil</h1>
+          <h1 className="text-xl font-bold tracking-tight md:text-2xl">Mi perfil</h1>
         </div>
 
         {/* Avatar & email */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 md:gap-4">
           <img
             src={user?.user_metadata?.avatar_url || alanAvatar}
             alt="Avatar"
-            className="h-12 w-12 rounded-full"
+            className="h-12 w-12 md:h-16 md:w-16 rounded-full"
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{user?.user_metadata?.full_name || user?.email}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+            <p className="truncate text-sm md:text-base font-medium">{user?.user_metadata?.full_name || user?.email}</p>
+            <p className="truncate text-xs md:text-sm text-muted-foreground">{user?.email}</p>
           </div>
         </div>
 
@@ -193,11 +194,12 @@ const Profile = () => {
           </Button>
         )}
 
-        <div className="flex gap-2">
+        {/* Navigation grid - 2 cols on mobile, 4 cols on desktop */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           <Button
             type="button"
             variant="outline"
-            className="flex-1"
+            className="w-full"
             onClick={() => navigate("/properties")}
           >
             <Building2 className="mr-2 h-4 w-4 text-primary" />
@@ -206,128 +208,132 @@ const Profile = () => {
           <Button
             type="button"
             variant="outline"
-            className="flex-1"
+            className="w-full"
             onClick={() => navigate("/clients")}
           >
             <Users className="mr-2 h-4 w-4 text-primary" />
             Clientes
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate("/dashboard")}
+          >
+            <BarChart3 className="mr-2 h-4 w-4 text-primary" />
+            Dashboard
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate("/changelog")}
+          >
+            <Newspaper className="mr-2 h-4 w-4 text-primary" />
+            Novedades
+          </Button>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate("/dashboard")}
-        >
-          <BarChart3 className="mr-2 h-4 w-4 text-primary" />
-          Dashboard
-        </Button>
-
-        {/* Google Calendar */}
-        <div className="rounded-lg border bg-card p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Google Workspace</p>
-            {calendarConnected && (
-              <span className="text-xs text-green-600 font-medium">Conectado ✅</span>
-            )}
-          </div>
-          {calendarConnected ? (
-            <div className="space-y-2">
-              {!hasGmailScope && (
-                <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
-                  <p className="text-xs text-muted-foreground flex-1">Faltan permisos de Gmail</p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-6 px-2 text-xs shrink-0"
-                    onClick={handleConnectCalendar}
-                    disabled={calendarLoading}
-                  >
-                    {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reconectar"}
-                  </Button>
-                </div>
+        {/* Two-column layout on desktop for calendar + form */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          {/* Google Calendar */}
+          <div className="rounded-lg border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Google Workspace</p>
+              {calendarConnected && (
+                <span className="text-xs text-green-600 font-medium">Conectado ✅</span>
               )}
+            </div>
+            {calendarConnected ? (
+              <div className="space-y-2">
+                {!hasGmailScope && (
+                  <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+                    <p className="text-xs text-muted-foreground flex-1">Faltan permisos de Gmail</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-6 px-2 text-xs shrink-0"
+                      onClick={handleConnectCalendar}
+                      disabled={calendarLoading}
+                    >
+                      {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reconectar"}
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive hover:text-destructive h-7 px-2"
+                  onClick={handleDisconnectCalendar}
+                  disabled={calendarLoading}
+                >
+                  {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
+                  Desconectar
+                </Button>
+              </div>
+            ) : (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-xs text-destructive hover:text-destructive h-7 px-2"
-                onClick={handleDisconnectCalendar}
+                className="w-full text-xs h-8"
+                onClick={handleConnectCalendar}
                 disabled={calendarLoading}
               >
-                {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarX className="h-3 w-3 mr-1" />}
-                Desconectar
+                {calendarLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <CalendarCheck className="h-3 w-3 mr-1" />
+                )}
+                Conectar con Google
               </Button>
+            )}
+          </div>
+
+          {/* Profile fields */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Nombre completo</Label>
+              <Input
+                id="fullName"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Ej: Juan Pérez"
+                maxLength={100}
+                required
+              />
             </div>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full text-xs h-8"
-              onClick={handleConnectCalendar}
-              disabled={calendarLoading}
-            >
-              {calendarLoading ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <CalendarCheck className="h-3 w-3 mr-1" />
-              )}
-              Conectar con Google
-            </Button>
-          )}
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => navigate("/changelog")}
-        >
-          <Newspaper className="mr-2 h-4 w-4 text-primary" />
-          Novedades
-        </Button>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="fullName">Nombre completo</Label>
-            <Input
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Ej: Juan Pérez"
-              maxLength={100}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="agentCode">Código de asociado</Label>
-            <Input
-              id="agentCode"
-              value={agentCode}
-              onChange={(e) => setAgentCode(e.target.value)}
-              placeholder="Ej: 420401222"
-              maxLength={20}
-              required
-            />
+            <div className="space-y-2">
+              <Label htmlFor="agentCode">Código de asociado</Label>
+              <Input
+                id="agentCode"
+                value={agentCode}
+                onChange={(e) => setAgentCode(e.target.value)}
+                placeholder="Ej: 420401222"
+                maxLength={20}
+                required
+              />
+            </div>
           </div>
         </div>
 
-        <Button type="submit" className="w-full" disabled={saving}>
-          {saving ? "Guardando..." : "Guardar cambios"}
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full text-destructive hover:text-destructive"
-          onClick={handleSignOut}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Cerrar sesión
-        </Button>
+        {/* Actions */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+          <Button type="submit" className="w-full md:w-auto md:min-w-[200px]" disabled={saving}>
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full md:w-auto text-destructive hover:text-destructive"
+            onClick={handleSignOut}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Cerrar sesión
+          </Button>
+        </div>
 
         <p className="text-center text-[11px] text-muted-foreground">v1.4.0</p>
       </form>
