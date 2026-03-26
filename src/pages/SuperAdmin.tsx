@@ -10,9 +10,11 @@ import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
+  BarChart3, Flame, Thermometer, Snowflake,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 
 const ADMIN_PIN = "7742";
@@ -166,9 +168,10 @@ function AdminDashboard({ pin }: { pin: string }) {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "conversations") setPrefilterUserId(null); }}>
-          <TabsList className="w-full grid grid-cols-7">
+          <TabsList className="w-full grid grid-cols-8">
             <TabsTrigger value="overview">Resumen</TabsTrigger>
             <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
+            <TabsTrigger value="reports">Reportes</TabsTrigger>
             <TabsTrigger value="properties">Propiedades</TabsTrigger>
             <TabsTrigger value="users">Usuarios</TabsTrigger>
             <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
@@ -200,6 +203,7 @@ function AdminDashboard({ pin }: { pin: string }) {
           <TabsContent value="favorites"><FavoritesTable pin={pin} /></TabsContent>
           <TabsContent value="clients"><ClientsTable pin={pin} /></TabsContent>
           <TabsContent value="supervisor"><SupervisorPanel pin={pin} /></TabsContent>
+          <TabsContent value="reports"><ReportsPanel pin={pin} /></TabsContent>
         </Tabs>
       </div>
     </div>
