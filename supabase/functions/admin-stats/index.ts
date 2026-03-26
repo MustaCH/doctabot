@@ -352,6 +352,153 @@ Deno.serve(async (req) => {
       return json({ data: enriched, total: count ?? 0 });
     }
 
+    // ---------- USER REPORTS ----------
+    if (action === "user-reports") {
+      // Get all profiles
+      const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id, full_name");
+      const userIds = (profiles ?? []).map((p: any) => p.user_id);
+      const nameMap: Record<string, string> = {};
+      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+
+      // Get all messages, conversations, clients, favorites grouped by user
+      const [msgsRes, convsRes, clientsRes, favsRes] = await Promise.all([
+        supabaseAdmin.from("messages").select("id, conversation_id, created_at"),
+        supabaseAdmin.from("conversations").select("id, user_id, created_at"),
+        supabaseAdmin.from("clients").select("id, user_id, status, created_at"),
+        supabaseAdmin.from("favorites").select("id, user_id, created_at"),
+      ]);
+
+      // Map conversations to users
+      const convUserMap: Record<string, string> = {};
+      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; });
+
+      // Build per-user stats
+      const userStats: Record<string, { messages: number; conversations: number; clients: number; favorites: number; lastActivity: string | null; clientsByStatus: Record<string, number> }> = {};
+      userIds.forEach((uid: string) => {
+        userStats[uid] = { messages: 0, conversations: 0, clients: 0, favorites: 0, lastActivity: null, clientsByStatus: {} };
+      });
+
+      // Count conversations per user
+      (convsRes.data ?? []).forEach((c: any) => {
+        if (userStats[c.user_id]) {
+          userStats[c.user_id].conversations++;
+          if (!userStats[c.user_id].lastActivity || c.created_at > userStats[c.user_id].lastActivity!) {
+            userStats[c.user_id].lastActivity = c.created_at;
+          }
+        }
+      });
+
+      // Count messages per user (via conversation)
+      (msgsRes.data ?? []).forEach((m: any) => {
+        const uid = convUserMap[m.conversation_id];
+        if (uid && userStats[uid]) {
+          userStats[uid].messages++;
+          if (!userStats[uid].lastActivity || m.created_at > userStats[uid].lastActivity!) {
+            userStats[uid].lastActivity = m.created_at;
+          }
+        }
+      });
+
+      // Count clients per user
+      (clientsRes.data ?? []).forEach((c: any) => {
+        if (userStats[c.user_id]) {
+          userStats[c.user_id].clients++;
+          const s = c.status || "unknown";
+          userStats[c.user_id].clientsByStatus[s] = (userStats[c.user_id].clientsByStatus[s] ?? 0) + 1;
+        }
+      });
+
+      // Count favorites per user
+      (favsRes.data ?? []).forEach((f: any) => {
+        if (userStats[f.user_id]) userStats[f.user_id].favorites++;
+      });
+
+      const result = userIds.map((uid: string) => ({
+        user_id: uid,
+        full_name: nameMap[uid] ?? "Desconocido",
+        ...userStats[uid],
+        avgMessagesPerConv: userStats[uid].conversations > 0
+          ? Math.round((userStats[uid].messages / userStats[uid].conversations) * 10) / 10
+          : 0,
+      }));
+
+      // Sort by messages desc
+      result.sort((a: any, b: any) => b.messages - a.messages);
+
+      // Client distribution totals
+      const clientDistribution: Record<string, number> = {};
+      (clientsRes.data ?? []).forEach((c: any) => {
+        const s = c.status || "unknown";
+        clientDistribution[s] = (clientDistribution[s] ?? 0) + 1;
+      });
+
+      return json({ users: result, clientDistribution });
+    }
+
+    // ---------- ENGAGEMENT REPORT ----------
+    if (action === "engagement-report") {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const sinceISO = since.toISOString();
+
+      const [msgsRes, convsRes] = await Promise.all([
+        supabaseAdmin.from("messages").select("id, conversation_id, role, created_at").gte("created_at", sinceISO),
+        supabaseAdmin.from("conversations").select("id, user_id, created_at").gte("created_at", sinceISO),
+      ]);
+
+      // Messages per day + unique active users per day
+      const convUserMap: Record<string, string> = {};
+      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; });
+
+      const dailyMessages: Record<string, number> = {};
+      const dailyUsers: Record<string, Set<string>> = {};
+
+      (msgsRes.data ?? []).forEach((m: any) => {
+        const d = m.created_at.slice(0, 10);
+        dailyMessages[d] = (dailyMessages[d] ?? 0) + 1;
+        const uid = convUserMap[m.conversation_id];
+        if (uid) {
+          if (!dailyUsers[d]) dailyUsers[d] = new Set();
+          dailyUsers[d].add(uid);
+        }
+      });
+
+      // Build 30-day array
+      const days: { date: string; messages: number; activeUsers: number }[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        days.push({
+          date: key.slice(5),
+          messages: dailyMessages[key] ?? 0,
+          activeUsers: dailyUsers[key]?.size ?? 0,
+        });
+      }
+
+      // Avg conversation length (user messages per conversation)
+      const convMsgCount: Record<string, number> = {};
+      (msgsRes.data ?? []).filter((m: any) => m.role === "user").forEach((m: any) => {
+        convMsgCount[m.conversation_id] = (convMsgCount[m.conversation_id] ?? 0) + 1;
+      });
+      const convLengths = Object.values(convMsgCount);
+      const avgConvLength = convLengths.length > 0
+        ? Math.round((convLengths.reduce((a, b) => a + b, 0) / convLengths.length) * 10) / 10
+        : 0;
+
+      // Unique active users in period
+      const allActiveUsers = new Set<string>();
+      Object.values(dailyUsers).forEach(s => s.forEach(u => allActiveUsers.add(u)));
+
+      return json({
+        daily: days,
+        avgConvLength,
+        totalActiveUsers: allActiveUsers.size,
+        totalMessages: msgsRes.data?.length ?? 0,
+        totalConversations: convsRes.data?.length ?? 0,
+      });
+    }
+
     // ---------- SCRAPING LOGS ----------
     if (action === "scraping-logs-live") {
       const batchId = body.batchId;
