@@ -37,6 +37,15 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
+    // Helper: get super_admin user_ids
+    const getSuperAdminIds = async (): Promise<string[]> => {
+      const { data } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "super_admin");
+      return (data ?? []).map((r: any) => r.user_id);
+    };
+
     // ---------- STATS ----------
     if (action === "stats") {
       const [props, profiles, convs, msgs, favs, clients] = await Promise.all([
@@ -101,7 +110,15 @@ Deno.serve(async (req) => {
 
       query = query.range(pg * ps, (pg + 1) * ps - 1);
       const { data, count } = await query;
-      return json({ data: data ?? [], total: count ?? 0 });
+
+      // Enrich with roles
+      const superAdminIds = await getSuperAdminIds();
+      const enriched = (data ?? []).map((u: any) => ({
+        ...u,
+        is_super_admin: superAdminIds.includes(u.user_id),
+      }));
+
+      return json({ data: enriched, total: count ?? 0 });
     }
 
     // ---------- CONVERSATIONS ----------
@@ -354,11 +371,13 @@ Deno.serve(async (req) => {
 
     // ---------- USER REPORTS ----------
     if (action === "user-reports") {
-      // Get all profiles
+      // Get all profiles, exclude super_admins
+      const superAdminIds = await getSuperAdminIds();
       const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id, full_name");
-      const userIds = (profiles ?? []).map((p: any) => p.user_id);
+      const allProfiles = (profiles ?? []).filter((p: any) => !superAdminIds.includes(p.user_id));
+      const userIds = allProfiles.map((p: any) => p.user_id);
       const nameMap: Record<string, string> = {};
-      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+      allProfiles.forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
 
       // Get all messages, conversations, clients, favorites grouped by user
       const [msgsRes, convsRes, clientsRes, favsRes] = await Promise.all([
@@ -440,11 +459,15 @@ Deno.serve(async (req) => {
       const since = new Date();
       since.setDate(since.getDate() - 30);
       const sinceISO = since.toISOString();
+      const superAdminIds = await getSuperAdminIds();
 
-      const [msgsRes, convsRes] = await Promise.all([
+      const [msgsRes, convsResRaw] = await Promise.all([
         supabaseAdmin.from("messages").select("id, conversation_id, role, created_at").gte("created_at", sinceISO),
         supabaseAdmin.from("conversations").select("id, user_id, created_at").gte("created_at", sinceISO),
       ]);
+
+      // Filter out super_admin conversations
+      const convsRes = { data: (convsResRaw.data ?? []).filter((c: any) => !superAdminIds.includes(c.user_id)) };
 
       // Messages per day + unique active users per day
       const convUserMap: Record<string, string> = {};
