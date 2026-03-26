@@ -61,7 +61,7 @@ interface PropertyRow {
 
 interface ProfileRow {
   id: string; user_id: string; full_name: string;
-  agent_code: string; created_at: string;
+  agent_code: string; created_at: string; is_super_admin?: boolean;
 }
 
 interface ConversationRow {
@@ -563,7 +563,14 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
               <TableBody>
                 {data.map((u) => (
                   <TableRow key={u.id}>
-                    <TableCell className="text-xs font-medium">{u.full_name}</TableCell>
+                    <TableCell className="text-xs font-medium">
+                      {u.full_name}
+                      {u.is_super_admin && (
+                        <Badge className="ml-2 bg-violet-500/15 text-violet-600 border-violet-500/30 hover:bg-violet-500/20 text-[10px] py-0">
+                          <Shield className="h-2.5 w-2.5 mr-0.5" />SuperAdmin
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-xs">{u.agent_code}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>

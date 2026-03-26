@@ -469,14 +469,18 @@ Deno.serve(async (req) => {
       // Filter out super_admin conversations
       const convsRes = { data: (convsResRaw.data ?? []).filter((c: any) => !superAdminIds.includes(c.user_id)) };
 
-      // Messages per day + unique active users per day
+      // Messages per day + unique active users per day (exclude super_admin)
       const convUserMap: Record<string, string> = {};
-      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; });
+      const validConvIds = new Set<string>();
+      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; validConvIds.add(c.id); });
+
+      // Filter messages to only non-admin conversations
+      const filteredMsgs = (msgsRes.data ?? []).filter((m: any) => validConvIds.has(m.conversation_id));
 
       const dailyMessages: Record<string, number> = {};
       const dailyUsers: Record<string, Set<string>> = {};
 
-      (msgsRes.data ?? []).forEach((m: any) => {
+      filteredMsgs.forEach((m: any) => {
         const d = m.created_at.slice(0, 10);
         dailyMessages[d] = (dailyMessages[d] ?? 0) + 1;
         const uid = convUserMap[m.conversation_id];
@@ -501,7 +505,7 @@ Deno.serve(async (req) => {
 
       // Avg conversation length (user messages per conversation)
       const convMsgCount: Record<string, number> = {};
-      (msgsRes.data ?? []).filter((m: any) => m.role === "user").forEach((m: any) => {
+      filteredMsgs.filter((m: any) => m.role === "user").forEach((m: any) => {
         convMsgCount[m.conversation_id] = (convMsgCount[m.conversation_id] ?? 0) + 1;
       });
       const convLengths = Object.values(convMsgCount);
@@ -517,7 +521,7 @@ Deno.serve(async (req) => {
         daily: days,
         avgConvLength,
         totalActiveUsers: allActiveUsers.size,
-        totalMessages: msgsRes.data?.length ?? 0,
+        totalMessages: filteredMsgs.length,
         totalConversations: convsRes.data?.length ?? 0,
       });
     }
