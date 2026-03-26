@@ -1,132 +1,41 @@
-# Plan: Evolución a CRM Inmobiliario Completo
+## Reportes para Super Admin Panel — Plan
 
-## Estado actual
+### Objetivo
 
-La app ya cuenta con: chat con IA (Alan), gestión de clientes con perfiles enriquecidos, propiedades con búsqueda/filtros/favoritos, vinculación cliente-propiedad, eventos con sync a Google Calendar, dashboard con pipeline/alertas, importación CSV/Excel, y panel de super admin.
+Agregar una nueva tab "Reportes" al panel Super Admin que genere reportes listos para mostrar a tu cliente, con métricas de uso, satisfacción y calidad del agente IA.
 
----
+### Reportes propuestos
 
-## Nuevas funcionalidades propuestas
+1. **Uso por usuario** — Mensajes enviados, conversaciones creadas, clientes gestionados, favoritos guardados por cada usuario. Ranking de usuarios más activos.
+2. **Tasa de aprobación del Supervisor** — % de mensajes aprobados/rechazados/error del supervisor, score promedio global y por usuario, tendencia en el tiempo.
+3. **Satisfacción estimada** — Análisis básico de los mensajes del usuario: longitud promedio de conversación (más turnos = más engagement), tasa de retorno (usuarios que vuelven a usar el chat), ratio de conversaciones con herramientas ejecutadas vs solo texto.
+4. **Retención y engagement** — Usuarios activos por día/semana en los últimos 30 días, días desde último mensaje por usuario (detectar usuarios inactivos).
+5. **Resumen ejecutivo exportable** — Botón para descargar CSV con todas las métricas consolidadas.
 
-### 1. Búsqueda global unificada
-- Barra de búsqueda accesible desde cualquier pantalla (header global) que busque simultáneamente en clientes, propiedades y conversaciones.
-- Resultados agrupados por categoría con navegación directa.
+### Implementación técnica
 
-### 2. Ficha de cliente enriquecida (página dedicada)
-- Crear una ruta `/clients/:id` con vista completa del cliente: datos personales, propiedades vinculadas, timeline de interacciones, eventos, y notas.
-- **Timeline de actividad**: registro cronológico de acciones (propiedad vinculada, estado cambiado, evento creado, conversación iniciada).
-- Requiere nueva tabla `client_activity_log` (client_id, user_id, action_type, description, metadata jsonb, created_at).
+**1. Backend — Nueva acción en `admin-stats` edge function**
 
-### 3. Notas y seguimiento por cliente
-- Agregar un sistema de notas rápidas (tipo sticky notes) vinculadas a cada cliente, con fecha y posibilidad de marcar como "acción pendiente".
-- Tabla `client_notes` (id, client_id, user_id, content, is_action, is_done, created_at).
-- Mostrar notas pendientes en el Dashboard como "Tareas del día".
+- Agregar acción `"user-reports"` que calcule por usuario: total mensajes, conversaciones, clientes, favoritos, último mensaje, promedio de mensajes por conversación.
+- Agregar acción `"satisfaction-report"` que calcule: longitud promedio de conversaciones, usuarios recurrentes, engagement metrics.
+- La acción `"supervisor-stats"` ya existe y se reutiliza para la tasa de aprobación y score promedio.
 
-### 4. Matching automático propiedad-cliente
-- Cuando se carga una nueva propiedad o se actualiza una existente, Alan sugiere automáticamente clientes que podrían estar interesados basándose en: zonas preferidas, rango de presupuesto, tipo de propiedad buscada.
-- Botón "Ver matches" en cada propiedad y notificación en el dashboard.
-- Implementación: query en el frontend que cruza `clients.preferred_zones`, `budget_min/max`, y `property_type_interest` contra los datos de la propiedad.
+**2. Frontend — Nueva tab "Reportes" en SuperAdmin.tsx**
 
-### 5. Compartir propiedad por WhatsApp/Email
-- Botón en la tarjeta de propiedad para generar un mensaje pre-armado con foto, precio, ubicación y link, listo para enviar por WhatsApp (vía `wa.me` deep link) o copiar al portapapeles.
-- Opción de enviar por email usando la integración de Gmail ya existente (tool `send_email`).
+- Componente `ReportsPanel` con sub-secciones:
+  - **Tabla de uso por usuario** con columnas: nombre, mensajes, conversaciones, clientes, favoritos, última actividad.
+  - **Cards de métricas del supervisor**: tasa aprobación, score promedio, errores.
+  - **Gráfico de engagement**: mensajes por día superpuesto con usuarios activos.
+  - **Distribución de clientes** por estado (hot/warm/cold).
+- Botón "Exportar CSV" para cada sección.
+- Recharts para visualizaciones (ya está instalado).
 
-### 6. Kanban visual de propiedades por cliente
-- En la ficha del cliente, mostrar las propiedades vinculadas como un board Kanban con columnas: Sugerida → Enviada → Visitada → (Cerrada / Descartada).
-- Drag & drop para cambiar estado (en desktop), tap para cambiar en mobile.
+**3. Archivos a modificar**
 
-### 7. Recordatorios y notificaciones push
-- Implementar notificaciones push vía Service Worker (ya existe `use-sw-update.ts`).
-- Notificar: eventos del día, clientes estancados, nuevas propiedades que matchean con algún cliente.
-- Tabla `notification_preferences` para configurar qué notificaciones recibir.
+- `supabase/functions/admin-stats/index.ts` — Agregar acciones `user-reports` y `satisfaction-report`
+- `src/pages/SuperAdmin.tsx` — Agregar tab "Reportes" y componente `ReportsPanel`
+- Desplegar edge function actualizada
 
-### 8. Reportes y métricas avanzadas
-- Expandir el Dashboard con:
-  - **Gráfico de embudo**: Prospectos → Activos → Cerrados (conversión).
-  - **Propiedades más compartidas/visitadas** (basado en `client_properties`).
-  - **Actividad semanal**: gráfico de barras con acciones por día.
-  - **Tasa de conversión**: % de prospectos que pasan a activos y a cerrados.
+### Tabs actualizadas
 
-### 9. Etiquetas/Tags personalizados
-- Permitir al agente crear tags de colores para organizar clientes (ej: "Urgente", "VIP", "Inversor", "Primera vivienda").
-- Tabla `tags` (id, user_id, name, color) y `client_tags` (client_id, tag_id).
-- Filtrar clientes por tags en la lista.
-
-### 10. Historial de interacciones con el cliente
-- Registrar automáticamente cuándo se envía una propiedad, se realiza una visita, se llama, etc.
-- Actualizar `last_contact_at` automáticamente al vincular propiedades o crear eventos.
-- Mostrar este historial en la ficha del cliente.
-
----
-
-## Mejoras generales de UX
-
-### A. Navegación inferior persistente (mobile)
-- Reemplazar la navegación actual (que obliga a ir a Perfil para acceder a otras secciones) con una bottom navigation bar fija con iconos: Chat, Propiedades, Clientes, Dashboard, Perfil.
-- Esto reduce la fricción y mejora la navegabilidad drásticamente.
-
-### B. Modo oscuro persistente
-- Agregar toggle de tema claro/oscuro en Perfil, persistido en localStorage.
-
-### C. Pull-to-refresh
-- En listas de clientes y propiedades, implementar pull-to-refresh para actualizar datos.
-
-### D. Estados vacíos mejorados
-- Ilustraciones y CTAs claros cuando no hay clientes, propiedades favoritas, o eventos.
-
-### E. Búsqueda dentro de la lista de clientes
-- Agregar campo de búsqueda por nombre/teléfono/email en el header de Clientes (actualmente solo filtra por tipo).
-
----
-
-## Esquema de base de datos (nuevas tablas)
-
-```text
-client_activity_log
-├── id (uuid, PK)
-├── client_id (uuid, FK → clients)
-├── user_id (uuid)
-├── action_type (text: 'property_linked', 'status_changed', 'note_added', 'event_created', 'call_logged')
-├── description (text)
-├── metadata (jsonb)
-└── created_at (timestamptz)
-
-client_notes
-├── id (uuid, PK)
-├── client_id (uuid, FK → clients)
-├── user_id (uuid)
-├── content (text)
-├── is_action (boolean, default false)
-├── is_done (boolean, default false)
-└── created_at (timestamptz)
-
-tags
-├── id (uuid, PK)
-├── user_id (uuid)
-├── name (text)
-├── color (text)
-└── created_at (timestamptz)
-
-client_tags
-├── id (uuid, PK)
-├── client_id (uuid, FK → clients)
-├── tag_id (uuid, FK → tags)
-└── created_at (timestamptz)
-```
-
----
-
-## Orden de implementación sugerido
-
-| Prioridad | Feature | Impacto | Estado |
-|-----------|---------|---------|--------|
-| 1 | **Navegación inferior persistente** | Alto | ✅ Implementado |
-| 2 | **Búsqueda de clientes** | Alto | ✅ Implementado |
-| 3 | **Compartir propiedad por WhatsApp** | Alto | ⬜ Pendiente |
-| 4 | **Matching automático propiedad-cliente** | Alto | ⬜ Pendiente |
-| 5 | **Ficha de cliente dedicada con timeline** | Alto | ⬜ Pendiente |
-| 6 | **Notas/tareas por cliente** | Medio | ⬜ Pendiente |
-| 7 | **Tags personalizados** | Medio | ⬜ Pendiente |
-| 8 | **Kanban de propiedades por cliente** | Medio | ⬜ Pendiente |
-| 9 | **Reportes avanzados** | Medio | ⬜ Pendiente |
-| 10 | **Notificaciones push** | Medio | ⬜ Pendiente |
+Overview | Supervisor | **Reportes** | Propiedades | Usuarios | Conversaciones | Favoritos | Clientes
