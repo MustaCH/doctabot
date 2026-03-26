@@ -10,9 +10,11 @@ import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
+  BarChart3, Flame, Thermometer, Snowflake,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 
 const ADMIN_PIN = "7742";
@@ -166,9 +168,10 @@ function AdminDashboard({ pin }: { pin: string }) {
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "conversations") setPrefilterUserId(null); }}>
-          <TabsList className="w-full grid grid-cols-7">
+          <TabsList className="w-full grid grid-cols-8">
             <TabsTrigger value="overview">Resumen</TabsTrigger>
             <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
+            <TabsTrigger value="reports">Reportes</TabsTrigger>
             <TabsTrigger value="properties">Propiedades</TabsTrigger>
             <TabsTrigger value="users">Usuarios</TabsTrigger>
             <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
@@ -200,6 +203,7 @@ function AdminDashboard({ pin }: { pin: string }) {
           <TabsContent value="favorites"><FavoritesTable pin={pin} /></TabsContent>
           <TabsContent value="clients"><ClientsTable pin={pin} /></TabsContent>
           <TabsContent value="supervisor"><SupervisorPanel pin={pin} /></TabsContent>
+          <TabsContent value="reports"><ReportsPanel pin={pin} /></TabsContent>
         </Tabs>
       </div>
     </div>
@@ -1017,6 +1021,215 @@ function SupervisorPanel({ pin }: { pin: string }) {
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== REPORTS PANEL ==================== */
+interface UserReport {
+  user_id: string; full_name: string; messages: number; conversations: number;
+  clients: number; favorites: number; lastActivity: string | null;
+  avgMessagesPerConv: number; clientsByStatus: Record<string, number>;
+}
+
+interface EngagementData {
+  daily: { date: string; messages: number; activeUsers: number }[];
+  avgConvLength: number; totalActiveUsers: number;
+  totalMessages: number; totalConversations: number;
+}
+
+const PIE_COLORS = ["hsl(0, 84%, 60%)", "hsl(38, 92%, 50%)", "hsl(210, 70%, 55%)"];
+
+function ReportsPanel({ pin }: { pin: string }) {
+  const [userReports, setUserReports] = useState<UserReport[]>([]);
+  const [clientDistribution, setClientDistribution] = useState<Record<string, number>>({});
+  const [engagement, setEngagement] = useState<EngagementData | null>(null);
+  const [supervisorStats, setSupervisorStats] = useState<SupervisorStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const [ur, eng, sup] = await Promise.all([
+          adminFetch(pin, "user-reports"),
+          adminFetch(pin, "engagement-report"),
+          adminFetch(pin, "supervisor-stats"),
+        ]);
+        setUserReports(ur.users ?? []);
+        setClientDistribution(ur.clientDistribution ?? {});
+        setEngagement(eng);
+        setSupervisorStats(sup);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [pin]);
+
+  if (loading) return <LoadingSpinner />;
+
+  const approvalRate = supervisorStats && supervisorStats.total > 0
+    ? Math.round((supervisorStats.approved / supervisorStats.total) * 100) : 0;
+
+  const statusLabel: Record<string, string> = { hot: "🔥 Caliente", warm: "🌡️ Tibio", cold: "❄️ Frío" };
+  const statusColor: Record<string, string> = { hot: "text-red-500", warm: "text-amber-500", cold: "text-blue-500" };
+
+  const pieData = Object.entries(clientDistribution).map(([key, value]) => ({
+    name: statusLabel[key] ?? key, value,
+  }));
+
+  const csvUserData = userReports.map(u => ({
+    Nombre: u.full_name, Mensajes: u.messages, Conversaciones: u.conversations,
+    Clientes: u.clients, Favoritos: u.favorites, "Promedio msg/conv": u.avgMessagesPerConv,
+    "Última actividad": u.lastActivity ? new Date(u.lastActivity).toLocaleDateString("es-AR") : "—",
+  }));
+
+  return (
+    <div className="mt-4 space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+          <span className="text-xs text-muted-foreground">Usuarios activos (30d)</span>
+          <p className="text-2xl font-bold">{engagement?.totalActiveUsers ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+          <span className="text-xs text-muted-foreground">Mensajes (30d)</span>
+          <p className="text-2xl font-bold">{engagement?.totalMessages?.toLocaleString("es-AR") ?? 0}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+          <span className="text-xs text-muted-foreground">Tasa aprobación</span>
+          <p className="text-2xl font-bold text-emerald-600">{approvalRate}%</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+          <span className="text-xs text-muted-foreground">Score promedio</span>
+          <p className="text-2xl font-bold">{supervisorStats?.avgScore ?? 0}/10</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+          <span className="text-xs text-muted-foreground">Prom. msg/conv</span>
+          <p className="text-2xl font-bold">{engagement?.avgConvLength ?? 0}</p>
+        </div>
+      </div>
+
+      {/* Engagement Chart */}
+      {engagement && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Engagement (últimos 30 días)</h2>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={engagement.daily}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar yAxisId="left" dataKey="messages" fill="hsl(var(--chart-1))" name="Mensajes" radius={[2, 2, 0, 0]} />
+              <Line yAxisId="right" type="monotone" dataKey="activeUsers" stroke="hsl(var(--chart-3))" strokeWidth={2} name="Usuarios activos" dot={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Client Distribution + Supervisor Summary side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Client Distribution */}
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+          <h2 className="text-sm font-semibold">Distribución de clientes</h2>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width={140} height={140}>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={35}>
+                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-2">
+              {Object.entries(clientDistribution).map(([key, val]) => (
+                <div key={key} className="flex items-center gap-2 text-sm">
+                  <span className={statusColor[key] ?? "text-muted-foreground"}>
+                    {statusLabel[key] ?? key}
+                  </span>
+                  <span className="font-bold">{val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Supervisor Summary */}
+        {supervisorStats && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+            <h2 className="text-sm font-semibold">Calidad del Agente IA</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-emerald-600">{approvalRate}%</div>
+                <div className="text-xs text-muted-foreground">Aprobación</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{supervisorStats.avgScore}/10</div>
+                <div className="text-xs text-muted-foreground">Score</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{supervisorStats.total.toLocaleString("es-AR")}</div>
+                <div className="text-xs text-muted-foreground">Evaluaciones</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-amber-600">{supervisorStats.errors}</div>
+                <div className="text-xs text-muted-foreground">Errores</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* User Usage Table */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Uso por usuario</h2>
+          <Button variant="outline" size="sm" onClick={() => downloadCSV(csvUserData, "reporte-usuarios")}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />Exportar CSV
+          </Button>
+        </div>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Usuario</TableHead>
+                <TableHead className="text-right">Mensajes</TableHead>
+                <TableHead className="text-right">Conversaciones</TableHead>
+                <TableHead className="text-right">Clientes</TableHead>
+                <TableHead className="text-right">Favoritos</TableHead>
+                <TableHead className="text-right">Prom. msg/conv</TableHead>
+                <TableHead>Última actividad</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {userReports.map((u) => (
+                <TableRow key={u.user_id}>
+                  <TableCell className="text-xs font-medium">{u.full_name}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{u.messages.toLocaleString("es-AR")}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{u.conversations}</TableCell>
+                  <TableCell className="text-xs text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="font-mono">{u.clients}</span>
+                      {u.clientsByStatus.hot ? <Flame className="h-3 w-3 text-red-500" /> : null}
+                      {u.clientsByStatus.warm ? <Thermometer className="h-3 w-3 text-amber-500" /> : null}
+                      {u.clientsByStatus.cold ? <Snowflake className="h-3 w-3 text-blue-500" /> : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-right font-mono">{u.favorites}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{u.avgMessagesPerConv}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {u.lastActivity ? new Date(u.lastActivity).toLocaleDateString("es-AR") : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );
