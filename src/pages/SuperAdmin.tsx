@@ -1126,13 +1126,19 @@ function ReportsPanel({ pin }: { pin: string }) {
           </div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={engagement.daily}>
+              <defs>
+                <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.7} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
               <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
               <Tooltip contentStyle={{ fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="messages" fill="hsl(var(--chart-2))" name="Mensajes" radius={[2, 2, 0, 0]} />
+              <Bar yAxisId="left" dataKey="messages" fill="url(#barGradient)" name="Mensajes" radius={[4, 4, 0, 0]} />
               <Line yAxisId="right" type="monotone" dataKey="activeUsers" stroke="hsl(var(--chart-3))" strokeWidth={2} name="Usuarios activos" dot={false} />
             </BarChart>
           </ResponsiveContainer>
