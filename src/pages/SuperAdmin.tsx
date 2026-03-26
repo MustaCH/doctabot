@@ -1055,6 +1055,9 @@ function ReportsPanel({ pin }: { pin: string }) {
   const [supervisorStats, setSupervisorStats] = useState<SupervisorStats | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -1072,6 +1075,78 @@ function ReportsPanel({ pin }: { pin: string }) {
       setLoading(false);
     })();
   }, [pin]);
+
+  const exportPDF = async () => {
+    if (!reportRef.current) return;
+    setExporting(true);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const element = reportRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentWidth = pdfWidth - margin * 2;
+
+      // Title
+      pdf.setFontSize(16);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Reporte de Uso y Engagement — DoctaBot", margin, 18);
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Generado: ${new Date().toLocaleString("es-AR")}`, margin, 24);
+      pdf.line(margin, 26, pdfWidth - margin, 26);
+
+      const titleOffset = 30;
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = contentWidth / imgWidth;
+      const scaledHeight = imgHeight * ratio;
+
+      // Multi-page support
+      let yPosition = 0;
+      const availableHeight = pdfHeight - titleOffset - margin;
+      let pageNum = 0;
+
+      while (yPosition < scaledHeight) {
+        if (pageNum > 0) {
+          pdf.addPage();
+        }
+
+        const sourceY = yPosition / ratio;
+        const sourceH = Math.min((availableHeight) / ratio, imgHeight - sourceY);
+        const destH = sourceH * ratio;
+
+        // Create a cropped canvas for this page
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = imgWidth;
+        pageCanvas.height = sourceH;
+        const ctx = pageCanvas.getContext("2d")!;
+        ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceH, 0, 0, imgWidth, sourceH);
+
+        const pageImgData = pageCanvas.toDataURL("image/png");
+        pdf.addImage(pageImgData, "PNG", margin, pageNum === 0 ? titleOffset : margin, contentWidth, destH);
+
+        yPosition += availableHeight;
+        pageNum++;
+      }
+
+      pdf.save(`reporte-doctabot-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error("Error exporting PDF:", err);
+    }
+    setExporting(false);
+  };
 
   if (loading) return <LoadingSpinner />;
 
