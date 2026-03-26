@@ -1286,9 +1286,6 @@ function ReportsPanel({ pin }: { pin: string }) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Uso por usuario</h2>
-          <Button variant="outline" size="sm" onClick={() => downloadCSV(csvUserData, "reporte-usuarios")}>
-            <Download className="h-3.5 w-3.5 mr-1.5" />Exportar CSV
-          </Button>
         </div>
         <div className="rounded-lg border border-border overflow-hidden">
           <Table>
