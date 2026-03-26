@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
-  BarChart3, Flame, Thermometer, Snowflake,
+  BarChart3, Flame, Thermometer, Snowflake, FileDown,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
