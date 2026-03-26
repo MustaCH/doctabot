@@ -1168,6 +1168,15 @@ function ReportsPanel({ pin }: { pin: string }) {
 
   return (
     <div className="mt-4 space-y-6">
+      {/* Export Button */}
+      <div className="flex items-center justify-end">
+        <Button variant="outline" size="sm" onClick={exportPDF} disabled={exporting}>
+          {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <FileDown className="h-3.5 w-3.5 mr-1.5" />}
+          {exporting ? "Generando PDF..." : "Exportar PDF"}
+        </Button>
+      </div>
+
+      <div ref={reportRef} className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
@@ -1318,6 +1327,7 @@ function ReportsPanel({ pin }: { pin: string }) {
             </TableBody>
           </Table>
         </div>
+      </div>
       </div>
     </div>
   );
