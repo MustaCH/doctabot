@@ -1132,7 +1132,7 @@ function ReportsPanel({ pin }: { pin: string }) {
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
               <Tooltip contentStyle={{ fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="messages" fill="hsl(var(--chart-1))" name="Mensajes" radius={[2, 2, 0, 0]} />
+              <Bar yAxisId="left" dataKey="messages" fill="hsl(var(--chart-2))" name="Mensajes" radius={[2, 2, 0, 0]} />
               <Line yAxisId="right" type="monotone" dataKey="activeUsers" stroke="hsl(var(--chart-3))" strokeWidth={2} name="Usuarios activos" dot={false} />
             </BarChart>
           </ResponsiveContainer>
