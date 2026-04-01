@@ -125,8 +125,9 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
     }
   }, [isRecording, startRecording, sendRecording]);
 
-  const handleMicPointerLeave = useCallback(() => {
-    // If pointer leaves while holding, cancel
+  const handleMicPointerLeave = useCallback((e: React.PointerEvent) => {
+    // Only cancel on touch (mobile swipe-away), not mouse (desktop cursor drift)
+    if (e.pointerType !== "touch") return;
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
