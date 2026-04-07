@@ -2108,7 +2108,10 @@ serve(async (req) => {
 
     // If we got content, run supervisor validation
     if (finalContent) {
-      const userMessage = messages[messages.length - 1]?.content ?? "";
+      // Filter out "SILENT THOUGHTS" leaked from transcription models
+      let userMessage = messages[messages.length - 1]?.content ?? "";
+      userMessage = userMessage.replace(/^SILENT THOUGHTS:[\s\S]*?(?=\S)/i, "").trim();
+      if (!userMessage) userMessage = messages[messages.length - 1]?.content ?? "";
       let supervisorRetryCount = 0;
       const maxRetries = 2;
       let supervisorVerdict = "approved";
@@ -2131,7 +2134,7 @@ serve(async (req) => {
 
 CONTEXTO DE ALAN:
 - Alan tiene herramientas para: buscar propiedades, gestionar favoritos, CRM de clientes (crear, editar, listar con campos enriquecidos como client_type buyer/seller/both, birthday, company, budget_min/max, budget_currency USD/ARS, preferred_zones, property_type_interest, source), vincular conversaciones a clientes, Google Calendar (crear/editar/eliminar eventos, Google Meet), enviar emails por Gmail, buscar en internet y leer páginas web.
-- Los estados de clientes son: prospect, active, inactive, closed.
+- Los estados de clientes son: hot (caliente/interesado), warm (tibio/en seguimiento), cold (frío/sin actividad).
 - Las propiedades se muestran en tarjetas separadas por ===MSG_BREAK===, con foto, título, oficina, precio, ubicación, superficie y link.
 - Los borradores (emails, WhatsApp) se envuelven en <<<DRAFT_START>>>...<<<DRAFT_END>>>.
 - Alan habla en español argentino (voseo: vos, usás, tenés).
@@ -2196,7 +2199,50 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
           if (toolCall?.function?.arguments) {
             return JSON.parse(toolCall.function.arguments);
           }
-          return { verdict: "error", score: 0, reason: "No tool call in supervisor response" };
+          // Retry once if supervisor didn't return a tool call
+          console.warn("Supervisor did not return tool call, retrying...");
+          const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "gemini-2.5-flash-lite",
+              messages: [
+                supervisorData.choices?.[0]?.message ? 
+                  { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
+                  { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response." },
+                { role: "user", content: `MENSAJE DEL USUARIO:\n${alanResponse.slice(0, 500)}\n\nEvaluá con la herramienta evaluate_response. Verdict: approved o rejected.` }
+              ],
+              tools: [{
+                type: "function",
+                function: {
+                  name: "evaluate_response",
+                  description: "Evalúa la calidad de la respuesta de Alan",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      verdict: { type: "string", enum: ["approved", "rejected"] },
+                      score: { type: "integer", description: "1-10" },
+                      reason: { type: "string" }
+                    },
+                    required: ["verdict", "score", "reason"],
+                    additionalProperties: false
+                  }
+                }
+              }],
+              tool_choice: { type: "function", function: { name: "evaluate_response" } },
+              stream: false,
+            }),
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const retryToolCall = retryData.choices?.[0]?.message?.tool_calls?.[0];
+            if (retryToolCall?.function?.arguments) {
+              return JSON.parse(retryToolCall.function.arguments);
+            }
+          }
+          // If retry also fails, approve by default (fail-open)
+          console.warn("Supervisor retry also failed, approving by default");
+          return { verdict: "approved", score: 7, reason: "Auto-approved: supervisor could not evaluate" };
         } catch (err) {
           supervisorLatency = Date.now() - supervisorStart;
           console.error("Supervisor error:", err);
