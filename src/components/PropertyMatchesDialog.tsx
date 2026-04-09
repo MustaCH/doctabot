@@ -198,7 +198,6 @@ export function PropertyMatchesDialog({
     </Dialog>
   );
 }
-  matches,
   loading,
   propertyTitle,
   onLinkClient,
