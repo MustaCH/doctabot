@@ -137,9 +137,14 @@ export function usePropertyMatches() {
                 property.currency === c.budget_currency;
               if (sameCurrency) {
                 const inMin = !c.budget_min || property.price >= c.budget_min;
-                const inMax = !c.budget_max || property.price <= c.budget_max;
-                if (inMin && inMax) {
-                  reasons.push(`💰 Presupuesto compatible`);
+                const BUDGET_TOLERANCE = 1.15;
+                if (inMin) {
+                  if (!c.budget_max || property.price <= c.budget_max) {
+                    reasons.push(`💰 Presupuesto compatible`);
+                  } else if (c.budget_max && property.price <= c.budget_max * BUDGET_TOLERANCE) {
+                    const overPercent = Math.round((property.price / c.budget_max - 1) * 100);
+                    reasons.push(`💰 Presupuesto negociable (~${overPercent}% sobre máx.)`);
+                  }
                 }
               }
             }
