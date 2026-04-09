@@ -11,7 +11,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Validate authentication
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -38,31 +37,27 @@ serve(async (req) => {
     const audioFile = formData.get("audio") as File;
     if (!audioFile) throw new Error("No audio file provided");
 
-    const fileName = audioFile?.name || "";
-    const mimeType = audioFile.type || "";
+    // Determine MIME type
+    let mimeType = audioFile.type || "";
+    const fileName = audioFile.name || "";
 
-    // Detect format from filename and mime type
-    let audioFormat = "wav"; // safe fallback
-    if (fileName.endsWith(".webm") || mimeType.includes("webm")) {
-      audioFormat = "webm";
-    } else if (fileName.endsWith(".mp3") || mimeType.includes("mp3") || mimeType.includes("mpeg")) {
-      audioFormat = "mp3";
-    } else if (fileName.endsWith(".mp4") || mimeType.includes("mp4")) {
-      audioFormat = "mp4";
-    } else if (fileName.endsWith(".ogg") || mimeType.includes("ogg")) {
-      audioFormat = "ogg";
-    } else if (fileName.endsWith(".aac") || mimeType.includes("aac")) {
-      audioFormat = "aac";
-    } else if (fileName.endsWith(".wav") || mimeType.includes("wav")) {
-      audioFormat = "wav";
+    // Fallback mime detection from extension
+    if (!mimeType || mimeType === "application/octet-stream") {
+      if (fileName.endsWith(".webm")) mimeType = "audio/webm";
+      else if (fileName.endsWith(".mp4") || fileName.endsWith(".m4a")) mimeType = "audio/mp4";
+      else if (fileName.endsWith(".ogg")) mimeType = "audio/ogg";
+      else if (fileName.endsWith(".mp3")) mimeType = "audio/mp3";
+      else if (fileName.endsWith(".aac")) mimeType = "audio/aac";
+      else if (fileName.endsWith(".wav")) mimeType = "audio/wav";
+      else mimeType = "audio/webm"; // safe default for browsers
     }
 
-    console.log(`Transcribing: file=${fileName}, mime=${mimeType}, format=${audioFormat}, size=${audioFile.size}`);
+    console.log(`Transcribing: file=${fileName}, mime=${mimeType}, size=${audioFile.size}`);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
-    // Convert audio to base64 in chunks to avoid stack overflow
+    // Convert audio to base64 in chunks
     const arrayBuffer = await audioFile.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
     const CHUNK = 8192;
@@ -72,36 +67,31 @@ serve(async (req) => {
     }
     const base64Audio = btoa(binary);
 
-    // Use Gemini to transcribe the audio
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_audio",
-                input_audio: {
-                  data: base64Audio,
-                  format: audioFormat,
+    // Use native Gemini API (supports all audio MIME types)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Audio,
+                  },
                 },
-              },
-              {
-                type: "text",
-                text: "Transcribí este audio exactamente como fue dicho. Devolvé SOLO el texto transcripto, sin comillas, sin explicaciones, sin nada extra. Si no hay audio o no se entiende, devolvé una cadena vacía.",
-              },
-            ],
-          },
-        ],
-        stream: false,
-      }),
-    });
+                {
+                  text: "Transcribí este audio exactamente como fue dicho. Devolvé SOLO el texto transcripto, sin comillas, sin explicaciones, sin nada extra. Si no hay audio o no se entiende, devolvé una cadena vacía.",
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
@@ -110,7 +100,7 @@ serve(async (req) => {
     }
 
     const aiData = await response.json();
-    const transcript = aiData.choices?.[0]?.message?.content?.trim() ?? "";
+    const transcript = aiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 
     return new Response(JSON.stringify({ text: transcript }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
