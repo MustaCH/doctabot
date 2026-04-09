@@ -198,8 +198,6 @@ export function PropertyMatchesDialog({
     </Dialog>
   );
 }
-  open,
-  onOpenChange,
   matches,
   loading,
   propertyTitle,
