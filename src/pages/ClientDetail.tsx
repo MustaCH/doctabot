@@ -345,7 +345,7 @@ const ClientDetail = () => {
     setDeleting(true);
     try {
       // Clean up all related records first to avoid orphans and stale match suggestions
-      await Promise.all([
+      const cleanupResults = await Promise.all([
         supabase.from("client_properties").delete().eq("client_id", client.id).eq("user_id", user.id),
         supabase.from("client_notes").delete().eq("client_id", client.id).eq("user_id", user.id),
         supabase.from("client_activity_log").delete().eq("client_id", client.id).eq("user_id", user.id),
@@ -354,8 +354,22 @@ const ClientDetail = () => {
         supabase.from("conversations").delete().eq("client_id", client.id).eq("user_id", user.id),
       ]);
 
+      // Log any cleanup errors but continue with deletion
+      cleanupResults.forEach((r, i) => {
+        if (r.error) console.warn(`Cleanup step ${i} error:`, r.error);
+      });
+
       const { error } = await supabase.from("clients").delete().eq("id", client.id).eq("user_id", user.id);
       if (error) throw error;
+
+      // Verify deletion
+      const { data: check } = await supabase.from("clients").select("id").eq("id", client.id).maybeSingle();
+      if (check) {
+        console.error("Client still exists after delete!", check);
+        toast.error("No se pudo eliminar el cliente. Intentá de nuevo.");
+        return;
+      }
+
       toast.success("Cliente eliminado");
       navigate("/clients", { replace: true });
     } catch (err) {
@@ -814,7 +828,7 @@ const ClientDetail = () => {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!deleting) setShowDeleteConfirm(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
@@ -824,9 +838,16 @@ const ClientDetail = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={async (e) => {
+                e.preventDefault();
+                await handleDelete();
+              }}
+            >
               {deleting ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
