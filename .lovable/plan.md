@@ -1,41 +1,73 @@
-## Reportes para Super Admin Panel — Plan
 
-### Objetivo
 
-Agregar una nueva tab "Reportes" al panel Super Admin que genere reportes listos para mostrar a tu cliente, con métricas de uso, satisfacción y calidad del agente IA.
+## Plan: Correcciones de Matching, Importación, Info Visible y Audio
 
-### Reportes propuestos
+### Problemas detectados
 
-1. **Uso por usuario** — Mensajes enviados, conversaciones creadas, clientes gestionados, favoritos guardados por cada usuario. Ranking de usuarios más activos.
-2. **Tasa de aprobación del Supervisor** — % de mensajes aprobados/rechazados/error del supervisor, score promedio global y por usuario, tendencia en el tiempo.
-3. **Satisfacción estimada** — Análisis básico de los mensajes del usuario: longitud promedio de conversación (más turnos = más engagement), tasa de retorno (usuarios que vuelven a usar el chat), ratio de conversaciones con herramientas ejecutadas vs solo texto.
-4. **Retención y engagement** — Usuarios activos por día/semana en los últimos 30 días, días desde último mensaje por usuario (detectar usuarios inactivos).
-5. **Resumen ejecutivo exportable** — Botón para descargar CSV con todas las métricas consolidadas.
+**1. Matching de propiedades incorrecto**
+El algoritmo actual en `use-property-matches.ts` hace comparaciones substring (`includes`) entre property_type de la propiedad (ej: `terrenos_y_lotes`) y el `property_type_interest` del cliente (ej: `Departamento de 1 dormitorio`, `Casa o PH`, `Lote Docta Central`). Esto genera falsos positivos porque `"casa"` aparece dentro de `"casa_duplex"`, o `"lote"` matchea con `"terrenos_y_lotes"` cuando el cliente busca algo distinto. Además la zona se compara también por substring, causando matches imprecisos.
 
-### Implementación técnica
+**2. Info de búsqueda del cliente no visible**
+En el diálogo de "Clientes compatibles" (`PropertyMatchesDialog`) no se muestra qué busca cada cliente (zona, presupuesto, tipo). En la ficha del cliente (`ClientDetail`) la sección "Búsqueda" está dentro de un `<details>` colapsado por defecto, obligando a hacer click extra.
 
-**1. Backend — Nueva acción en `admin-stats` edge function**
+**3. Importación pone todos como "buyer"**
+En `ImportClientsDialog.tsx` línea 170-173, el import fuerza `status: "hot"` pero no extrae `client_type` de las notas. La IA del parser (`parse-client-import`) solo mapea name/phone/email — no detecta el tipo de contacto. El campo "Tipo de Contacto: Vendedor" queda en las notas pero `client_type` siempre es el default de la DB (`buyer`).
 
-- Agregar acción `"user-reports"` que calcule por usuario: total mensajes, conversaciones, clientes, favoritos, último mensaje, promedio de mensajes por conversación.
-- Agregar acción `"satisfaction-report"` que calcule: longitud promedio de conversaciones, usuarios recurrentes, engagement metrics.
-- La acción `"supervisor-stats"` ya existe y se reutiliza para la tasa de aprobación y score promedio.
+**4. Audio no funciona en desktop ni mobile**
+El transcribe function se ve correcta tras el fix anterior. Necesito verificar si hay errores actuales en los logs de la edge function `chat` relacionados con audio o transcripción. El problema podría estar en el frontend (recording flow) o en la transcripción misma.
 
-**2. Frontend — Nueva tab "Reportes" en SuperAdmin.tsx**
+---
 
-- Componente `ReportsPanel` con sub-secciones:
-  - **Tabla de uso por usuario** con columnas: nombre, mensajes, conversaciones, clientes, favoritos, última actividad.
-  - **Cards de métricas del supervisor**: tasa aprobación, score promedio, errores.
-  - **Gráfico de engagement**: mensajes por día superpuesto con usuarios activos.
-  - **Distribución de clientes** por estado (hot/warm/cold).
-- Botón "Exportar CSV" para cada sección.
-- Recharts para visualizaciones (ya está instalado).
+### Cambios a implementar
 
-**3. Archivos a modificar**
+#### Fix 1: Mejorar algoritmo de matching
+**Archivo:** `src/hooks/use-property-matches.ts`
 
-- `supabase/functions/admin-stats/index.ts` — Agregar acciones `user-reports` y `satisfaction-report`
-- `src/pages/SuperAdmin.tsx` — Agregar tab "Reportes" y componente `ReportsPanel`
-- Desplegar edge function actualizada
+- Normalizar los tipos de propiedad antes de comparar: convertir `terrenos_y_lotes` → `terreno`, `lote`; `departamento_*` → `departamento`; `casa_*` → `casa`, etc.
+- Tokenizar tanto el `property_type` de la propiedad como el `property_type_interest` del cliente en palabras clave, y matchear por tokens en vez de substring completo.
+- Para zonas: comparar por igualdad exacta (case-insensitive, trimmed) en vez de `includes`, ya que las zonas son valores definidos (Nueva Córdoba, Centro, etc.).
+- Solo matchear clientes de tipo `buyer` o `both` (los vendedores no buscan comprar).
 
-### Tabs actualizadas
+#### Fix 2: Mostrar info de búsqueda del cliente
+**Archivo:** `src/components/PropertyMatchesDialog.tsx`
 
-Overview | Supervisor | **Reportes** | Propiedades | Usuarios | Conversaciones | Favoritos | Clientes
+- Agregar debajo de cada cliente su zona preferida, presupuesto y tipo de propiedad buscada en formato compacto (como badges o línea de texto).
+
+**Archivo:** `src/pages/ClientDetail.tsx`
+
+- Cambiar el `<details>` de "Información del cliente" a que esté abierto por defecto (`open` attribute), o mover la sección "Búsqueda" fuera del collapsible para que siempre sea visible.
+
+#### Fix 3: Detectar client_type en importación
+**Archivo:** `supabase/functions/parse-client-import/index.ts`
+
+- Agregar al prompt de la IA la instrucción de detectar una columna o valor que indique si es "Vendedor" o "Comprador", mapeándolo a un nuevo campo `client_type_column` en la herramienta `map_columns`.
+
+**Archivo:** `src/components/ImportClientsDialog.tsx`
+
+- En `applyMapping`, extraer el `client_type` del mapping de la IA.
+- Como fallback: si en las notas aparece "Tipo de Contacto: Vendedor", setear `client_type: "seller"`.
+- Mostrar en la preview una columna "Tipo" para que el usuario valide antes de importar.
+
+#### Fix 4: Diagnóstico y fix de audio
+**Acción:** Revisar logs recientes de la edge function `transcribe` y `chat` para errores específicos. Verificar el flujo completo:
+- El `sendRecording` en `ChatInput.tsx` envía correctamente el blob
+- `transcribeAudio` en `use-audio-recorder.ts` envía el FormData al endpoint
+- El formato del audio (`webm`/`mp4`) es soportado por Gemini
+
+Posible issue: en `transcribe/index.ts` línea 40, el formato se mapea a `webm`/`mp3`/`wav` pero no contempla `mp4` ni `ogg` para el campo `format` de Gemini. Si Safari graba en `mp4`, el formato se envía como `wav` (fallback incorrecto).
+
+**Fix:** Corregir el mapeo de formato en `transcribe/index.ts` para incluir `mp4` y `ogg`. Agregar mejor error handling en el frontend para mostrar mensajes descriptivos al usuario.
+
+---
+
+### Resumen de archivos
+
+| Archivo | Cambio |
+|---|---|
+| `src/hooks/use-property-matches.ts` | Mejorar algoritmo de matching con normalización de tipos y zonas |
+| `src/components/PropertyMatchesDialog.tsx` | Mostrar zona, presupuesto y tipo que busca cada cliente |
+| `src/pages/ClientDetail.tsx` | Sección "Búsqueda" visible por defecto |
+| `supabase/functions/parse-client-import/index.ts` | Detectar tipo de contacto (vendedor/comprador) |
+| `src/components/ImportClientsDialog.tsx` | Extraer client_type, fallback por notas, columna en preview |
+| `supabase/functions/transcribe/index.ts` | Corregir mapeo de formato audio (mp4, ogg) |
+
