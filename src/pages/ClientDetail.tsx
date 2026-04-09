@@ -341,14 +341,25 @@ const ClientDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (!client) return;
+    if (!client || !user) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("clients").delete().eq("id", client.id);
+      // Clean up all related records first to avoid orphans and stale match suggestions
+      await Promise.all([
+        supabase.from("client_properties").delete().eq("client_id", client.id).eq("user_id", user.id),
+        supabase.from("client_notes").delete().eq("client_id", client.id).eq("user_id", user.id),
+        supabase.from("client_activity_log").delete().eq("client_id", client.id).eq("user_id", user.id),
+        supabase.from("client_events").delete().eq("client_id", client.id).eq("user_id", user.id),
+        supabase.from("client_tags").delete().match({ client_id: client.id }),
+        supabase.from("conversations").delete().eq("client_id", client.id).eq("user_id", user.id),
+      ]);
+
+      const { error } = await supabase.from("clients").delete().eq("id", client.id).eq("user_id", user.id);
       if (error) throw error;
       toast.success("Cliente eliminado");
-      navigate("/clients");
-    } catch {
+      navigate("/clients", { replace: true });
+    } catch (err) {
+      console.error("Error deleting client:", err);
       toast.error("Error al eliminar el cliente");
     } finally {
       setDeleting(false);
