@@ -19,6 +19,7 @@ interface ColumnMapping {
   name_column: number;
   phone_column: number;
   email_column: number;
+  client_type_column: number;
   extra_columns: number[];
   has_name_split: boolean;
   name_column_2: number;
@@ -29,7 +30,7 @@ interface ParsedClient {
   phone: string | null;
   email: string | null;
   notes: string | null;
-  client_type?: string;
+  client_type: string;
   birthday?: string | null;
   company?: string | null;
   address?: string | null;
@@ -41,6 +42,19 @@ interface ParsedClient {
 }
 
 type Step = "upload" | "mapping" | "preview" | "importing" | "done";
+
+/** Detect client_type from a raw cell value */
+function detectClientType(val: string | null | undefined): string {
+  if (!val) return "buyer";
+  const lower = val.trim().toLowerCase();
+  if (lower.includes("vendedor") || lower === "seller") return "seller";
+  if (lower.includes("ambos") || lower === "both") return "both";
+  return "buyer";
+}
+
+const clientTypeLabel: Record<string, string> = {
+  buyer: "Comprador", seller: "Vendedor", both: "Ambos",
+};
 
 export default function ImportClientsDialog({ open, onOpenChange, userId, onImported }: ImportClientsDialogProps) {
   const [step, setStep] = useState<Step>("upload");
@@ -144,6 +158,12 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
       const phone = m.phone_column >= 0 ? (row[m.phone_column]?.trim() || null) : null;
       const email = m.email_column >= 0 ? (row[m.email_column]?.trim() || null) : null;
 
+      // Detect client_type from mapped column
+      let client_type = "buyer";
+      if (m.client_type_column >= 0) {
+        client_type = detectClientType(row[m.client_type_column]);
+      }
+
       // Build notes from extra columns
       const noteParts: string[] = [];
       for (const idx of m.extra_columns) {
@@ -154,7 +174,16 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
       }
       const notes = noteParts.length > 0 ? noteParts.join("\n") : null;
 
-      return { full_name: name, phone, email, notes };
+      // Fallback: if no client_type_column was detected, check notes for "Vendedor"
+      if (m.client_type_column < 0 && notes) {
+        if (/tipo\s*de\s*contacto\s*:\s*vendedor/i.test(notes)) {
+          client_type = "seller";
+        } else if (/tipo\s*de\s*contacto\s*:\s*ambos/i.test(notes)) {
+          client_type = "both";
+        }
+      }
+
+      return { full_name: name, phone, email, notes, client_type };
     }).filter(c => c.full_name.length > 0);
   };
 
@@ -251,6 +280,9 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                   {mapping.email_column >= 0 && (
                     <Badge variant="secondary">📧 Email → {headers[mapping.email_column]}</Badge>
                   )}
+                  {mapping.client_type_column >= 0 && (
+                    <Badge variant="secondary">🏷️ Tipo → {headers[mapping.client_type_column]}</Badge>
+                  )}
                   {mapping.extra_columns.length > 0 && (
                     <Badge variant="outline">📝 +{mapping.extra_columns.length} cols en notas</Badge>
                   )}
@@ -264,6 +296,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                       <TableRow>
                         <TableHead className="text-xs">#</TableHead>
                         <TableHead className="text-xs">Nombre</TableHead>
+                        <TableHead className="text-xs">Tipo</TableHead>
                         <TableHead className="text-xs">Teléfono</TableHead>
                         <TableHead className="text-xs">Email</TableHead>
                         <TableHead className="text-xs">Notas</TableHead>
@@ -274,6 +307,11 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                         <TableRow key={i}>
                           <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                           <TableCell className="text-xs font-medium max-w-[150px] truncate">{c.full_name}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant={c.client_type === "seller" ? "destructive" : c.client_type === "both" ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                              {clientTypeLabel[c.client_type] ?? c.client_type}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-xs max-w-[120px] truncate">{c.phone ?? "—"}</TableCell>
                           <TableCell className="text-xs max-w-[150px] truncate">{c.email ?? "—"}</TableCell>
                           <TableCell className="text-xs max-w-[200px] truncate text-muted-foreground">{c.notes ?? "—"}</TableCell>

@@ -36,9 +36,28 @@ serve(async (req) => {
 
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File;
-    const fileName = audioFile?.name || "";
-    const audioFormat = fileName.endsWith(".webm") ? "webm" : fileName.endsWith(".mp3") ? "mp3" : "wav";
     if (!audioFile) throw new Error("No audio file provided");
+
+    const fileName = audioFile?.name || "";
+    const mimeType = audioFile.type || "";
+
+    // Detect format from filename and mime type
+    let audioFormat = "wav"; // safe fallback
+    if (fileName.endsWith(".webm") || mimeType.includes("webm")) {
+      audioFormat = "webm";
+    } else if (fileName.endsWith(".mp3") || mimeType.includes("mp3") || mimeType.includes("mpeg")) {
+      audioFormat = "mp3";
+    } else if (fileName.endsWith(".mp4") || mimeType.includes("mp4")) {
+      audioFormat = "mp4";
+    } else if (fileName.endsWith(".ogg") || mimeType.includes("ogg")) {
+      audioFormat = "ogg";
+    } else if (fileName.endsWith(".aac") || mimeType.includes("aac")) {
+      audioFormat = "aac";
+    } else if (fileName.endsWith(".wav") || mimeType.includes("wav")) {
+      audioFormat = "wav";
+    }
+
+    console.log(`Transcribing: file=${fileName}, mime=${mimeType}, format=${audioFormat}, size=${audioFile.size}`);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");

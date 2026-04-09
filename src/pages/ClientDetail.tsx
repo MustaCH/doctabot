@@ -472,7 +472,7 @@ const ClientDetail = () => {
       </div>
 
       {/* Client info — collapsible details */}
-      <details className="border-b border-border bg-card/30 group">
+      <details open className="border-b border-border bg-card/30 group">
         <summary className="px-4 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none flex items-center gap-1.5 hover:text-foreground transition-colors">
           <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
           Información del cliente
