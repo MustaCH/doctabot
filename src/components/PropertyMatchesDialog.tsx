@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Phone, Mail, UserPlus } from "lucide-react";
+import { Users, Phone, Mail, UserPlus, MapPin, DollarSign, Home } from "lucide-react";
 import type { MatchedClient } from "@/hooks/use-property-matches";
 
 interface Props {
@@ -19,6 +19,14 @@ const statusLabels: Record<string, string> = {
   warm: "☀️ Tibio",
   cold: "❄️ Frío",
 };
+
+function formatBudget(min: number | null, max: number | null, cur: string | null) {
+  const sym = cur ?? "USD";
+  if (min && max) return `${sym} ${min.toLocaleString("es-AR")} – ${max.toLocaleString("es-AR")}`;
+  if (min) return `Desde ${sym} ${min.toLocaleString("es-AR")}`;
+  if (max) return `Hasta ${sym} ${max!.toLocaleString("es-AR")}`;
+  return null;
+}
 
 export function PropertyMatchesDialog({
   open,
@@ -68,74 +76,101 @@ export function PropertyMatchesDialog({
               <p className="text-xs text-muted-foreground mb-3">
                 {matches.length} cliente{matches.length !== 1 ? "s" : ""} compatible{matches.length !== 1 ? "s" : ""}
               </p>
-              {matches.map((c) => (
-                <div
-                  key={c.id}
-                  className="rounded-lg border border-border bg-card p-3 space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">
-                        {c.full_name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {statusLabels[c.status] ?? c.status}
-                        </Badge>
-                        <span className="text-[10px] text-muted-foreground capitalize">
-                          {c.client_type === "buyer" ? "Comprador" : c.client_type === "seller" ? "Vendedor" : c.client_type}
-                        </span>
+              {matches.map((c) => {
+                const budget = formatBudget(c.budget_min, c.budget_max, c.budget_currency);
+                return (
+                  <div
+                    key={c.id}
+                    className="rounded-lg border border-border bg-card p-3 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">
+                          {c.full_name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {statusLabels[c.status] ?? c.status}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground capitalize">
+                            {c.client_type === "buyer" ? "Comprador" : c.client_type === "seller" ? "Vendedor" : c.client_type}
+                          </span>
+                        </div>
                       </div>
+                      {onLinkClient && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs shrink-0"
+                          onClick={() => onLinkClient(c.id, c.full_name)}
+                        >
+                          <UserPlus className="h-3 w-3" />
+                          Vincular
+                        </Button>
+                      )}
                     </div>
-                    {onLinkClient && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1 text-xs shrink-0"
-                        onClick={() => onLinkClient(c.id, c.full_name)}
-                      >
-                        <UserPlus className="h-3 w-3" />
-                        Vincular
-                      </Button>
-                    )}
-                  </div>
 
-                  {/* Contact info */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {c.phone && (
-                      <a
-                        href={`tel:${c.phone}`}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {c.phone}
-                      </a>
+                    {/* What client is looking for */}
+                    {(c.preferred_zones || budget || c.property_type_interest) && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                        {c.preferred_zones && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-primary/60" />
+                            {c.preferred_zones}
+                          </span>
+                        )}
+                        {budget && (
+                          <span className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-primary/60" />
+                            {budget}
+                          </span>
+                        )}
+                        {c.property_type_interest && (
+                          <span className="flex items-center gap-1">
+                            <Home className="h-3 w-3 text-primary/60" />
+                            {c.property_type_interest}
+                          </span>
+                        )}
+                      </div>
                     )}
-                    {c.email && (
-                      <a
-                        href={`mailto:${c.email}`}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground truncate"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {c.email}
-                      </a>
-                    )}
-                  </div>
 
-                  {/* Match reasons */}
-                  <div className="flex flex-wrap gap-1">
-                    {c.matchReasons.map((r, i) => (
-                      <Badge
-                        key={i}
-                        variant="secondary"
-                        className="text-[10px] px-1.5 py-0 font-normal"
-                      >
-                        {r}
-                      </Badge>
-                    ))}
+                    {/* Contact info */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {c.phone && (
+                        <a
+                          href={`tel:${c.phone}`}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Phone className="h-3 w-3" />
+                          {c.phone}
+                        </a>
+                      )}
+                      {c.email && (
+                        <a
+                          href={`mailto:${c.email}`}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground truncate"
+                        >
+                          <Mail className="h-3 w-3" />
+                          {c.email}
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Match reasons */}
+                    <div className="flex flex-wrap gap-1">
+                      {c.matchReasons.map((r, i) => (
+                        <Badge
+                          key={i}
+                          variant="secondary"
+                          className="text-[10px] px-1.5 py-0 font-normal"
+                        >
+                          {r}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

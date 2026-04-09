@@ -27,14 +27,16 @@ Tu tarea es identificar qué columna corresponde a:
 - "name": Nombre completo del cliente (OBLIGATORIO - debe existir)
 - "phone": Teléfono del cliente
 - "email": Email del cliente
+- "client_type": Tipo de contacto (comprador/vendedor). Buscá columnas como "Tipo de Contacto", "Tipo", "Rol", etc.
 
 Usá la herramienta map_columns para devolver tu análisis.
 
 REGLAS:
 - Los índices son 0-based (la primera columna es 0).
-- Si no encontrás una columna para phone o email, devolvé -1.
+- Si no encontrás una columna para phone, email o client_type, devolvé -1.
 - Para name, elegí la columna que más probablemente contenga el nombre completo. Si hay "nombre" y "apellido" separados, elegí la que tenga el nombre completo o la primera de ellas.
-- "extra_columns" son los ÍNDICES de todas las columnas que NO son name, phone ni email. Estas se guardarán en notas.
+- "extra_columns" son los ÍNDICES de todas las columnas que NO son name, phone, email ni client_type. Estas se guardarán en notas.
+- Para client_type_column: si encontrás una columna que indica si el contacto es "Vendedor", "Comprador", "Ambos", etc., devolvé su índice. Si no existe, devolvé -1.
 
 ENCABEZADOS: ${JSON.stringify(headers)}
 
@@ -58,6 +60,7 @@ ${(sampleRows ?? []).map((r: string[], i: number) => `Fila ${i + 1}: ${JSON.stri
                 name_column: { type: "integer", description: "Index of the name column (0-based)" },
                 phone_column: { type: "integer", description: "Index of the phone column, or -1 if not found" },
                 email_column: { type: "integer", description: "Index of the email column, or -1 if not found" },
+                client_type_column: { type: "integer", description: "Index of the client type column (vendedor/comprador), or -1 if not found" },
                 extra_columns: {
                   type: "array",
                   items: { type: "integer" },
@@ -66,7 +69,7 @@ ${(sampleRows ?? []).map((r: string[], i: number) => `Fila ${i + 1}: ${JSON.stri
                 has_name_split: { type: "boolean", description: "True if name is split across multiple columns (nombre/apellido)" },
                 name_column_2: { type: "integer", description: "Index of second name column (apellido) if split, -1 otherwise" },
               },
-              required: ["name_column", "phone_column", "email_column", "extra_columns", "has_name_split", "name_column_2"],
+              required: ["name_column", "phone_column", "email_column", "client_type_column", "extra_columns", "has_name_split", "name_column_2"],
               additionalProperties: false,
             },
           },

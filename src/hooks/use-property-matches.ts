@@ -24,6 +24,35 @@ interface PropertyForMatch {
   property_type: string | null;
 }
 
+/** Normalize a property_type slug into comparable tokens */
+function normalizePropertyType(raw: string): string[] {
+  const lower = raw.toLowerCase().replace(/_/g, " ").trim();
+  const tokens: string[] = [];
+
+  // Map common DB slugs to canonical keywords
+  if (/\bdepartamento\b/.test(lower)) tokens.push("departamento");
+  if (/\bcasa\b/.test(lower)) tokens.push("casa");
+  if (/\bph\b/.test(lower)) tokens.push("ph");
+  if (/\bduplex\b/.test(lower) || /\bdúplex\b/.test(lower)) tokens.push("duplex");
+  if (/\blote\b/.test(lower) || /\bterreno\b/.test(lower)) tokens.push("terreno", "lote");
+  if (/\blocal\b/.test(lower)) tokens.push("local");
+  if (/\boficina\b/.test(lower)) tokens.push("oficina");
+  if (/\bgalpón\b/.test(lower) || /\bgalpon\b/.test(lower)) tokens.push("galpon");
+  if (/\bcochera\b/.test(lower)) tokens.push("cochera");
+  if (/\bcampo\b/.test(lower)) tokens.push("campo");
+  if (/\bfondo de comercio\b/.test(lower)) tokens.push("fondo de comercio");
+
+  // If no known token matched, use the whole string as a token
+  if (tokens.length === 0) tokens.push(lower);
+
+  return tokens;
+}
+
+/** Check if two zones match (exact, case-insensitive, trimmed) */
+function zonesMatch(propertyZone: string, clientZone: string): boolean {
+  return propertyZone.trim().toLowerCase() === clientZone.trim().toLowerCase();
+}
+
 export function usePropertyMatches() {
   const { user } = useAuth();
   const [matches, setMatches] = useState<MatchedClient[]>([]);
@@ -34,7 +63,6 @@ export function usePropertyMatches() {
       if (!user) return;
       setLoading(true);
       try {
-        // Fetch all user's clients (typically under 1000)
         const { data: clients, error } = await supabase
           .from("clients")
           .select(
@@ -47,14 +75,18 @@ export function usePropertyMatches() {
         const matched: MatchedClient[] = [];
 
         for (const c of clients ?? []) {
+          // Only match buyers or "both" — sellers don't search for properties
+          if (c.client_type === "seller") continue;
+
           const reasons: string[] = [];
 
-          // Zone match
+          // Zone match — exact equality
           if (property.zone && c.preferred_zones) {
             const clientZones = c.preferred_zones
               .split(",")
-              .map((z: string) => z.trim().toLowerCase());
-            if (clientZones.some((z: string) => property.zone!.toLowerCase().includes(z) || z.includes(property.zone!.toLowerCase()))) {
+              .map((z: string) => z.trim())
+              .filter(Boolean);
+            if (clientZones.some((z: string) => zonesMatch(property.zone!, z))) {
               reasons.push(`📍 Zona: ${property.zone}`);
             }
           }
@@ -74,12 +106,16 @@ export function usePropertyMatches() {
             }
           }
 
-          // Property type match
+          // Property type match — token-based
           if (property.property_type && c.property_type_interest) {
-            const interests = c.property_type_interest
+            const propTokens = normalizePropertyType(property.property_type);
+            const clientInterests = c.property_type_interest
               .split(",")
-              .map((t: string) => t.trim().toLowerCase());
-            if (interests.some((t: string) => property.property_type!.toLowerCase().includes(t) || t.includes(property.property_type!.toLowerCase()))) {
+              .map((t: string) => t.trim())
+              .filter(Boolean);
+            const clientTokens = clientInterests.flatMap(normalizePropertyType);
+            const hasOverlap = propTokens.some((pt) => clientTokens.includes(pt));
+            if (hasOverlap) {
               reasons.push(`🏗️ Tipo: ${property.property_type}`);
             }
           }
