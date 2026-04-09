@@ -236,6 +236,15 @@ const Properties = () => {
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((p) => (
         <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative overflow-hidden rounded-xl">
+          {isFavView && (
+            <button
+              onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
+              className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow backdrop-blur-sm transition-all hover:opacity-90 sm:opacity-0 sm:group-hover:opacity-100"
+              title="Quitar de favoritos"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <PropertyCard
             photo={p.photo ?? undefined}
             title={p.title ?? undefined}
@@ -247,45 +256,41 @@ const Properties = () => {
             extras={buildExtras(p)}
             agentCode={agentCode}
           />
-          {/* Match clients button */}
-          <button
-            onClick={() => {
-              setMatchesPropertyId(p.id);
-              setMatchesPropertyTitle(p.title ?? undefined);
-              setMatchesOpen(true);
-              findMatches({
-                zone: p.zone,
-                price: p.price,
-                currency: p.currency,
-                property_type: p.property_type,
-              });
-            }}
-            className="absolute bottom-[4.5rem] right-12 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground shadow backdrop-blur-sm transition-all hover:bg-accent/80 sm:opacity-0 sm:group-hover:opacity-100"
-            title="Ver clientes compatibles"
-          >
-            <Users className="h-3.5 w-3.5" />
-          </button>
-          {/* Link to client button */}
-          <button
-            onClick={() => {
-              setLinkPropertyId(p.id);
-              setLinkPropertyTitle(p.title ?? undefined);
-              setLinkDialogOpen(true);
-            }}
-            className="absolute bottom-[4.5rem] right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-primary/80 text-primary-foreground shadow backdrop-blur-sm transition-all hover:bg-primary sm:opacity-0 sm:group-hover:opacity-100"
-            title="Vincular a cliente"
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-          </button>
-          {isFavView && (
-            <button
-              onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
-              className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow backdrop-blur-sm transition-all hover:opacity-90 sm:opacity-0 sm:group-hover:opacity-100"
-              title="Quitar de favoritos"
+          {/* Action buttons row */}
+          <div className="flex gap-2 px-3.5 pb-3 -mt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5 text-xs h-8"
+              onClick={() => {
+                setMatchesPropertyId(p.id);
+                setMatchesPropertyTitle(p.title ?? undefined);
+                setMatchesOpen(true);
+                findMatches({
+                  zone: p.zone,
+                  price: p.price,
+                  currency: p.currency,
+                  property_type: p.property_type,
+                });
+              }}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
+              <Users className="h-3.5 w-3.5" />
+              Compatibles
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5 text-xs h-8"
+              onClick={() => {
+                setLinkPropertyId(p.id);
+                setLinkPropertyTitle(p.title ?? undefined);
+                setLinkDialogOpen(true);
+              }}
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Vincular
+            </Button>
+          </div>
         </div>
       ))}
     </div>

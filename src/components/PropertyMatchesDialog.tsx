@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Phone, Mail, UserPlus, MapPin, DollarSign, Home } from "lucide-react";
+import { Users, Phone, Mail, UserPlus, MapPin, DollarSign, Home, Clock } from "lucide-react";
 import type { MatchedClient } from "@/hooks/use-property-matches";
 
 interface Props {
@@ -26,6 +26,17 @@ function formatBudget(min: number | null, max: number | null, cur: string | null
   if (min) return `Desde ${sym} ${min.toLocaleString("es-AR")}`;
   if (max) return `Hasta ${sym} ${max!.toLocaleString("es-AR")}`;
   return null;
+}
+
+function formatLastContact(date: string | null): string | null {
+  if (!date) return null;
+  const diff = Date.now() - new Date(date).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "Hoy";
+  if (days === 1) return "Hace 1 día";
+  if (days < 30) return `Hace ${days} días`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
 }
 
 export function PropertyMatchesDialog({
@@ -68,7 +79,7 @@ export function PropertyMatchesDialog({
                 No se encontraron clientes compatibles
               </p>
               <p className="text-xs text-muted-foreground/70 max-w-xs">
-                Asegurate de que tus clientes tengan configuradas las zonas preferidas, presupuesto y tipo de propiedad buscada.
+                Se requieren al menos 2 criterios coincidentes (zona, presupuesto o tipo de propiedad). Asegurate de que tus clientes tengan estos campos configurados.
               </p>
             </div>
           ) : (
@@ -78,6 +89,7 @@ export function PropertyMatchesDialog({
               </p>
               {matches.map((c) => {
                 const budget = formatBudget(c.budget_min, c.budget_max, c.budget_currency);
+                const lastContact = formatLastContact(c.last_contact_at);
                 return (
                   <div
                     key={c.id}
@@ -131,6 +143,14 @@ export function PropertyMatchesDialog({
                             {c.property_type_interest}
                           </span>
                         )}
+                      </div>
+                    )}
+
+                    {/* Last contact */}
+                    {lastContact && (
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Clock className="h-3 w-3 text-muted-foreground/60" />
+                        Último contacto: {lastContact}
                       </div>
                     )}
 
