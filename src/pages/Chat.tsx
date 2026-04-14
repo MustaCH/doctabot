@@ -55,12 +55,12 @@ const Chat = () => {
     loadConversations();
   }, [loadConversations]);
 
-  // Mark active conversation as read
+  // Mark active conversation as read (on switch + after new messages arrive)
   useEffect(() => {
     if (activeConvId) {
       markAsRead(activeConvId);
     }
-  }, [activeConvId, markAsRead]);
+  }, [activeConvId, messages, markAsRead]);
 
   const { pullDistance, refreshing } = usePullToRefresh({
     onRefresh: loadConversations,
