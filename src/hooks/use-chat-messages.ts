@@ -19,7 +19,13 @@ export function useChatMessages(
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
+  const mountedRef = useRef(true);
   const { isProcessingPdf, processAttachments } = useFileProcessing();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Load messages when active conversation changes
   useEffect(() => {
