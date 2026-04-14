@@ -293,7 +293,41 @@ const Profile = () => {
                 Conectar con Google
               </Button>
             )}
+        </div>
+
+        {/* Push Notifications */}
+        {pushSupported && (
+          <div className="md:max-w-sm">
+            <div className="rounded-lg border bg-card p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {pushEnabled ? (
+                    <Bell className="h-4 w-4 text-primary" />
+                  ) : (
+                    <BellOff className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">Notificaciones</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pushLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  <Switch
+                    checked={pushEnabled}
+                    disabled={pushLoading}
+                    onCheckedChange={(checked) => {
+                      if (checked) pushSubscribe();
+                      else pushUnsubscribe();
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pushEnabled
+                  ? "Recibirás notificaciones cuando Alan responda"
+                  : "Activá para recibir notificaciones de Alan"}
+              </p>
+            </div>
           </div>
+        )
         </div>
 
         {/* Profile fields */}
