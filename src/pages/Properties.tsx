@@ -263,6 +263,7 @@ const Properties = () => {
                   currency: p.currency,
                   property_type: p.property_type,
                   title: p.title,
+                  locality: p.locality,
                 });
               }}
             >

@@ -25,6 +25,7 @@ interface PropertyForMatch {
   currency: string | null;
   property_type: string | null;
   title: string | null;
+  locality: string | null;
 }
 
 /** Normalize a property_type slug into comparable tokens */
@@ -266,7 +267,10 @@ export function usePropertyMatches() {
 
         // Compute effective zone and type tokens from property fields + title
         const effectiveZone =
-          property.zone || (property.title ? extractZoneFromTitle(property.title) : null);
+          property.zone
+          || (property.title ? extractZoneFromTitle(property.title) : null)
+          || (property.locality ? extractZoneFromTitle(property.locality) : null)
+          || property.locality;
 
         const baseTypeTokens = property.property_type
           ? normalizePropertyType(property.property_type)
