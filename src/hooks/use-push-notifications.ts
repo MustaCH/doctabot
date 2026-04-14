@@ -30,10 +30,16 @@ export function usePushNotifications() {
     // Check current state
     (async () => {
       try {
-        const reg = await navigator.serviceWorker.getRegistration("/sw-push.js");
-        if (reg) {
-          const sub = await reg.pushManager.getSubscription();
-          setEnabled(!!sub);
+        // Check both OS-level permission and active push subscription
+        if (Notification.permission === "granted") {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+              setEnabled(true);
+              break;
+            }
+          }
         }
       } catch {
         // ignore
