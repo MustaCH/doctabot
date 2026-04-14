@@ -152,6 +152,7 @@ export function useChatMessages(
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          if (!mountedRef.current) return;
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
