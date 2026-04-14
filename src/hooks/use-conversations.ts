@@ -50,9 +50,10 @@ export function useConversations(userId: string | undefined, activeConvIdRef?: (
 
       setConversations(
         data.map((c: any) => {
+          const currentActive = activeConvIdRef ? activeConvIdRef() : null;
           const lastMsg = latestMap.get(c.id);
           const lastRead = c.last_read_at;
-          const hasUnread = lastMsg ? (!lastRead || new Date(lastMsg) > new Date(lastRead)) : false;
+          const hasUnread = c.id === currentActive ? false : (lastMsg ? (!lastRead || new Date(lastMsg) > new Date(lastRead)) : false);
           return {
             id: c.id,
             title: c.title,
