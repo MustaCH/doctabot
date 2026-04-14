@@ -76,6 +76,12 @@ const Chat = () => {
     setSidebarOpen(false);
   };
 
+  const activeConvTitle = useMemo(() => {
+    if (!activeConvId) return null;
+    const conv = conversations.find((c) => c.id === activeConvId);
+    return conv?.title && conv.title !== "Nueva conversación" ? conv.title : null;
+  }, [activeConvId, conversations]);
+
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
 
