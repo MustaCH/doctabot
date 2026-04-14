@@ -31,7 +31,13 @@ const Chat = () => {
     handleNewConversation: rawNewConv,
     handleDeleteConversation,
     handleRenameConversation,
+    markAsRead,
   } = useConversations(user?.id);
+
+  const totalUnread = useMemo(
+    () => conversations.filter((c) => c.has_unread).length,
+    [conversations]
+  );
 
   const {
     messages,
@@ -48,6 +54,13 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Mark active conversation as read
+  useEffect(() => {
+    if (activeConvId) {
+      markAsRead(activeConvId);
+    }
+  }, [activeConvId, markAsRead]);
 
   const { pullDistance, refreshing } = usePullToRefresh({
     onRefresh: loadConversations,
@@ -122,10 +135,15 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 md:hidden"
+            className="h-8 w-8 md:hidden relative"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-4.5 w-4.5" />
+            {totalUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+                {totalUnread}
+              </span>
+            )}
           </Button>
           <img src={alanAvatar} alt="Alan" className="h-8 w-8 rounded-lg" />
           <div className="flex-1 overflow-hidden">

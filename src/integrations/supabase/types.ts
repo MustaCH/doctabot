@@ -299,6 +299,7 @@ export type Database = {
           conversation_type: string | null
           created_at: string
           id: string
+          last_read_at: string | null
           title: string
           updated_at: string
           user_id: string
@@ -308,6 +309,7 @@ export type Database = {
           conversation_type?: string | null
           created_at?: string
           id?: string
+          last_read_at?: string | null
           title?: string
           updated_at?: string
           user_id: string
@@ -317,6 +319,7 @@ export type Database = {
           conversation_type?: string | null
           created_at?: string
           id?: string
+          last_read_at?: string | null
           title?: string
           updated_at?: string
           user_id?: string

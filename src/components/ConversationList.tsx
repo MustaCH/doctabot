@@ -23,6 +23,7 @@ interface Conversation {
   updated_at: string;
   client_name?: string;
   conversation_type?: string;
+  has_unread?: boolean;
 }
 
 interface ConversationListProps {
@@ -154,6 +155,9 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                           </span>
                         )}
                         <p className="truncate text-sm font-medium">{c.title}</p>
+                        {c.has_unread && (
+                          <span className="shrink-0 ml-1 h-2 w-2 rounded-full bg-destructive" />
+                        )}
                       </div>
                       {c.client_name && (
                         <p className="truncate text-xs text-muted-foreground font-medium mt-0.5">👤 {c.client_name}</p>
