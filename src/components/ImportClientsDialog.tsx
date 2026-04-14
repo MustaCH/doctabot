@@ -20,6 +20,14 @@ interface ColumnMapping {
   phone_column: number;
   email_column: number;
   client_type_column: number;
+  preferred_zones_column: number;
+  budget_min_column: number;
+  budget_max_column: number;
+  property_type_interest_column: number;
+  birthday_column: number;
+  company_column: number;
+  address_column: number;
+  source_column: number;
   extra_columns: number[];
   has_name_split: boolean;
   name_column_2: number;
