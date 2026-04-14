@@ -11,7 +11,7 @@ export interface Conversation {
   has_unread?: boolean;
 }
 
-export function useConversations(userId: string | undefined) {
+export function useConversations(userId: string | undefined, activeConvIdRef?: () => string | null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvIdRaw] = useState<string | null>(
     () => sessionStorage.getItem("alan_active_conv") ?? null
@@ -50,9 +50,10 @@ export function useConversations(userId: string | undefined) {
 
       setConversations(
         data.map((c: any) => {
+          const currentActive = activeConvIdRef ? activeConvIdRef() : null;
           const lastMsg = latestMap.get(c.id);
           const lastRead = c.last_read_at;
-          const hasUnread = lastMsg ? (!lastRead || new Date(lastMsg) > new Date(lastRead)) : false;
+          const hasUnread = c.id === currentActive ? false : (lastMsg ? (!lastRead || new Date(lastMsg) > new Date(lastRead)) : false);
           return {
             id: c.id,
             title: c.title,

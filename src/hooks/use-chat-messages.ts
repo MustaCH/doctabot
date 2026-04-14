@@ -11,7 +11,8 @@ export function useChatMessages(
   activeConvId: string | null,
   createConversation: () => Promise<string>,
   setActiveConvId: (id: string) => void,
-  loadConversations: () => Promise<void>
+  loadConversations: () => Promise<void>,
+  markAsRead?: (convId: string) => Promise<void>
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -196,6 +197,7 @@ export function useChatMessages(
               content: fullContent,
             });
             await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
+            if (markAsRead) await markAsRead(convId!);
             loadConversations();
           }
         },
@@ -305,6 +307,7 @@ export function useChatMessages(
           if (fullContent) {
             await supabase.from("messages").insert({ conversation_id: convId!, role: "assistant", content: fullContent });
             await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
+            if (markAsRead) await markAsRead(convId!);
             loadConversations();
           }
         },

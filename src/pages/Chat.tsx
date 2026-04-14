@@ -32,7 +32,10 @@ const Chat = () => {
     handleDeleteConversation,
     handleRenameConversation,
     markAsRead,
-  } = useConversations(user?.id);
+  } = useConversations(user?.id, () => activeConvIdRef.current);
+
+  const activeConvIdRef = useRef(activeConvId);
+  activeConvIdRef.current = activeConvId;
 
   const totalUnread = useMemo(
     () => conversations.filter((c) => c.has_unread).length,
@@ -48,19 +51,19 @@ const Chat = () => {
     setQuotedText,
     handleSend,
     handleSendAudio,
-  } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations);
+  } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations, markAsRead);
 
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
 
-  // Mark active conversation as read (on switch + after new messages arrive)
+  // Mark active conversation as read on switch only
   useEffect(() => {
     if (activeConvId) {
       markAsRead(activeConvId);
     }
-  }, [activeConvId, messages, markAsRead]);
+  }, [activeConvId, markAsRead]);
 
   const { pullDistance, refreshing } = usePullToRefresh({
     onRefresh: loadConversations,
