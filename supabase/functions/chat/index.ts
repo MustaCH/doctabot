@@ -2457,6 +2457,20 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
 
     // Return SSE response
     if (finalContent) {
+      // Persist assistant message to DB BEFORE streaming to client
+      // This ensures the message is saved even if the client disconnects mid-stream
+      if (conversationId) {
+        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+        await supabaseAdmin.from("messages").insert({
+          conversation_id: conversationId,
+          role: "assistant",
+          content: finalContent,
+        });
+        await supabaseAdmin.from("conversations").update({
+          updated_at: new Date().toISOString(),
+        }).eq("id", conversationId);
+      }
+
       // Send push notification if response took >3s (fire-and-forget)
       const elapsed = Date.now() - requestStartTime;
       if (elapsed > 3000 && userId && conversationId) {
