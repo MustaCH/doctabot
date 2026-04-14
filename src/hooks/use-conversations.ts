@@ -12,7 +12,15 @@ export interface Conversation {
 
 export function useConversations(userId: string | undefined) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [activeConvId, setActiveConvIdRaw] = useState<string | null>(
+    () => sessionStorage.getItem("alan_active_conv") ?? null
+  );
+
+  const setActiveConvId = useCallback((id: string | null) => {
+    setActiveConvIdRaw(id);
+    if (id) sessionStorage.setItem("alan_active_conv", id);
+    else sessionStorage.removeItem("alan_active_conv");
+  }, []);
 
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
