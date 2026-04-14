@@ -226,6 +226,7 @@ const Chat = () => {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Scroll to bottom button */}
