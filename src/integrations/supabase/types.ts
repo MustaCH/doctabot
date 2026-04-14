@@ -693,6 +693,38 @@ export type Database = {
         Returns: boolean
       }
       is_conversation_owner: { Args: { conv_id: string }; Returns: boolean }
+      search_properties_filtered: {
+        Args: {
+          op_filter?: string
+          page_offset?: number
+          page_size?: number
+          price_max?: number
+          price_min?: number
+          search_term?: string
+          type_filter?: string
+        }
+        Returns: {
+          address: string
+          ambientes: number
+          banos: number
+          created_at: string
+          currency: string
+          id: string
+          locality: string
+          m2_cover: number
+          m2_total: number
+          office: string
+          operation: string
+          photo: string
+          price: number
+          property_type: string
+          title: string
+          total_count: number
+          url: string
+          zone: string
+        }[]
+      }
+      unaccent: { Args: { "": string }; Returns: string }
       validate_invitation_code: {
         Args: { input_code: string }
         Returns: boolean
