@@ -65,6 +65,12 @@ Tenés acceso a las siguientes herramientas para ayudar a los agentes:
 27. **create_client_note**: Crear una nota o tarea pendiente para un cliente. Si is_action=true, se trata de una tarea/acción pendiente que aparece en el dashboard.
 28. **list_client_notes**: Ver las notas y tareas pendientes de un cliente
 29. **toggle_client_note**: Marcar una tarea como completada o pendiente
+30. **search_external_portals**: Buscar propiedades en portales inmobiliarios externos (ZonaProp y ArgentProp). Devuelve URLs directas a propiedades encontradas en esos portales.
+
+REGLA PARA BÚSQUEDA EN PORTALES EXTERNOS:
+- Si el agente pide buscar propiedades "en ZonaProp", "en ArgentProp", "en otros portales", "en internet", "en la web", o "afuera" → usá search_external_portals.
+- Podés combinar esta herramienta con search_properties para ofrecer resultados tanto internos como externos.
+- Mostrá los resultados externos con su URL directa al portal para que el agente pueda acceder a la publicación.
 
 REGLAS IMPORTANTES PARA PRIORIDAD DE RESULTADOS:
 - Cuando muestres propiedades, priorizá las que pertenecen a la oficina "RE/MAX Docta" (aparecen primero en los resultados).
@@ -699,6 +705,25 @@ const toolDefinitions = [
           url: { type: "string", description: "La URL de la página a leer" },
         },
         required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_external_portals",
+      description: "Buscar propiedades en portales inmobiliarios externos (ZonaProp y ArgentProp). Devuelve URLs de propiedades encontradas en esos portales.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Búsqueda libre (ej: 'departamento 2 ambientes nueva córdoba')" },
+          operation: { type: "string", description: "venta o alquiler" },
+          property_type: { type: "string", description: "departamento, casa, terreno, local, etc." },
+          location: { type: "string", description: "Barrio o zona (ej: nueva-cordoba, centro)" },
+          portals: { type: "array", items: { type: "string" }, description: "Portales a buscar: zonaprop, argenprop. Default: ambos" },
+        },
+        required: ["query"],
         additionalProperties: false,
       },
     },
@@ -1569,6 +1594,86 @@ async function executeTool(
         console.error("Scrape error:", e);
         return JSON.stringify({ error: "Error al leer la página web" });
       }
+    }
+
+    // ---- External Portal Search (ZonaProp & ArgentProp) ----
+    case "search_external_portals": {
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (!firecrawlKey) return JSON.stringify({ error: "Búsqueda en portales externos no configurada." });
+      const query = typeof args.query === "string" ? args.query.trim().slice(0, 500) : null;
+      if (!query) return JSON.stringify({ error: "La consulta de búsqueda es requerida" });
+
+      const portals: string[] = Array.isArray(args.portals) && args.portals.length > 0
+        ? args.portals.map((p: string) => String(p).toLowerCase())
+        : ["zonaprop", "argenprop"];
+
+      const operation = typeof args.operation === "string" ? args.operation.trim().toLowerCase() : "";
+      const propertyType = typeof args.property_type === "string" ? args.property_type.trim().toLowerCase() : "";
+      const location = typeof args.location === "string" ? args.location.trim().toLowerCase().replace(/\s+/g, "-") : "";
+
+      // Build search URLs for each portal
+      const portalSearchUrls: Record<string, string> = {};
+      const buildZonapropUrl = () => {
+        const parts: string[] = [];
+        if (propertyType) parts.push(propertyType.replace(/\s+/g, "-") + "s");
+        if (operation) parts.push(operation === "alquiler" ? "alquiler" : "venta");
+        if (location) parts.push(location);
+        else parts.push("cordoba");
+        return `https://www.zonaprop.com.ar/${parts.join("-")}.html`;
+      };
+      const buildArgenpropUrl = () => {
+        const parts: string[] = [];
+        if (propertyType) parts.push(propertyType.replace(/\s+/g, "-"));
+        if (operation) parts.push(operation === "alquiler" ? "alquiler" : "venta");
+        if (location) parts.push(location);
+        else parts.push("cordoba");
+        return `https://www.argenprop.com/${parts.join("-")}`;
+      };
+
+      if (portals.includes("zonaprop")) portalSearchUrls.zonaprop = buildZonapropUrl();
+      if (portals.includes("argenprop")) portalSearchUrls.argenprop = buildArgenpropUrl();
+
+      // Use Firecrawl search with site: filters
+      const allResults: Array<{ portal: string; title: string; url: string; description: string }> = [];
+
+      const searchPromises = portals.map(async (portal) => {
+        const siteDomain = portal === "zonaprop" ? "zonaprop.com.ar" : "argenprop.com";
+        const searchQuery = `site:${siteDomain} ${query}${operation ? ` ${operation}` : ""}`;
+        try {
+          const res = await fetch("https://api.firecrawl.dev/v1/search", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ query: searchQuery, limit: 5 }),
+          });
+          if (!res.ok) {
+            console.error(`Firecrawl search error for ${portal}:`, await res.text());
+            return;
+          }
+          const data = await res.json();
+          const results = (data.data ?? []).filter((r: any) => r.url && r.url.includes(siteDomain));
+          for (const r of results) {
+            allResults.push({
+              portal: portal === "zonaprop" ? "ZonaProp" : "ArgentProp",
+              title: r.title || "Sin título",
+              url: r.url,
+              description: r.description || "",
+            });
+          }
+        } catch (e) {
+          console.error(`Error searching ${portal}:`, e);
+        }
+      });
+
+      await Promise.all(searchPromises);
+
+      return JSON.stringify({
+        results: allResults,
+        total: allResults.length,
+        search_urls: portalSearchUrls,
+        message: allResults.length > 0
+          ? `Encontré ${allResults.length} propiedades en portales externos.`
+          : "No encontré propiedades en los portales externos con esos criterios. Podés probar en los links de búsqueda directa.",
+      });
     }
 
     // ---- Client Properties ----
