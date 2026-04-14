@@ -19,7 +19,13 @@ export function useChatMessages(
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
+  const mountedRef = useRef(true);
   const { isProcessingPdf, processAttachments } = useFileProcessing();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -146,6 +152,7 @@ export function useChatMessages(
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          if (!mountedRef.current) return;
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
@@ -166,6 +173,7 @@ export function useChatMessages(
           }
           assistantContent = "";
           needsNewBubble = true;
+          if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
@@ -175,7 +183,7 @@ export function useChatMessages(
           });
         },
         onDone: async () => {
-          setIsStreaming(false);
+          if (mountedRef.current) setIsStreaming(false);
           feedbackReceive();
           if (assistantContent.trim()) {
             allAssistantMessages.push(assistantContent.trim());
@@ -193,7 +201,7 @@ export function useChatMessages(
         },
       });
     } catch (err: any) {
-      setIsStreaming(false);
+      if (mountedRef.current) setIsStreaming(false);
       if (err.message === "rate_limit") {
         toast.error("Demasiadas solicitudes. Intentá de nuevo en un momento.");
       } else if (err.message === "payment_required") {
@@ -267,6 +275,7 @@ export function useChatMessages(
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          if (!mountedRef.current) return;
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
@@ -281,6 +290,7 @@ export function useChatMessages(
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           assistantContent = "";
           needsNewBubble = true;
+          if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
@@ -288,7 +298,7 @@ export function useChatMessages(
           });
         },
         onDone: async () => {
-          setIsStreaming(false);
+          if (mountedRef.current) setIsStreaming(false);
           feedbackReceive();
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           const fullContent = allAssistantMessages.join("\n\n---\n\n");
@@ -300,8 +310,10 @@ export function useChatMessages(
         },
       });
     } catch (err: any) {
-      setIsStreaming(false);
-      setIsTranscribing(false);
+      if (mountedRef.current) {
+        setIsStreaming(false);
+        setIsTranscribing(false);
+      }
       if (err.name !== "AbortError") {
         toast.error("Error al procesar el audio. Intentá de nuevo.");
       }
