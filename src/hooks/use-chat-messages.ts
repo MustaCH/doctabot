@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
 import { toast } from "sonner";
@@ -21,11 +21,38 @@ export function useChatMessages(
   const abortRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
   const mountedRef = useRef(true);
+  const streamInterruptedRef = useRef(false);
   const { isProcessingPdf, processAttachments } = useFileProcessing();
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
+  }, []);
+
+  // Reusable function to reload messages from DB
+  const reloadMessagesFromDB = useCallback(async (convId: string) => {
+    const { data } = await supabase
+      .from("messages")
+      .select("role, content")
+      .eq("conversation_id", convId)
+      .order("created_at", { ascending: true });
+    if (data) {
+      const expanded: Msg[] = [];
+      for (const msg of data) {
+        if (msg.role === "assistant" && msg.content.includes("\n\n---\n\n")) {
+          const parts = msg.content.split("\n\n---\n\n");
+          for (const part of parts) {
+            if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
+          }
+        } else {
+          expanded.push(msg as Msg);
+        }
+      }
+      if (mountedRef.current) {
+        setMessages(expanded);
+        setIsStreaming(false);
+      }
+    }
   }, []);
 
   // Load messages when active conversation changes
@@ -38,28 +65,52 @@ export function useChatMessages(
       skipNextLoadRef.current = false;
       return;
     }
-    (async () => {
-      const { data } = await supabase
-        .from("messages")
-        .select("role, content")
-        .eq("conversation_id", activeConvId)
-        .order("created_at", { ascending: true });
-      if (data) {
-        const expanded: Msg[] = [];
-        for (const msg of data) {
-          if (msg.role === "assistant" && msg.content.includes("\n\n---\n\n")) {
-            const parts = msg.content.split("\n\n---\n\n");
-            for (const part of parts) {
-              if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
-            }
-          } else {
-            expanded.push(msg as Msg);
-          }
-        }
-        setMessages(expanded);
+    reloadMessagesFromDB(activeConvId);
+  }, [activeConvId, reloadMessagesFromDB]);
+
+  // Auto-reload when app returns from background after stream interruption
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === "visible" && streamInterruptedRef.current && activeConvId) {
+        reloadMessagesFromDB(activeConvId);
+        streamInterruptedRef.current = false;
       }
-    })();
-  }, [activeConvId]);
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, [activeConvId, reloadMessagesFromDB]);
+
+  // Detect if an error is a network/background interruption (not user-initiated)
+  const isBackgroundNetworkError = (err: any): boolean => {
+    if (err.name === "AbortError" && !abortRef.current?.signal.aborted) return true;
+    if (document.visibilityState === "hidden") return true;
+    if (err instanceof TypeError) return true;
+    if (err.message?.includes("network") || err.message?.includes("fetch") || err.message?.includes("Failed to fetch")) return true;
+    return false;
+  };
+
+  const handleStreamError = (err: any) => {
+    if (mountedRef.current) {
+      setIsStreaming(false);
+      setIsTranscribing(false);
+    }
+    if (isBackgroundNetworkError(err)) {
+      streamInterruptedRef.current = true;
+      // If already visible, reload immediately
+      if (document.visibilityState === "visible" && activeConvId) {
+        reloadMessagesFromDB(activeConvId);
+        streamInterruptedRef.current = false;
+      }
+      return;
+    }
+    if (err.message === "rate_limit") {
+      toast.error("Demasiadas solicitudes. Intentá de nuevo en un momento.");
+    } else if (err.message === "payment_required") {
+      toast.error("Créditos insuficientes. Contactá al administrador.");
+    } else if (err.name !== "AbortError") {
+      toast.error("Error al conectar con Alan. Intentá de nuevo.");
+    }
+  };
 
   const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
     if (isStreaming) return;
@@ -76,10 +127,8 @@ export function useChatMessages(
       }
     }
 
-    // Process attachments
     const { msgAttachments, pdfTexts } = await processAttachments(chatAttachments);
 
-    // Build message content — separate display text from AI context
     let displayContent = text;
     let aiContent = text;
     let msgQuotedText: string | undefined;
@@ -91,7 +140,6 @@ export function useChatMessages(
         .trim();
       if (cleanQuote.length > 200) cleanQuote = cleanQuote.slice(0, 200) + "…";
       msgQuotedText = cleanQuote;
-      // For AI: strip property emojis to plain text so it doesn't re-render cards
       const plainQuote = cleanQuote
         .replace(/🏠/g, "Propiedad:")
         .replace(/💰/g, "Precio:")
@@ -105,13 +153,11 @@ export function useChatMessages(
     }
     if (pdfTexts.length > 0) {
       const pdfContext = pdfTexts.join("\n\n");
-      // Only send PDF text to AI, NOT to display — UI shows file chips instead
       aiContent = aiContent ? `${aiContent}\n\n${pdfContext}` : pdfContext;
     }
 
     const hasImages = msgAttachments && msgAttachments.some(a => a.type === "image");
     const hasPdfs = pdfTexts.length > 0;
-    const hasFiles = hasImages || hasPdfs;
     const fallbackDisplay = hasImages ? "(imagen adjunta)" : hasPdfs ? "(archivo adjunto)" : "(archivo adjunto)";
     const fallbackAI = hasImages ? "(imagen adjunta)" : hasPdfs ? aiContent : "(archivo adjunto)";
     const userMsg: Msg = {
@@ -120,7 +166,6 @@ export function useChatMessages(
       attachments: msgAttachments,
       quotedText: msgQuotedText,
     };
-    // For display, use clean text without AI context wrapper
     const displayMsg: Msg = {
       role: "user",
       content: displayContent || fallbackDisplay,
@@ -131,7 +176,6 @@ export function useChatMessages(
     setMessages(newMessages);
     setIsStreaming(true);
 
-    // Save the display version to DB (no AI wrapper)
     await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
@@ -145,7 +189,6 @@ export function useChatMessages(
     abortRef.current = controller;
 
     try {
-      // Send AI version of messages (with quoted context) but display version in UI
       const aiMessages = [...messages, userMsg];
       await streamChat({
         messages: aiMessages,
@@ -158,44 +201,30 @@ export function useChatMessages(
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
           setMessages((prev) => {
-            if (startNew) {
-              return [...prev, { role: "assistant" as const, content: snapshot }];
-            }
+            if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
             const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
-            }
+            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
             return [...prev, { role: "assistant" as const, content: snapshot }];
           });
         },
         onNewMessage: () => {
-          if (assistantContent.trim()) {
-            allAssistantMessages.push(assistantContent.trim());
-          }
+          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           assistantContent = "";
           needsNewBubble = true;
           if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
-            if (last?.role === "assistant") {
-              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
-            }
+            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
             return prev;
           });
         },
         onDone: async () => {
           if (mountedRef.current) setIsStreaming(false);
           feedbackReceive();
-          if (assistantContent.trim()) {
-            allAssistantMessages.push(assistantContent.trim());
-          }
+          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           const fullContent = allAssistantMessages.join("\n\n---\n\n");
           if (fullContent) {
-            await supabase.from("messages").insert({
-              conversation_id: convId!,
-              role: "assistant",
-              content: fullContent,
-            });
+            await supabase.from("messages").insert({ conversation_id: convId!, role: "assistant", content: fullContent });
             await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
             if (markAsRead) await markAsRead(convId!);
             loadConversations();
@@ -203,14 +232,7 @@ export function useChatMessages(
         },
       });
     } catch (err: any) {
-      if (mountedRef.current) setIsStreaming(false);
-      if (err.message === "rate_limit") {
-        toast.error("Demasiadas solicitudes. Intentá de nuevo en un momento.");
-      } else if (err.message === "payment_required") {
-        toast.error("Créditos insuficientes. Contactá al administrador.");
-      } else if (err.name !== "AbortError") {
-        toast.error("Error al conectar con Alan. Intentá de nuevo.");
-      }
+      handleStreamError(err);
     }
   };
 
@@ -229,7 +251,6 @@ export function useChatMessages(
       }
     }
 
-    // Add audio message immediately
     const audioMsg: Msg = { role: "user", content: "(mensaje de voz)", audioUrl: localUrl };
     setMessages((prev) => [...prev, audioMsg]);
     setIsTranscribing(true);
@@ -243,8 +264,6 @@ export function useChatMessages(
       }
 
       const displayContent = `🎙️ ${transcript}`;
-
-      // Update the audio message with transcribed text
       setMessages((prev) =>
         prev.map((m, i) =>
           i === prev.length - 1 && m.audioUrl === localUrl
@@ -254,14 +273,8 @@ export function useChatMessages(
       );
       setIsTranscribing(false);
 
-      // Save to DB
-      await supabase.from("messages").insert({
-        conversation_id: convId!,
-        role: "user",
-        content: displayContent,
-      });
+      await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent });
 
-      // Now send to Alan
       const msgsForAI: Msg[] = [...messages, { role: "user", content: transcript }];
       setIsStreaming(true);
 
@@ -313,13 +326,7 @@ export function useChatMessages(
         },
       });
     } catch (err: any) {
-      if (mountedRef.current) {
-        setIsStreaming(false);
-        setIsTranscribing(false);
-      }
-      if (err.name !== "AbortError") {
-        toast.error("Error al procesar el audio. Intentá de nuevo.");
-      }
+      handleStreamError(err);
     }
   };
 
