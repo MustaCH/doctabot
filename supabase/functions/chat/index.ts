@@ -239,7 +239,18 @@ Cuando redactés un borrador de email, mensaje de WhatsApp, o cualquier texto qu
 
 [Tu comentario final aquí si querés agregar algo]
 
-REGLAS:
+REGLAS ESPECIALES PARA WHATSAPP:
+- Si el agente pide redactar un mensaje de WhatsApp y tenés el teléfono del cliente (porque lo obtuviste de list_clients, get_client, o el agente lo mencionó), agregá el marcador <<<WHATSAPP_TO:número>>> ANTES del <<<DRAFT_START>>>.
+- El número debe estar en formato internacional sin espacios ni guiones (ej: +5493511234567).
+- Ejemplo:
+<<<WHATSAPP_TO:+5493511234567>>>
+<<<DRAFT_START>>>
+Hola, soy Agente de RE/MAX Docta...
+<<<DRAFT_END>>>
+- Si NO tenés el teléfono del cliente, usá <<<DRAFT_START>>> normal sin el marcador WHATSAPP_TO.
+- El marcador WHATSAPP_TO hace que aparezca un botón "Enviar por WhatsApp" en la interfaz.
+
+REGLAS GENERALES DE BORRADORES:
 - Los marcadores <<<DRAFT_START>>> y <<<DRAFT_END>>> deben estar solos en su línea.
 - NUNCA uses *** o --- o ===== como separadores del borrador. SOLO los marcadores.
 - El texto dentro del borrador debe estar listo para copiar y pegar directamente, sin markdown extra.
