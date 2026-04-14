@@ -1,32 +1,47 @@
 
 
-## Plan: Tolerancia de presupuesto en el matching de propiedades
+## Plan: Fix del matching de propiedades — Extraer datos del título y notas de forma más inteligente
 
-### Problema
+### Problema raíz
 
-El matching actual exige que el precio de la propiedad sea **exactamente** menor o igual al `budget_max` del cliente. Ejemplo: propiedad a 170K USD y cliente con presupuesto hasta 160K → no matchea, aunque la diferencia es solo 6% y es negociable.
+Hay **3 problemas** que impiden que clientes como Ana Yamila Zuban, Belen Maiz o Eliana Ibarra aparezcan como compatibles:
 
-### Solución
+1. **`zone` es NULL** en la mayoría de propiedades — la zona solo aparece en el título (ej. "Duplex en venta Docta Central 2 Dorm"). Como el matching depende de `property.zone`, nunca encuentra coincidencia de zona.
 
-Agregar un **margen de tolerancia del 15%** sobre el `budget_max` del cliente. Si el precio excede el presupuesto pero está dentro de ese margen, incluir al cliente como match pero con una etiqueta diferenciada que indique que requiere negociación.
+2. **`property_type` es "ph"** para dúplex — pero las notas de los clientes dicen "Duplex", no "ph". El tipo `ph` no genera token "duplex" en la normalización.
 
-### Cambios
+3. **Las notas solo se usan como fallback** — si un cliente tiene algún campo estructurado (aunque sea irrelevante), las notas se ignoran. Y la mayoría de clientes importados tienen toda la info en notas ("Que quiere: Duplex en Docta 2 dormitorios hasta 110000") con campos estructurados vacíos.
 
-**Archivo:** `src/hooks/use-property-matches.ts` (líneas 132-144)
+4. **Formato "110K"** en notas no se parsea como 110000.
 
-- Si `property.price <= budget_max` → match exacto: `💰 Presupuesto compatible`
-- Si `property.price <= budget_max * 1.15` → match con tolerancia: `💰 Presupuesto negociable (~X% sobre máx.)`
-- Ambos cuentan como criterio válido para el matching
+### Cambios en `src/hooks/use-property-matches.ts`
 
-Ejemplo concreto: cliente con budget_max = 160K, propiedad = 170K → 170/160 = 1.0625 = 6.25% sobre máximo → aparece como "Presupuesto negociable (~6% sobre máx.)"
+#### A. Extraer zona y tipo del título de la propiedad
+Agregar `title` al `PropertyForMatch` interface y pasarlo desde `Properties.tsx`. Cuando `zone` es null, buscar keywords de zona conocidos en el título. Cuando `property_type` es ambiguo, también buscar tokens de tipo en el título.
 
-Si la propiedad fuera 190K → 18.75% sobre máximo → NO matchea (excede 15%).
+#### B. Mapear "ph" → incluir "duplex" como token
+En `normalizePropertyType`, agregar que `ph` también genere token "duplex" (ya que en Argentina los dúplex se clasifican frecuentemente como PH).
+
+#### C. Siempre ejecutar extracción de notas
+Cambiar la lógica de `else if (c.notes)` a ejecutar **siempre** la extracción de notas como complemento (no como fallback), sumando razones que no se hayan encontrado ya por campos estructurados.
+
+#### D. Parsear sufijos K/M en presupuestos de notas
+Actualizar el regex de `extractFromNotes` para detectar formatos como "110K", "110k", "45K" y convertirlos correctamente.
+
+#### E. Zona parcial en notas
+Cuando se busca zona en notas, dividir la zona en palabras y matchear si al menos la palabra principal aparece (ej. "Docta" matchea "Docta Central").
+
+### Cambio en `src/pages/Properties.tsx`
+
+Pasar `title` en el objeto que se envía a `findMatches`:
+```
+findMatches({ zone: p.zone, price: p.price, currency: p.currency, property_type: p.property_type, title: p.title });
+```
 
 ### Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `src/hooks/use-property-matches.ts` | Agregar lógica de tolerancia 15% en budget match |
-
-Un cambio muy acotado, solo en la sección de budget match (líneas 132-144).
+| `src/hooks/use-property-matches.ts` | Agregar `title` al interface, fix tokens ph→duplex, notas siempre, parseo K/M, zona desde título |
+| `src/pages/Properties.tsx` | Pasar `title` a `findMatches` |
 
