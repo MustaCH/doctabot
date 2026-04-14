@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper } from "lucide-react";
+import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper, Bell, BellOff } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useSwUpdate } from "@/hooks/use-sw-update";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { Switch } from "@/components/ui/switch";
 
 const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
 
@@ -25,6 +27,7 @@ const Profile = () => {
   const [hasGmailScope, setHasGmailScope] = useState(true);
   const { updateAvailable, applyUpdate } = useSwUpdate();
   const [updating, setUpdating] = useState(false);
+  const { enabled: pushEnabled, loading: pushLoading, supported: pushSupported, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -292,6 +295,41 @@ const Profile = () => {
             )}
           </div>
         </div>
+
+        {/* Push Notifications */}
+        {pushSupported && (
+          <div className="md:max-w-sm">
+            <div className="rounded-lg border bg-card p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {pushEnabled ? (
+                    <Bell className="h-4 w-4 text-primary" />
+                  ) : (
+                    <BellOff className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">Notificaciones</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pushLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  <Switch
+                    checked={pushEnabled}
+                    disabled={pushLoading}
+                    onCheckedChange={(checked) => {
+                      if (checked) pushSubscribe();
+                      else pushUnsubscribe();
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pushEnabled
+                  ? "Recibirás notificaciones cuando Alan responda"
+                  : "Activá para recibir notificaciones de Alan"}
+              </p>
+            </div>
+          </div>
+        )}
+
 
         {/* Profile fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
