@@ -2123,6 +2123,7 @@ function buildSSEResponse(content: string): Response {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const requestStartTime = Date.now();
 
   try {
     const { messages, conversationId } = await req.json();
@@ -2456,6 +2457,24 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
 
     // Return SSE response
     if (finalContent) {
+      // Send push notification if response took >3s (fire-and-forget)
+      const elapsed = Date.now() - requestStartTime;
+      if (elapsed > 3000 && userId && conversationId) {
+        const pushUrl = `${supabaseUrl}/functions/v1/send-push-notification`;
+        fetch(pushUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            title: "Alan respondió",
+            body: finalContent.slice(0, 100).replace(/[#*_`]/g, "") + (finalContent.length > 100 ? "…" : ""),
+            url: `/chat?c=${conversationId}`,
+          }),
+        }).catch((err: unknown) => console.error("Push notification error:", err));
+      }
       return buildSSEResponse(finalContent);
     }
 
