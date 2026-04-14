@@ -253,11 +253,24 @@ serve(async (req) => {
 
       if (!clients || clients.length === 0) continue;
 
-      // 4. Cross each property with each client
+      // 3b. Get already-notified pairs for this user
+      const { data: alreadyNotified } = await admin
+        .from("notified_matches")
+        .select("client_id, property_id")
+        .eq("user_id", userId);
+
+      const notifiedSet = new Set(
+        (alreadyNotified || []).map((r: any) => `${r.client_id}:${r.property_id}`)
+      );
+
+      // 4. Cross each property with each client, skipping already notified
       const clientMatches: Map<string, { client: ClientRow; properties: { prop: PropertyRow; reasons: string[] }[] }> = new Map();
 
       for (const prop of newProperties as PropertyRow[]) {
         for (const client of clients as ClientRow[]) {
+          // Skip if already notified
+          if (notifiedSet.has(`${client.id}:${prop.id}`)) continue;
+
           const reasons = findMatchReasons(prop, client);
           if (reasons.length >= 2) {
             if (!clientMatches.has(client.id)) {
@@ -337,6 +350,17 @@ serve(async (req) => {
           .from("conversations")
           .update({ updated_at: new Date().toISOString() })
           .eq("id", convId);
+
+        // Record notified matches to avoid duplicates
+        const notifyRecords = matchedProps.slice(0, 5).map(({ prop }) => ({
+          user_id: userId,
+          client_id: clientId,
+          property_id: prop.id,
+        }));
+        await admin.from("notified_matches").upsert(notifyRecords, {
+          onConflict: "user_id,client_id,property_id",
+          ignoreDuplicates: true,
+        });
 
         totalMatches++;
       }
