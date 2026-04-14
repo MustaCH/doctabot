@@ -271,6 +271,7 @@ const Properties = () => {
                   price: p.price,
                   currency: p.currency,
                   property_type: p.property_type,
+                  title: p.title,
                 });
               }}
             >
