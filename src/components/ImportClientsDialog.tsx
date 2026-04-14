@@ -20,6 +20,14 @@ interface ColumnMapping {
   phone_column: number;
   email_column: number;
   client_type_column: number;
+  preferred_zones_column: number;
+  budget_min_column: number;
+  budget_max_column: number;
+  property_type_interest_column: number;
+  birthday_column: number;
+  company_column: number;
+  address_column: number;
+  source_column: number;
   extra_columns: number[];
   has_name_split: boolean;
   name_column_2: number;
@@ -164,7 +172,25 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         client_type = detectClientType(row[m.client_type_column]);
       }
 
-      // Build notes from extra columns
+      // Extract specific fields
+      const preferred_zones = m.preferred_zones_column >= 0 ? (row[m.preferred_zones_column]?.trim() || null) : null;
+      const property_type_interest = m.property_type_interest_column >= 0 ? (row[m.property_type_interest_column]?.trim() || null) : null;
+      const company = m.company_column >= 0 ? (row[m.company_column]?.trim() || null) : null;
+      const address = m.address_column >= 0 ? (row[m.address_column]?.trim() || null) : null;
+      const source = m.source_column >= 0 ? (row[m.source_column]?.trim() || null) : null;
+      const birthday = m.birthday_column >= 0 ? (row[m.birthday_column]?.trim() || null) : null;
+
+      // Parse budget values
+      const parseBudget = (val: string | null): number | null => {
+        if (!val) return null;
+        const cleaned = val.replace(/[^0-9.,]/g, "").replace(",", ".");
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? null : num;
+      };
+      const budget_min = m.budget_min_column >= 0 ? parseBudget(row[m.budget_min_column]?.trim()) : null;
+      const budget_max = m.budget_max_column >= 0 ? parseBudget(row[m.budget_max_column]?.trim()) : null;
+
+      // Build notes from extra columns only
       const noteParts: string[] = [];
       for (const idx of m.extra_columns) {
         const val = row[idx]?.trim();
@@ -183,7 +209,11 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         }
       }
 
-      return { full_name: name, phone, email, notes, client_type };
+      return {
+        full_name: name, phone, email, notes, client_type,
+        preferred_zones, budget_min, budget_max, property_type_interest,
+        birthday, company, address, source,
+      };
     }).filter(c => c.full_name.length > 0);
   };
 
@@ -270,21 +300,36 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                   <p className="text-xs text-muted-foreground">de {fileName}</p>
                 </div>
                 <div className="flex gap-1.5 flex-wrap">
-                  <Badge variant="secondary">
+                  <Badge variant="secondary" className="text-[10px]">
                     👤 Nombre → {headers[mapping.name_column]}
                     {mapping.has_name_split && mapping.name_column_2 >= 0 && ` + ${headers[mapping.name_column_2]}`}
                   </Badge>
                   {mapping.phone_column >= 0 && (
-                    <Badge variant="secondary">📱 Tel → {headers[mapping.phone_column]}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">📱 Tel → {headers[mapping.phone_column]}</Badge>
                   )}
                   {mapping.email_column >= 0 && (
-                    <Badge variant="secondary">📧 Email → {headers[mapping.email_column]}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">📧 Email → {headers[mapping.email_column]}</Badge>
                   )}
                   {mapping.client_type_column >= 0 && (
-                    <Badge variant="secondary">🏷️ Tipo → {headers[mapping.client_type_column]}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">🏷️ Tipo → {headers[mapping.client_type_column]}</Badge>
+                  )}
+                  {mapping.preferred_zones_column >= 0 && (
+                    <Badge variant="secondary" className="text-[10px]">🏠 Zona → {headers[mapping.preferred_zones_column]}</Badge>
+                  )}
+                  {mapping.budget_max_column >= 0 && (
+                    <Badge variant="secondary" className="text-[10px]">💰 Presupuesto → {headers[mapping.budget_max_column]}</Badge>
+                  )}
+                  {mapping.property_type_interest_column >= 0 && (
+                    <Badge variant="secondary" className="text-[10px]">🏗️ Tipo prop → {headers[mapping.property_type_interest_column]}</Badge>
+                  )}
+                  {mapping.source_column >= 0 && (
+                    <Badge variant="secondary" className="text-[10px]">📍 Fuente → {headers[mapping.source_column]}</Badge>
+                  )}
+                  {mapping.company_column >= 0 && (
+                    <Badge variant="secondary" className="text-[10px]">🏢 Empresa → {headers[mapping.company_column]}</Badge>
                   )}
                   {mapping.extra_columns.length > 0 && (
-                    <Badge variant="outline">📝 +{mapping.extra_columns.length} cols en notas</Badge>
+                    <Badge variant="outline" className="text-[10px]">📝 +{mapping.extra_columns.length} cols en notas</Badge>
                   )}
                 </div>
               </div>
