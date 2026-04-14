@@ -311,14 +311,9 @@ export function useChatMessages(
         onDone: async () => {
           if (mountedRef.current) setIsStreaming(false);
           feedbackReceive();
-          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
-          const fullContent = allAssistantMessages.join("\n\n---\n\n");
-          if (fullContent) {
-            await supabase.from("messages").insert({ conversation_id: convId!, role: "assistant", content: fullContent });
-            await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId!);
-            if (markAsRead) await markAsRead(convId!);
-            loadConversations();
-          }
+          // Message is already saved to DB by the edge function
+          if (markAsRead) await markAsRead(convId!);
+          loadConversations();
         },
       });
     } catch (err: any) {
