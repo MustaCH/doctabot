@@ -1,54 +1,34 @@
 
 
-## Plan: Búsqueda de propiedades en portales externos (ZonaProp y ArgentProp)
+## Plan: Corregir URLs de portales externos en `search_external_portals`
 
-### Enfoque
+### Problema
 
-Agregar una nueva herramienta `search_external_portals` que construye URLs de búsqueda en ZonaProp y ArgentProp según los criterios del agente, y opcionalmente usa Firecrawl para scrapear los resultados y devolver links directos a propiedades.
+ZonaProp no usa parámetros de búsqueda en la URL como se asumió. Las URLs construidas dinámicamente llevan a resultados de Buenos Aires u otras provincias. Se necesitan URLs base específicas de Córdoba para cada portal.
 
-### Cambios en `supabase/functions/chat/index.ts`
+### Cambio único
 
-**1. Agregar instrucción al system prompt** (~línea 56)
+**Archivo:** `supabase/functions/chat/index.ts` — líneas 1614-1634
 
-Agregar la herramienta 30 `search_external_portals` en la lista de herramientas del prompt, explicando que busca propiedades en ZonaProp y ArgentProp y devuelve URLs de resultados.
+Reemplazar `buildZonapropUrl()` y `buildArgenpropUrl()` con URLs fijas por operación:
 
-Agregar regla: "Si el agente pide buscar en portales externos, en ZonaProp, en ArgentProp, o en internet propiedades → usá `search_external_portals`."
+**ZonaProp** (por operación):
+- Alquiler: `https://www.zonaprop.com.ar/inmuebles-alquiler-cordoba.html`
+- Venta: `https://www.zonaprop.com.ar/inmuebles-venta-cordoba.html`
+- Temporal: `https://www.zonaprop.com.ar/inmuebles-alquiler-temporal-cordoba.html`
+- Default (sin operación): las 3 URLs
 
-**2. Agregar tool definition** (~línea 704)
+**ArgenProp** (URL única genérica):
+- `https://www.argenprop.com/campos-o-casas-o-cocheras-o-departamentos-o-fondos-de-comercio-o-galpones-o-hoteles-o-locales-o-negocios-especiales-o-oficinas-o-ph-o-quintas-o-terrenos/alquiler-o-alquiler-temporal-o-venta/cordoba-arg`
 
+La búsqueda de Firecrawl con `site:` seguirá funcionando igual para traer links individuales, pero ahora las `search_urls` de fallback apuntarán a Córdoba.
+
+Además, agregar `cordoba` al query de Firecrawl para que los resultados se enfoquen en Córdoba:
 ```typescript
-{
-  type: "function",
-  function: {
-    name: "search_external_portals",
-    description: "Buscar propiedades en portales inmobiliarios externos (ZonaProp y ArgentProp). Devuelve URLs de propiedades encontradas.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Búsqueda libre (ej: 'departamento 2 ambientes nueva córdoba')" },
-        operation: { type: "string", description: "venta o alquiler" },
-        property_type: { type: "string", description: "departamento, casa, terreno, local, etc." },
-        location: { type: "string", description: "Barrio o zona (ej: nueva-cordoba, centro)" },
-        portals: { type: "array", items: { type: "string" }, description: "Portales a buscar: zonaprop, argenprop. Default: ambos" },
-      },
-      required: ["query"],
-    },
-  },
-}
+const searchQuery = `site:${siteDomain} cordoba ${query}${operation ? ` ${operation}` : ""}`;
 ```
-
-**3. Agregar handler** (~línea 1572)
-
-La implementación:
-1. Construye URLs de búsqueda para cada portal basándose en los parámetros (ZonaProp: `zonaprop.com.ar/[tipo]-[operacion]-[ubicacion].html`, ArgentProp: `argenprop.com/[tipo]-[operacion]-[ubicacion]`)
-2. Usa Firecrawl search con `site:zonaprop.com.ar` y `site:argenprop.com` para obtener resultados reales con URLs
-3. Devuelve título, URL y descripción de cada propiedad encontrada, más la URL de búsqueda general del portal
-
-Esto permite que Alan devuelva links directos a propiedades en los portales externos.
-
-### Archivos a modificar
 
 | Archivo | Cambio |
 |---|---|
-| `supabase/functions/chat/index.ts` | Agregar tool definition, handler con Firecrawl `site:` search, e instrucciones en system prompt |
+| `supabase/functions/chat/index.ts` | Reemplazar builders de URL con URLs fijas de Córdoba, agregar "cordoba" al search query de Firecrawl |
 
