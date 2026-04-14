@@ -453,6 +453,73 @@ function ScrapingStatus({ pin }: { pin: string }) {
   );
 }
 
+/* ==================== MORNING MATCHES ==================== */
+function MorningMatchesPanel() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ matches: number; error?: string } | null>(null);
+
+  const runMatches = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/morning-matches`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+        }
+      );
+      const data = await res.json();
+      setResult(data);
+    } catch {
+      setResult({ matches: 0, error: "Error de conexión" });
+    }
+    setRunning(false);
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Morning Matches</h2>
+        </div>
+        <Button size="sm" variant="outline" onClick={runMatches} disabled={running}>
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+          {running ? "Ejecutando..." : "Ejecutar ahora"}
+        </Button>
+      </div>
+
+      {result && (
+        <div className={`rounded-lg border p-3 text-sm ${result.error ? "border-destructive bg-destructive/10" : "border-green-500/30 bg-green-500/10"}`}>
+          {result.error ? (
+            <div className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-destructive" />
+              <span>{result.error}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>
+                {result.matches > 0
+                  ? `✅ Se generaron ${result.matches} grupo${result.matches > 1 ? "s" : ""} de matches y se notificó a los agentes.`
+                  : "No se encontraron nuevos matches para notificar."}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        El matching se ejecuta automáticamente todos los días a las 9:00 AM (ART). Cruza propiedades nuevas con los intereses de los clientes y notifica matches por chat y push.
+      </p>
+    </div>
+  );
+}
+
 
 /* ==================== PROPERTIES TABLE ==================== */
 function PropertiesTable({ pin }: { pin: string }) {
