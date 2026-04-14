@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/use-conversations";
 import { useChatMessages } from "@/hooks/use-chat-messages";
@@ -76,6 +76,12 @@ const Chat = () => {
     setSidebarOpen(false);
   };
 
+  const activeConvTitle = useMemo(() => {
+    if (!activeConvId) return null;
+    const conv = conversations.find((c) => c.id === activeConvId);
+    return conv?.title && conv.title !== "Nueva conversación" ? conv.title : null;
+  }, [activeConvId, conversations]);
+
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
 
@@ -122,9 +128,16 @@ const Chat = () => {
             <Menu className="h-4.5 w-4.5" />
           </Button>
           <img src={alanAvatar} alt="Alan" className="h-8 w-8 rounded-lg" />
-          <div className="flex-1">
+          <div className="flex-1 overflow-hidden">
             <p className="text-sm font-semibold">Alan</p>
-            <p className="text-xs text-muted-foreground">Asistente inmobiliario</p>
+            <div className="h-4 relative overflow-hidden">
+              <p
+                key={activeConvTitle || "default"}
+                className="text-xs text-muted-foreground truncate animate-slide-up-in"
+              >
+                {activeConvTitle || "Asistente inmobiliario"}
+              </p>
+            </div>
           </div>
           <Button
             size="icon"
