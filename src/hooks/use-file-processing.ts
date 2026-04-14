@@ -1,5 +1,4 @@
 import { useState } from "react";
-import * as pdfjsLib from "pdfjs-dist";
 import type { MsgAttachment } from "@/lib/stream-chat";
 import type { ChatAttachment } from "@/components/ChatInput";
 
