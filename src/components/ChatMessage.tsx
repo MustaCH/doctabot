@@ -292,10 +292,10 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
           {whatsappNumber && (
             <button
               onClick={handleWhatsApp}
-              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-[#25D366] text-white hover:bg-[#20BD5A] transition-colors"
+              className="flex items-center justify-center h-[28px] w-[28px] rounded-md bg-[#25D366] text-white hover:bg-[#20BD5A] transition-colors"
+              title="Enviar por WhatsApp"
             >
               <WhatsAppIcon />
-              Enviar por WhatsApp
             </button>
           )}
         </div>
