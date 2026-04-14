@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper } from "lucide-react";
+import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper, Bell, BellOff } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useSwUpdate } from "@/hooks/use-sw-update";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { Switch } from "@/components/ui/switch";
 
 const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
 
@@ -25,6 +27,7 @@ const Profile = () => {
   const [hasGmailScope, setHasGmailScope] = useState(true);
   const { updateAvailable, applyUpdate } = useSwUpdate();
   const [updating, setUpdating] = useState(false);
+  const { enabled: pushEnabled, loading: pushLoading, supported: pushSupported, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications();
 
   useEffect(() => {
     const loadProfile = async () => {
