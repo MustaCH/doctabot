@@ -724,7 +724,6 @@ export type Database = {
           zone: string
         }[]
       }
-      unaccent: { Args: { "": string }; Returns: string }
       validate_invitation_code: {
         Args: { input_code: string }
         Returns: boolean
