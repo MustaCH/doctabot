@@ -18,6 +18,20 @@ const typeConfig: Record<EntryType, { icon: typeof Sparkles; label: string; clas
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "1.8.7",
+    date: "14 de abril de 2026",
+    entries: [
+      { type: "improvement", text: "Mejorado el emparejamiento de propiedades con clientes" },
+      { type: "improvement", text: "Motor de búsqueda flexible a las tildes" },
+      { type: "improvement", text: "Mejorado el método de búsqueda de propiedades en portales externos: ZonaProp, ArgenProp" },
+      { type: "improvement", text: "Mejorada la importación y mapeo de clientes y su información vía archivos xlsx o csv" },
+      { type: "feature", text: "Botón \"Enviar por WhatsApp\" para las plantillas de mensajes redactados por Alan. Redirige al usuario a WhatsApp con el mensaje listo para enviar" },
+      { type: "feature", text: "Mensajes en segundo plano: ahora podés salir de la conversación mientras Alan elabora la respuesta y volver cuando te notifique que contestó" },
+      { type: "feature", text: "Matching de propiedades automático: todos los días a las 9 AM Alan hace un barrido de la base de datos y te avisa si hay nuevas coincidencias" },
+      { type: "feature", text: "Botón activar notificaciones: Alan ahora envía notificaciones push en tiempo real para tareas proactivas o programadas" },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "16 de marzo de 2026",
     entries: [

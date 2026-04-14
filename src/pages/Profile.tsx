@@ -373,7 +373,7 @@ const Profile = () => {
           </Button>
         </div>
 
-        <p className="text-center text-[11px] text-muted-foreground">v1.5.0</p>
+        <p className="text-center text-[11px] text-muted-foreground">v1.8.7</p>
       </form>
     </div>
   );
