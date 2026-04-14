@@ -55,74 +55,17 @@ ENCABEZADOS: ${JSON.stringify(headers)}
 FILAS DE EJEMPLO:
 ${(sampleRows ?? []).map((r: string[], i: number) => `Fila ${i + 1}: ${JSON.stringify(r)}`).join("\n")}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const searchQuery = `site:${siteDomain} cordoba ${query}${operation ? ` ${operation}` : ""}`;
+
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY 
+      },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [{ role: "user", content: prompt }],
-        tools: [{
-          type: "function",
-          function: {
-            name: "map_columns",
-            description: "Maps spreadsheet columns to client fields",
-            parameters: {
-              type: "object",
-              properties: {
-                name_column: { type: "integer", description: "Index of the name column (0-based)" },
-                phone_column: { type: "integer", description: "Index of the phone column, or -1 if not found" },
-                email_column: { type: "integer", description: "Index of the email column, or -1 if not found" },
-                client_type_column: { type: "integer", description: "Index of the client type column (vendedor/comprador), or -1 if not found" },
-                preferred_zones_column: { type: "integer", description: "Index of the preferred zones/barrio/ubicación column, or -1 if not found" },
-                budget_min_column: { type: "integer", description: "Index of the budget min column, or -1 if not found" },
-                budget_max_column: { type: "integer", description: "Index of the budget max column, or -1 if not found" },
-                property_type_interest_column: { type: "integer", description: "Index of the property type interest column, or -1 if not found" },
-                birthday_column: { type: "integer", description: "Index of the birthday/fecha nacimiento column, or -1 if not found" },
-                company_column: { type: "integer", description: "Index of the company/empresa column, or -1 if not found" },
-                address_column: { type: "integer", description: "Index of the client address/dirección column, or -1 if not found" },
-                source_column: { type: "integer", description: "Index of the source/fuente/origen column, or -1 if not found" },
-                extra_columns: {
-                  type: "array",
-                  items: { type: "integer" },
-                  description: "Indices of all columns NOT mapped to any specific field, to include in notes",
-                },
-                has_name_split: { type: "boolean", description: "True if name is split across multiple columns (nombre/apellido)" },
-                name_column_2: { type: "integer", description: "Index of second name column (apellido) if split, -1 otherwise" },
-              },
-              required: [
-                "name_column", "phone_column", "email_column", "client_type_column",
-                "preferred_zones_column", "budget_min_column", "budget_max_column",
-                "property_type_interest_column", "birthday_column", "company_column",
-                "address_column", "source_column",
-                "extra_columns", "has_name_split", "name_column_2"
-              ],
-              additionalProperties: false,
-            },
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "map_columns" } },
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("AI error:", response.status, errText);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Demasiadas solicitudes, intentá de nuevo en unos segundos" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos de IA agotados" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI mapping failed");
-    }
-
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        tools: [{ functionDeclarations: [{
     if (!toolCall?.function?.arguments) {
       throw new Error("No mapping returned from AI");
     }
