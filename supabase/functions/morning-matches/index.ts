@@ -1,0 +1,381 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// ---- Matching helpers (mirrored from frontend use-property-matches.ts) ----
+
+function normalizePropertyType(raw: string): string[] {
+  const lower = raw.toLowerCase().replace(/_/g, " ").trim();
+  const tokens: string[] = [];
+  if (/\bdepartamento\b/.test(lower)) tokens.push("departamento");
+  if (/\bcasa\b/.test(lower)) tokens.push("casa");
+  if (/\bph\b/.test(lower)) tokens.push("ph", "duplex", "triplex");
+  if (/\bduplex\b|\bdúplex\b/.test(lower)) tokens.push("duplex", "ph");
+  if (/\blote\b|\bterreno\b/.test(lower)) tokens.push("terreno", "lote");
+  if (/\blocal\b/.test(lower)) tokens.push("local");
+  if (/\boficina\b/.test(lower)) tokens.push("oficina");
+  if (/\bgalpón\b|\bgalpon\b/.test(lower)) tokens.push("galpon");
+  if (/\bcochera\b/.test(lower)) tokens.push("cochera");
+  if (/\bcampo\b/.test(lower)) tokens.push("campo");
+  if (/\bfondo de comercio\b/.test(lower)) tokens.push("fondo de comercio");
+  if (tokens.length === 0) tokens.push(lower);
+  return [...new Set(tokens)];
+}
+
+function extractZoneFromTitle(title: string): string | null {
+  const lower = title.toLowerCase();
+  const zonePatterns = [
+    /\b(manantiales)\b/i, /\b(valle escondido)\b/i, /\b(housing)\b/i,
+    /\b(greenville)\b/i, /\b(claros del bosque)\b/i, /\b(siete soles)\b/i,
+    /\b(la calandria)\b/i, /\b(la cascada)\b/i, /\b(jardín claret)\b/i,
+    /\b(jardin claret)\b/i, /\b(lomas de la carolina)\b/i, /\b(la rufina)\b/i,
+    /\b(cinco lomas)\b/i, /\b(causana)\b/i, /\b(altos del chateau)\b/i,
+    /\b(chacras del norte)\b/i, /\b(tierra alta)\b/i, /\b(cuesta colorada)\b/i,
+    /\b(nuevo poeta)\b/i, /\b(poeta lugones)\b/i,
+    /\b(arguello)\b/i, /\b(argüello)\b/i, /\b(villa allende)\b/i,
+    /\b(mendiolaza)\b/i, /\b(unquillo)\b/i, /\b(villa warcalde)\b/i,
+    /\b(cerro de las rosas)\b/i,
+    /\b(nueva córdoba)\b/i, /\b(nueva cordoba)\b/i,
+    /\b(general paz)\b/i, /\b(alto alberdi)\b/i, /\b(alberdi)\b/i,
+    /\b(alta córdoba)\b/i, /\b(alta cordoba)\b/i,
+    /\b(güemes)\b/i, /\b(guemes)\b/i, /\b(cofico)\b/i,
+    /\b(san vicente)\b/i, /\b(observatorio)\b/i,
+    /\b(villa cabrera)\b/i, /\b(urca)\b/i, /\b(villa belgrano)\b/i,
+    /\b(barrio jardín)\b/i, /\b(barrio jardin)\b/i,
+    /\b(saldán)\b/i, /\b(saldan)\b/i,
+    /\b(río ceballos)\b/i, /\b(rio ceballos)\b/i,
+    /\b(la calera)\b/i, /\b(villa carlos paz)\b/i,
+    /\b(centro)\b/i,
+  ];
+  for (const pattern of zonePatterns) {
+    const match = lower.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function extractTypeFromTitle(title: string): string[] {
+  const lower = title.toLowerCase();
+  const tokens: string[] = [];
+  if (/\bduplex\b|\bdúplex\b/.test(lower)) tokens.push("duplex", "ph");
+  if (/\bdepartamento\b|\bdepto\b|\bdpto\b/.test(lower)) tokens.push("departamento");
+  if (/\bcasa\b/.test(lower)) tokens.push("casa");
+  if (/\blote\b|\bterreno\b/.test(lower)) tokens.push("lote", "terreno");
+  if (/\bph\b/.test(lower)) tokens.push("ph", "duplex");
+  if (/\blocal\b/.test(lower)) tokens.push("local");
+  if (/\boficina\b/.test(lower)) tokens.push("oficina");
+  return [...new Set(tokens)];
+}
+
+function zonesMatch(propertyZone: string, clientZone: string): boolean {
+  const pz = propertyZone.trim().toLowerCase();
+  const cz = clientZone.trim().toLowerCase();
+  if (pz === cz || pz.includes(cz) || cz.includes(pz)) return true;
+  const pzWords = pz.split(/\s+/);
+  const czWords = cz.split(/\s+/);
+  return pzWords.some((w) => w.length > 3 && czWords.some((cw) => cw.includes(w) || w.includes(cw)));
+}
+
+function parseNumberWithSuffix(numStr: string, suffix?: string): number {
+  const n = Number(numStr.replace(/[.,]/g, ""));
+  if (!suffix) return n;
+  const s = suffix.toLowerCase();
+  if (s === "k") return n * 1000;
+  if (s === "m") return n * 1000000;
+  return n;
+}
+
+interface PropertyRow {
+  id: string;
+  zone: string | null;
+  price: number | null;
+  currency: string | null;
+  property_type: string | null;
+  title: string | null;
+  locality: string | null;
+  operation: string | null;
+  address: string | null;
+  m2_total: number | null;
+  ambientes: number | null;
+  url: string | null;
+}
+
+interface ClientRow {
+  id: string;
+  full_name: string;
+  preferred_zones: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  budget_currency: string | null;
+  property_type_interest: string | null;
+  client_type: string;
+  notes: string | null;
+}
+
+function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
+  const effectiveZone =
+    property.zone
+    || (property.title ? extractZoneFromTitle(property.title) : null)
+    || (property.locality ? extractZoneFromTitle(property.locality) : null)
+    || property.locality;
+
+  const baseTypeTokens = property.property_type ? normalizePropertyType(property.property_type) : [];
+  const titleTypeTokens = property.title ? extractTypeFromTitle(property.title) : [];
+  const effectiveTypeTokens = [...new Set([...baseTypeTokens, ...titleTypeTokens])];
+
+  const reasons: string[] = [];
+
+  // Zone
+  if (effectiveZone && client.preferred_zones) {
+    const clientZones = client.preferred_zones.split(",").map((z) => z.trim()).filter(Boolean);
+    if (clientZones.some((z) => zonesMatch(effectiveZone, z))) {
+      reasons.push(`📍 Zona: ${effectiveZone}`);
+    }
+  }
+
+  // Budget
+  if (property.price && (client.budget_min || client.budget_max)) {
+    const sameCurrency = !property.currency || !client.budget_currency || property.currency === client.budget_currency;
+    if (sameCurrency) {
+      const inMin = !client.budget_min || property.price >= client.budget_min;
+      const BUDGET_TOLERANCE = 1.15;
+      if (inMin) {
+        if (!client.budget_max || property.price <= client.budget_max) {
+          reasons.push("💰 Presupuesto compatible");
+        } else if (client.budget_max && property.price <= client.budget_max * BUDGET_TOLERANCE) {
+          reasons.push("💰 Presupuesto negociable");
+        }
+      }
+    }
+  }
+
+  // Type
+  if (effectiveTypeTokens.length > 0 && client.property_type_interest) {
+    const clientTokens = client.property_type_interest.split(",").map((t) => t.trim()).filter(Boolean).flatMap(normalizePropertyType);
+    if (effectiveTypeTokens.some((pt) => clientTokens.includes(pt))) {
+      reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
+    }
+  }
+
+  // Notes supplement
+  if (client.notes) {
+    const lower = client.notes.toLowerCase();
+    const existingPrefixes = new Set(reasons.map((r) => r.substring(0, 2)));
+
+    if (!existingPrefixes.has("📍") && effectiveZone) {
+      const zoneWords = effectiveZone.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+      if (zoneWords.some((w) => lower.includes(w))) reasons.push(`📍 Zona (notas): ${effectiveZone}`);
+    }
+
+    if (!existingPrefixes.has("🏗️") && effectiveTypeTokens.length > 0) {
+      if (effectiveTypeTokens.some((t) => lower.includes(t))) reasons.push(`🏗️ Tipo (notas)`);
+    }
+
+    if (!existingPrefixes.has("💰") && property.price) {
+      const budgetRegex = /(\d+(?:[.,]\d+)?)\s*(k|m)?(?:\s*(?:usd|dol|pesos|ars))?\b/gi;
+      let match;
+      while ((match = budgetRegex.exec(lower)) !== null) {
+        const val = parseNumberWithSuffix(match[1], match[2]);
+        if (val > 1000 && property.price <= val * 1.15 && property.price >= val * 0.5) {
+          reasons.push("💰 Presupuesto (notas)");
+          break;
+        }
+      }
+    }
+  }
+
+  return reasons;
+}
+
+function formatPropertyLine(p: PropertyRow): string {
+  const parts: string[] = [];
+  if (p.title) parts.push(`**${p.title}**`);
+  if (p.price) parts.push(`${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
+  if (p.address) parts.push(p.address);
+  if (p.m2_total) parts.push(`${p.m2_total} m²`);
+  if (p.ambientes) parts.push(`${p.ambientes} amb.`);
+  if (p.url) parts.push(`[Ver propiedad](${p.url})`);
+  return parts.join(" · ");
+}
+
+// ---- Main handler ----
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey);
+
+    // 1. Get properties added/updated in last 24h
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: newProperties, error: propErr } = await admin
+      .from("properties")
+      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, ambientes, url")
+      .or(`created_at.gte.${since},last_seen_at.gte.${since}`)
+      .limit(500);
+
+    if (propErr) throw propErr;
+    if (!newProperties || newProperties.length === 0) {
+      console.log("No new properties in last 24h");
+      return new Response(JSON.stringify({ matches: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`Found ${newProperties.length} new/updated properties`);
+
+    // 2. Get all users who have clients (distinct user_ids)
+    const { data: userIds } = await admin
+      .from("clients")
+      .select("user_id")
+      .neq("client_type", "seller");
+
+    const uniqueUserIds = [...new Set((userIds || []).map((r) => r.user_id))];
+    console.log(`Processing ${uniqueUserIds.length} users`);
+
+    let totalMatches = 0;
+
+    for (const userId of uniqueUserIds) {
+      // 3. Get this user's buyer/both clients
+      const { data: clients } = await admin
+        .from("clients")
+        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
+        .eq("user_id", userId)
+        .neq("client_type", "seller");
+
+      if (!clients || clients.length === 0) continue;
+
+      // 4. Cross each property with each client
+      const clientMatches: Map<string, { client: ClientRow; properties: { prop: PropertyRow; reasons: string[] }[] }> = new Map();
+
+      for (const prop of newProperties as PropertyRow[]) {
+        for (const client of clients as ClientRow[]) {
+          const reasons = findMatchReasons(prop, client);
+          if (reasons.length >= 2) {
+            if (!clientMatches.has(client.id)) {
+              clientMatches.set(client.id, { client, properties: [] });
+            }
+            clientMatches.get(client.id)!.properties.push({ prop, reasons });
+          }
+        }
+      }
+
+      if (clientMatches.size === 0) continue;
+
+      // 5. For each matched client, create/find conversation and insert message
+      for (const [clientId, { client, properties: matchedProps }] of clientMatches) {
+        // Find last conversation assigned to this client
+        const { data: existingConv } = await admin
+          .from("conversations")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("client_id", clientId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let convId: string;
+
+        if (existingConv) {
+          convId = existingConv.id;
+        } else {
+          // Create new conversation for this client
+          const { data: newConv, error: convErr } = await admin
+            .from("conversations")
+            .insert({
+              user_id: userId,
+              title: `🔔 Matches para ${client.full_name}`,
+              client_id: clientId,
+              conversation_type: "proactive_match",
+            })
+            .select("id")
+            .single();
+
+          if (convErr) {
+            console.error(`Failed to create conv for client ${clientId}:`, convErr);
+            continue;
+          }
+          convId = newConv.id;
+        }
+
+        // Build message content
+        const lines: string[] = [
+          `🔔 **Nuevas propiedades para ${client.full_name}**\n`,
+          `Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""} con los intereses de tu cliente:\n`,
+        ];
+
+        for (const { prop, reasons } of matchedProps.slice(0, 5)) {
+          lines.push(`---\n${formatPropertyLine(prop)}`);
+          lines.push(`_Coincide por: ${reasons.join(", ")}_\n`);
+        }
+
+        if (matchedProps.length > 5) {
+          lines.push(`\n_...y ${matchedProps.length - 5} propiedad${matchedProps.length - 5 > 1 ? "es" : ""} más._`);
+        }
+
+        lines.push("\n¿Querés que le envíe alguna de estas propiedades al cliente?");
+
+        const messageContent = lines.join("\n");
+
+        // Insert assistant message
+        await admin.from("messages").insert({
+          conversation_id: convId,
+          role: "assistant",
+          content: messageContent,
+        });
+
+        // Update conversation timestamp
+        await admin
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", convId);
+
+        totalMatches++;
+      }
+
+      // 6. Send push notification to user
+      if (clientMatches.size > 0) {
+        const clientNames = [...clientMatches.values()].map((m) => m.client.full_name).slice(0, 3);
+        const extra = clientMatches.size > 3 ? ` y ${clientMatches.size - 3} más` : "";
+
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${serviceKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              title: "🔔 Nuevos matches de propiedades",
+              body: `Encontré propiedades para ${clientNames.join(", ")}${extra}`,
+              url: "/chat",
+            }),
+          });
+        } catch (pushErr) {
+          console.error(`Push notification failed for user ${userId}:`, pushErr);
+        }
+      }
+    }
+
+    console.log(`Morning matches completed: ${totalMatches} client-match groups created`);
+
+    return new Response(JSON.stringify({ matches: totalMatches }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("morning-matches error:", err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
