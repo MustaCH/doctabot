@@ -293,6 +293,7 @@ const Profile = () => {
                 Conectar con Google
               </Button>
             )}
+          </div>
         </div>
 
         {/* Push Notifications */}
