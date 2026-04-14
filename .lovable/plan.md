@@ -1,50 +1,60 @@
 
-Objetivo
 
-Corregir el badge de no leídos para que nunca se muestre sobre la conversación que está abierta en ese momento.
+## Fix: Error al reconectar con Alan al volver a la PWA
 
-Diagnóstico
+### Problema
+Cuando el usuario minimiza la PWA mientras Alan procesa, el SO móvil corta la conexión de red del fetch stream. Al volver, el `reader.read()` falla con un error de red, que cae en el catch genérico mostrando "Error al conectar con Alan". Pero Alan ya puede haber terminado y guardado su respuesta en la DB.
 
-El problema no está en el render del badge sino en el orden de actualización:
-- `markAsRead(activeConvId)` hoy corre cuando cambia `messages`, incluso durante el streaming.
-- Cuando Alan termina, `use-chat-messages` guarda el mensaje final del asistente y luego ejecuta `loadConversations()`.
-- Ese refresh vuelve a calcular `has_unread` usando un `latest_assistant_at` más nuevo que el `last_read_at` previo, así que el punto rojo reaparece hasta salir y volver a entrar.
+### Solución
 
-Además, revisando el estado actual del backend, hay conversaciones donde el último mensaje del asistente quedó posterior a `last_read_at`, lo que confirma esa carrera.
+**Detectar que el error fue por desconexión (app en segundo plano) y recargar mensajes desde la DB en vez de mostrar error.**
 
-Plan de implementación
+#### 1. `src/hooks/use-chat-messages.ts` — Catch inteligente
 
-1. Cambiar cuándo se marca una conversación como leída
-- En `src/pages/Chat.tsx`, dejar el `useEffect` de `markAsRead` sólo para cuando cambia `activeConvId`.
-- Quitar la dependencia de `messages` para evitar escrituras repetidas durante cada delta del streaming.
+En ambos catch blocks (texto y audio):
+- Detectar si el error es de red (`TypeError` con message de network/fetch, o `AbortError` no intencional)
+- Añadir un listener de `visibilitychange` que, al volver visible, recargue los mensajes desde la DB para esa conversación
+- No mostrar toast de error si el documento estaba oculto cuando ocurrió el fallo
+- Limpiar `isStreaming` correctamente
 
-2. Marcar como leída después de persistir la respuesta final de Alan
-- En `src/hooks/use-chat-messages.ts`, pasar `markAsRead` al hook (o un callback equivalente).
-- En los dos flujos (`handleSend` y `handleSendAudio`), dentro de `onDone`, después de:
-  - insertar el mensaje del asistente en `messages`
-  - actualizar `conversations.updated_at`
-  ejecutar `markAsRead(convId)` si esa conversación sigue siendo la activa.
-- Recién después llamar `loadConversations()` para que el cálculo de no leídos use un `last_read_at` ya actualizado.
+Lógica concreta:
+```typescript
+// En el catch:
+const wasHidden = document.visibilityState === "hidden";
+if (err.name === "AbortError" && !abortRef.current?.signal.aborted) {
+  // Network killed by OS, not user-initiated abort
+  // Reload messages from DB when app becomes visible
+} else if (wasHidden || err.message?.includes("network") || err instanceof TypeError) {
+  // App was backgrounded, network dropped
+}
+```
 
-3. Agregar un blindaje visual para evitar estados transitorios
-- En `src/hooks/use-conversations.ts`, al construir `has_unread`, forzar `false` para la conversación activa (`c.id === activeConvId`).
-- Esto evita que, aunque haya una recarga desfasada, la UI no pinte un badge sobre el chat que el usuario está viendo.
+#### 2. `src/hooks/use-chat-messages.ts` — Auto-reload on visibility restore
 
-Validación esperada
+Agregar un efecto que, cuando `isStreaming` es true y el documento vuelve a ser visible tras estar oculto, recargue los mensajes desde la DB:
 
-- Estando dentro de una conversación, Alan responde: no debe aparecer badge en esa conversación ni en el icono del menú.
-- Si otra conversación sí tiene mensajes pendientes, su badge debe seguir mostrándose.
-- Al cambiar de conversación y volver, el estado debe mantenerse correcto.
-- El arreglo debe cubrir tanto mensajes normales como respuestas a audios.
+```typescript
+useEffect(() => {
+  const handler = () => {
+    if (document.visibilityState === "visible" && streamInterruptedRef.current && activeConvId) {
+      // Reload messages from DB
+      reloadMessagesFromDB(activeConvId);
+      streamInterruptedRef.current = false;
+    }
+  };
+  document.addEventListener("visibilitychange", handler);
+  return () => document.removeEventListener("visibilitychange", handler);
+}, [activeConvId]);
+```
 
-Detalles técnicos
+#### 3. Función de recarga desde DB
 
-- No requiere cambios de base de datos.
-- El bug es una condición de carrera entre `markAsRead()` y `loadConversations()`.
-- El ajuste también mejora performance porque evita actualizar `last_read_at` en cada cambio incremental del streaming.
+Extraer la lógica de carga de mensajes (ya existente en el useEffect de `activeConvId`) a una función reutilizable que se pueda llamar tanto al cambiar de conversación como al recuperarse de una interrupción.
 
-Archivos a modificar
-
-- `src/pages/Chat.tsx`
+### Archivos a modificar
 - `src/hooks/use-chat-messages.ts`
-- `src/hooks/use-conversations.ts`
+
+### Resultado esperado
+- Si Alan terminó mientras la app estaba en segundo plano → al volver se ve la respuesta completa sin error
+- Si Alan no terminó (edge function también cortada) → al volver se ven los mensajes hasta donde llegaron, sin toast de error confuso
+
