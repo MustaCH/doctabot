@@ -326,7 +326,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
             }}>{draftBlock.intro}</ReactMarkdown>
           </div>
         )}
-        <CopyableDraft draft={draftBlock.draft} />
+        <CopyableDraft draft={draftBlock.draft} whatsappNumber={draftBlock.whatsappNumber} />
         {draftBlock.outro && (
           <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 overflow-hidden break-words [word-break:break-word] mt-2">
             <ReactMarkdown>{draftBlock.outro}</ReactMarkdown>
