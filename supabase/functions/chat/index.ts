@@ -1611,34 +1611,34 @@ async function executeTool(
       const propertyType = typeof args.property_type === "string" ? args.property_type.trim().toLowerCase() : "";
       const location = typeof args.location === "string" ? args.location.trim().toLowerCase().replace(/\s+/g, "-") : "";
 
-      // Build search URLs for each portal
-      const portalSearchUrls: Record<string, string> = {};
-      const buildZonapropUrl = () => {
-        const parts: string[] = [];
-        if (propertyType) parts.push(propertyType.replace(/\s+/g, "-") + "s");
-        if (operation) parts.push(operation === "alquiler" ? "alquiler" : "venta");
-        if (location) parts.push(location);
-        else parts.push("cordoba");
-        return `https://www.zonaprop.com.ar/${parts.join("-")}.html`;
-      };
-      const buildArgenpropUrl = () => {
-        const parts: string[] = [];
-        if (propertyType) parts.push(propertyType.replace(/\s+/g, "-"));
-        if (operation) parts.push(operation === "alquiler" ? "alquiler" : "venta");
-        if (location) parts.push(location);
-        else parts.push("cordoba");
-        return `https://www.argenprop.com/${parts.join("-")}`;
-      };
+      // Build search URLs for each portal - fixed Córdoba URLs
+      const portalSearchUrls: Record<string, string | string[]> = {};
 
-      if (portals.includes("zonaprop")) portalSearchUrls.zonaprop = buildZonapropUrl();
-      if (portals.includes("argenprop")) portalSearchUrls.argenprop = buildArgenpropUrl();
+      if (portals.includes("zonaprop")) {
+        if (operation === "alquiler") {
+          portalSearchUrls.zonaprop = "https://www.zonaprop.com.ar/inmuebles-alquiler-cordoba.html";
+        } else if (operation === "venta") {
+          portalSearchUrls.zonaprop = "https://www.zonaprop.com.ar/inmuebles-venta-cordoba.html";
+        } else if (operation === "temporal" || operation === "alquiler temporal" || operation === "alquiler-temporal") {
+          portalSearchUrls.zonaprop = "https://www.zonaprop.com.ar/inmuebles-alquiler-temporal-cordoba.html";
+        } else {
+          portalSearchUrls.zonaprop = [
+            "https://www.zonaprop.com.ar/inmuebles-alquiler-cordoba.html",
+            "https://www.zonaprop.com.ar/inmuebles-venta-cordoba.html",
+            "https://www.zonaprop.com.ar/inmuebles-alquiler-temporal-cordoba.html",
+          ];
+        }
+      }
+      if (portals.includes("argenprop")) {
+        portalSearchUrls.argenprop = "https://www.argenprop.com/campos-o-casas-o-cocheras-o-departamentos-o-fondos-de-comercio-o-galpones-o-hoteles-o-locales-o-negocios-especiales-o-oficinas-o-ph-o-quintas-o-terrenos/alquiler-o-alquiler-temporal-o-venta/cordoba-arg";
+      }
 
       // Use Firecrawl search with site: filters
       const allResults: Array<{ portal: string; title: string; url: string; description: string }> = [];
 
       const searchPromises = portals.map(async (portal) => {
         const siteDomain = portal === "zonaprop" ? "zonaprop.com.ar" : "argenprop.com";
-        const searchQuery = `site:${siteDomain} ${query}${operation ? ` ${operation}` : ""}`;
+        const searchQuery = `site:${siteDomain} cordoba ${query}${operation ? ` ${operation}` : ""}`;
         try {
           const res = await fetch("https://api.firecrawl.dev/v1/search", {
             method: "POST",
