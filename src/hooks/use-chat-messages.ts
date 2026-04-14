@@ -173,6 +173,7 @@ export function useChatMessages(
           }
           assistantContent = "";
           needsNewBubble = true;
+          if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
@@ -182,7 +183,7 @@ export function useChatMessages(
           });
         },
         onDone: async () => {
-          setIsStreaming(false);
+          if (mountedRef.current) setIsStreaming(false);
           feedbackReceive();
           if (assistantContent.trim()) {
             allAssistantMessages.push(assistantContent.trim());
@@ -200,7 +201,7 @@ export function useChatMessages(
         },
       });
     } catch (err: any) {
-      setIsStreaming(false);
+      if (mountedRef.current) setIsStreaming(false);
       if (err.message === "rate_limit") {
         toast.error("Demasiadas solicitudes. Intentá de nuevo en un momento.");
       } else if (err.message === "payment_required") {
