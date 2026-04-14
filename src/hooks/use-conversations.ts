@@ -11,7 +11,7 @@ export interface Conversation {
   has_unread?: boolean;
 }
 
-export function useConversations(userId: string | undefined) {
+export function useConversations(userId: string | undefined, activeConvIdRef?: () => string | null) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvIdRaw] = useState<string | null>(
     () => sessionStorage.getItem("alan_active_conv") ?? null

@@ -11,7 +11,8 @@ export function useChatMessages(
   activeConvId: string | null,
   createConversation: () => Promise<string>,
   setActiveConvId: (id: string) => void,
-  loadConversations: () => Promise<void>
+  loadConversations: () => Promise<void>,
+  markAsRead?: (convId: string) => Promise<void>
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
