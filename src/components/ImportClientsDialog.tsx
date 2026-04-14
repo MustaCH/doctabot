@@ -172,7 +172,25 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         client_type = detectClientType(row[m.client_type_column]);
       }
 
-      // Build notes from extra columns
+      // Extract specific fields
+      const preferred_zones = m.preferred_zones_column >= 0 ? (row[m.preferred_zones_column]?.trim() || null) : null;
+      const property_type_interest = m.property_type_interest_column >= 0 ? (row[m.property_type_interest_column]?.trim() || null) : null;
+      const company = m.company_column >= 0 ? (row[m.company_column]?.trim() || null) : null;
+      const address = m.address_column >= 0 ? (row[m.address_column]?.trim() || null) : null;
+      const source = m.source_column >= 0 ? (row[m.source_column]?.trim() || null) : null;
+      const birthday = m.birthday_column >= 0 ? (row[m.birthday_column]?.trim() || null) : null;
+
+      // Parse budget values
+      const parseBudget = (val: string | null): number | null => {
+        if (!val) return null;
+        const cleaned = val.replace(/[^0-9.,]/g, "").replace(",", ".");
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? null : num;
+      };
+      const budget_min = m.budget_min_column >= 0 ? parseBudget(row[m.budget_min_column]?.trim()) : null;
+      const budget_max = m.budget_max_column >= 0 ? parseBudget(row[m.budget_max_column]?.trim()) : null;
+
+      // Build notes from extra columns only
       const noteParts: string[] = [];
       for (const idx of m.extra_columns) {
         const val = row[idx]?.trim();
@@ -191,7 +209,11 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         }
       }
 
-      return { full_name: name, phone, email, notes, client_type };
+      return {
+        full_name: name, phone, email, notes, client_type,
+        preferred_zones, budget_min, budget_max, property_type_interest,
+        birthday, company, address, source,
+      };
     }).filter(c => c.full_name.length > 0);
   };
 
