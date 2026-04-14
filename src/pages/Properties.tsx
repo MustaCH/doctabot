@@ -226,7 +226,7 @@ const Properties = () => {
   const PropertyGrid = ({ items, isFavView = false }: { items: (PropertyRow | FavoriteProperty)[]; isFavView?: boolean }) => (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((p) => (
-        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative overflow-hidden rounded-xl">
+        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [&>div:first-child]:border-0 [&>div:first-child]:shadow-none [&>div:first-child]:rounded-none">
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
