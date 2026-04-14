@@ -79,38 +79,29 @@ const Properties = () => {
     if (!user) return;
     setLoadingProps(true);
     try {
-      let query = supabase
-        .from("properties")
-        .select("id, photo, title, office, price, currency, address, locality, zone, m2_total, m2_cover, url, operation, ambientes, banos, property_type", { count: "exact" });
+      const offset = pageNum * PAGE_SIZE;
 
-      if (searchQuery.trim()) {
-        const q = `%${searchQuery.trim()}%`;
-        query = query.or(`title.ilike.${q},address.ilike.${q},locality.ilike.${q},zone.ilike.${q},office.ilike.${q}`);
-      }
-      if (operationFilter !== "all") {
-        query = query.eq("operation", operationFilter);
-      }
-      if (typeFilter !== "all") {
-        query = query.eq("property_type", typeFilter);
-      }
-      if (priceMin) {
-        query = query.gte("price", Number(priceMin));
-      }
-      if (priceMax) {
-        query = query.lte("price", Number(priceMax));
-      }
+      const { data, error } = await supabase.rpc("search_properties_filtered", {
+        search_term: searchQuery.trim(),
+        op_filter: operationFilter === "all" ? "" : operationFilter,
+        type_filter: typeFilter === "all" ? "" : typeFilter,
+        price_min: priceMin ? Number(priceMin) : null,
+        price_max: priceMax ? Number(priceMax) : null,
+        page_size: PAGE_SIZE,
+        page_offset: offset,
+      });
 
-      query = query
-        .order("created_at", { ascending: false })
-        .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
-
-      const { data, error, count } = await query;
       if (error) throw error;
 
-      const rows = (data ?? []) as PropertyRow[];
-      setProperties(prev => append ? [...prev, ...rows] : rows);
-      setTotalCount(count);
-      setHasMore(rows.length === PAGE_SIZE);
+      const rows = (data ?? []) as (PropertyRow & { total_count: number })[];
+      const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0;
+
+      // Remove total_count from each row before setting state
+      const cleanRows: PropertyRow[] = rows.map(({ total_count, ...rest }) => rest);
+
+      setProperties(prev => append ? [...prev, ...cleanRows] : cleanRows);
+      setTotalCount(totalCount);
+      setHasMore(cleanRows.length === PAGE_SIZE);
       setPage(pageNum);
     } catch {
       toast.error("Error al buscar propiedades");
