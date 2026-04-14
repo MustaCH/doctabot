@@ -195,6 +195,7 @@ function AdminDashboard({ pin }: { pin: string }) {
             )}
             <ActivityCharts pin={pin} />
             <ScrapingStatus pin={pin} />
+            <MorningMatchesPanel />
           </TabsContent>
 
           <TabsContent value="properties"><PropertiesTable pin={pin} /></TabsContent>
