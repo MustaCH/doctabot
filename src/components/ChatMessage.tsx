@@ -13,7 +13,7 @@ function injectAssociate(text: string, agentCode: string | null): string {
   return text.replace(
     /(https?:\/\/[^\s"')>\]]+)/g,
     (url) => {
-      if (!/remax\.com\.ar|zonaprop\.com|argenprop\.com|inmuebles\.mercadolibre/i.test(url)) return url;
+      if (!/remax\.com\.ar/i.test(url)) return url;
       // Strip trailing punctuation captured accidentally
       const trailingMatch = url.match(/([.,;!?)\]]+)$/);
       const trailing = trailingMatch ? trailingMatch[1] : "";
