@@ -371,8 +371,10 @@ serve(async (req) => {
         // Build message content
         const lines: string[] = [
           `🔔 **Nuevas propiedades para ${client.full_name}**\n`,
-          `Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""} con los intereses de tu cliente:\n`,
         ];
+        const summary = buildClientSearchSummary(client);
+        if (summary) lines.push(`${summary}\n`);
+        lines.push(`Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""}:\n`);
 
         for (const { prop, reasons } of matchedProps.slice(0, 5)) {
           lines.push(formatPropertyLine(prop));
