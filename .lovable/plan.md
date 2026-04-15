@@ -1,66 +1,50 @@
 
 
-## Soporte para múltiples borradores en un mismo mensaje
+## Fix: Property type must be mandatory when client specifies it
 
-### Problema
-`extractDraftBlock` usa `indexOf` para encontrar el **primer** par `<<<DRAFT_START>>>...<<<DRAFT_END>>>`. Todo lo que queda después del primer `<<<DRAFT_END>>>` se mete en `outro` y se renderiza como markdown plano, incluyendo los marcadores crudos de los siguientes borradores.
+### Problem
+The matching algorithm requires zone match (mandatory) + at least 1 more criterion (budget or type). A client searching for "Duplex en Nueva Córdoba · Hasta USD 250.000" gets 235 results because every property in Nueva Córdoba under budget matches — CASAS, LOTES, DEPARTAMENTOS, everything. Type is never enforced.
 
-### Solución
-Reemplazar `extractDraftBlock` con `extractMultipleDraftBlocks` que devuelva un array de segmentos (texto intercalado + borradores), y actualizar `AssistantContent` para renderizarlos todos.
+### Root cause
+In `findMatchReasons` (line 367-372), property type is treated as an optional bonus reason. The threshold of `reasons.length >= 2` is satisfied by zone + budget alone, so type is ignored even when the client explicitly specified it.
 
-### Cambios en `src/components/ChatMessage.tsx`
+### Solution
+Make property type **mandatory** when the client has `property_type_interest` set — same logic as zone. If the client specifies a type and the property doesn't match → skip entirely, no matter how many other criteria match.
 
-**1. Nueva función `extractMultipleDraftBlocks`:**
+### Changes in `supabase/functions/morning-matches/index.ts`
+
+**1. `findMatchReasons`** — After the zone check (line 348), add a type gate:
+
 ```typescript
-function extractMultipleDraftBlocks(content: string): { type: "text" | "draft"; text?: string; draft?: string; whatsappNumber?: string }[] | null {
-  if (!content.includes(DRAFT_START)) return null;
+// Type — MANDATORY if client has type preference
+if (client.property_type_interest) {
+  const clientTokens = client.property_type_interest
+    .split(",").map(t => t.trim()).filter(Boolean).flatMap(normalizePropertyType);
   
-  const segments: { type: "text" | "draft"; text?: string; draft?: string; whatsappNumber?: string }[] = [];
-  let remaining = content;
-  
-  while (remaining.length > 0) {
-    const startIdx = remaining.indexOf(DRAFT_START);
-    if (startIdx === -1) {
-      // No more drafts — rest is text
-      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
-      break;
-    }
-    
-    // Text before this draft
-    let beforeDraft = remaining.slice(0, startIdx).trim();
-    const endIdx = remaining.indexOf(DRAFT_END, startIdx);
-    if (endIdx === -1) {
-      // Malformed — treat rest as text
-      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
-      break;
-    }
-    
-    // Extract WhatsApp number from intro text
-    let whatsappNumber: string | undefined;
-    const waMatch = beforeDraft.match(WHATSAPP_TO_RE);
-    if (waMatch) {
-      whatsappNumber = waMatch[1];
-      beforeDraft = beforeDraft.replace(WHATSAPP_TO_RE, "").trim();
-    }
-    
-    if (beforeDraft) segments.push({ type: "text", text: beforeDraft });
-    
-    const draft = remaining.slice(startIdx + DRAFT_START.length, endIdx).trim();
-    if (draft.length >= 20) {
-      segments.push({ type: "draft", draft, whatsappNumber });
-    }
-    
-    remaining = remaining.slice(endIdx + DRAFT_END.length);
+  // Also check title fallback for type
+  const allTypeTokens = [...effectiveTypeTokens];
+  if (allTypeTokens.length === 0 && property.title) {
+    allTypeTokens.push(...extractTypeFromTitle(property.title));
   }
   
-  return segments.length > 0 ? segments : null;
+  if (allTypeTokens.length === 0 || !allTypeTokens.some(pt => clientTokens.includes(pt))) {
+    return []; // No type match → skip entirely
+  }
+  reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
 }
 ```
 
-**2. Actualizar `AssistantContent`:**
-- Reemplazar `draftBlock` con `draftBlocks` usando la nueva función
-- Renderizar iterando sobre los segmentos: texto como markdown, drafts como `CopyableDraft`
+Remove the old optional type block (lines 367-372) since it's now handled above.
 
-### Archivo a modificar
-- `src/components/ChatMessage.tsx`
+**2. Same fix in `src/hooks/use-property-matches.ts`** — Apply identical mandatory type logic in the frontend matching hook to keep both in sync.
+
+### What this achieves
+- Client with `property_type_interest: "Duplex"` will ONLY match properties that are duplex/PH
+- Client without `property_type_interest` keeps current behavior (any type)
+- Dramatically reduces false positives (235 → likely ~10-20 real matches)
+
+### Files to modify
+- `supabase/functions/morning-matches/index.ts` — mandatory type in `findMatchReasons`
+- `src/hooks/use-property-matches.ts` — same fix for frontend consistency
+- Deploy edge function
 
