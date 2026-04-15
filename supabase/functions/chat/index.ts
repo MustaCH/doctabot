@@ -2069,7 +2069,7 @@ async function generateTitle(
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.5-pro",
         messages: [
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
           { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
@@ -2246,7 +2246,7 @@ serve(async (req) => {
             method: "POST",
             headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash-lite",
+              model: "gemini-2.5-pro",
               messages: [
                 {
                   role: "system",
@@ -2325,7 +2325,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
             method: "POST",
             headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash-lite",
+              model: "gemini-2.5-pro",
               messages: [
                 supervisorData.choices?.[0]?.message ? 
                   { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
