@@ -1,78 +1,58 @@
 
 
-## Diagnóstico: Morning Matches con zonas incorrectas
+## Problema: Los matches matutinos no se renderizan como cards
 
-Analicé el caso de Aldana Ludueña. Sus datos:
-- `preferred_zones`: NULL
-- `property_type_interest`: NULL  
-- Todo está en `notes`: "Duplex en Docta 2 dormitorios hasta 110K"
+### Causa raíz
 
-El algoritmo actual tiene **3 problemas graves**:
+El parser de `PropertyCard` (`parsePropertyCard`) requiere el emoji `🏠` para activar el renderizado como tarjeta de propiedad. Necesita líneas estructuradas con emojis específicos:
+- `🏠 **Título**` → título
+- `💰 Precio` → precio  
+- `📍 Ubicación` → ubicación
+- `🔗 [Ver propiedad](url)` → link
 
-### Problema 1: `extractTypeFromTitle` contamina los tokens de tipo
-La propiedad "VENTA **LOTE** VILLA CATALINA APTO **DUPLEX** 285 M2" tiene `property_type: terrenos_y_lotes` (es un lote), pero `extractTypeFromTitle` extrae "duplex" del título. Resultado: un lote matchea como duplex.
-
-**Fix**: Solo usar `extractTypeFromTitle` como fallback cuando `property_type` es NULL.
-
-### Problema 2: No se extraen las preferencias de zona del cliente desde notas
-El matching actual extrae la zona de la **propiedad** y busca esas palabras en las notas del cliente. Pero nunca extrae las zonas que el **cliente** quiere desde sus notas para filtrar propiedades. El cliente dice "en Docta" pero las propiedades de Río Ceballos o Icho Cruz no son rechazadas.
-
-**Fix**: Agregar función `extractClientZonesFromNotes` que parsee zonas del texto de notas. Si el cliente tiene zonas (ya sea en `preferred_zones` o extraídas de notas), la zona debe coincidir como requisito obligatorio — no como un criterio más entre 3.
-
-### Problema 3: "Docta" no está en los patrones de zona
-`extractZoneFromTitle` tiene "docta central" pero no "docta" solo. Las propiedades en Docta tienen `locality: "Docta - Urbanización Inteligente"` y `zone: NULL`.
-
-**Fix**: Agregar `/\b(docta)\b/i` al listado de patrones de zona.
-
-## Plan de cambios
-
-### 1. Ambos archivos: `morning-matches/index.ts` y `use-property-matches.ts`
-
-**a)** Agregar `docta` a los patrones de `extractZoneFromTitle`
-
-**b)** No usar `extractTypeFromTitle` cuando `property_type` ya existe:
-```typescript
-// ANTES
-const titleTypeTokens = property.title ? extractTypeFromTitle(property.title) : [];
-const effectiveTypeTokens = [...new Set([...baseTypeTokens, ...titleTypeTokens])];
-
-// DESPUÉS  
-const titleTypeTokens = (!property.property_type && property.title) 
-  ? extractTypeFromTitle(property.title) : [];
+Pero `formatPropertyLine` en `morning-matches/index.ts` genera una sola línea plana:
+```
+**VENTA DUPLEX 3 DORMITORIOS** · USD 180.000 · Pampas de Manantiales · 158 m² · 4 amb. · [Ver propiedad](url)
 ```
 
-**c)** Agregar función para extraer zonas del cliente desde notas:
+Sin `🏠`, el parser devuelve `null` y el contenido se renderiza como markdown plano.
+
+### Solución
+
+Cambiar `formatPropertyLine` para que genere el formato de emojis que `parsePropertyCard` espera. Pero como el morning-matches envía **múltiples propiedades en un solo mensaje**, y `parsePropertyCard` solo detecta **una card por mensaje**, necesitamos que el mensaje use `===MSG_BREAK===` para separar cada propiedad en su propio mensaje... pero eso no aplica aquí porque es un insert directo, no streaming.
+
+**Enfoque práctico**: Como el morning-matches mete varias propiedades en un solo mensaje, no podemos convertir cada una en una card individual (el parser solo soporta una por mensaje). Lo mejor es:
+
+1. Reformatear `formatPropertyLine` para que cada propiedad tenga las líneas con emojis (`🏠`, `💰`, `📍`, `🔗`) separadas por `\n`
+2. Actualizar `AssistantContent` para detectar mensajes con **múltiples** bloques `🏠` y renderizar múltiples `PropertyCard` en secuencia, en lugar de solo uno
+
+### Cambios
+
+**1. `supabase/functions/morning-matches/index.ts`** — Reformatear `formatPropertyLine`:
 ```typescript
-function extractClientZonesFromNotes(notes: string): string[] {
-  // Reutiliza los mismos patrones de zona que extractZoneFromTitle
-  // Retorna todas las zonas encontradas en el texto
+function formatPropertyLine(p: PropertyRow): string {
+  const lines: string[] = [];
+  if (p.title) lines.push(`🏠 **${p.title}**`);
+  if (p.price) lines.push(`💰 ${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
+  if (p.address) lines.push(`📍 ${p.address}`);
+  const surfaceParts: string[] = [];
+  if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
+  if (p.ambientes) surfaceParts.push(`${p.ambientes} amb.`);
+  if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
+  if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
+  return lines.join("\n");
 }
 ```
 
-**d)** Hacer la zona **obligatoria** cuando el cliente tiene preferencia de zona:
-```typescript
-// Si el cliente tiene zonas preferidas (structured o desde notas),
-// verificar que la propiedad coincida con alguna.
-// Si no coincide en zona → no es match, sin importar budget/tipo.
-const clientZones = [
-  ...(client.preferred_zones?.split(",").map(z => z.trim()).filter(Boolean) || []),
-  ...extractClientZonesFromNotes(client.notes || "")
-];
+Eliminar el separador `---\n` entre propiedades (ya no es necesario).
 
-if (clientZones.length > 0) {
-  const zoneMatches = effectiveZone && clientZones.some(z => zonesMatch(effectiveZone, z));
-  if (!zoneMatches) continue; // Skip — zona obligatoria no coincide
-  reasons.push(`📍 Zona: ${effectiveZone}`);
-}
+**2. `src/components/ChatMessage.tsx`** — Soportar múltiples cards en un mensaje:
+Actualizar `AssistantContent` para que, cuando el contenido tenga múltiples bloques `🏠`, los separe y renderice cada uno como `PropertyCard`, con el texto introductorio y los "Coincide por" como markdown normal.
 
-// Luego evaluar budget y tipo normalmente
-// Requerir al menos 1 criterio adicional (budget o tipo) además de zona
-if (reasons.length < 2) continue;
-```
+**3. `src/components/PropertyCard.tsx`** — Agregar función `parseMultiplePropertyCards` que divida el contenido por bloques `🏠` y devuelva un array de cards + texto intercalado.
 
-### 2. Redeploy `morning-matches`
-
-### Archivos a modificar
-- `supabase/functions/morning-matches/index.ts` — matching del backend
-- `src/hooks/use-property-matches.ts` — matching del frontend (misma lógica)
+### Archivos a tocar
+- `supabase/functions/morning-matches/index.ts` — reformatear output
+- `src/components/ChatMessage.tsx` — renderizar múltiples cards
+- `src/components/PropertyCard.tsx` — agregar parser multi-card
 
