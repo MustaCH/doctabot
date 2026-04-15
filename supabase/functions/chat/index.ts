@@ -2069,7 +2069,7 @@ async function generateTitle(
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-2.5-flash-lite-preview-06-17",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
           { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
@@ -2174,7 +2174,7 @@ serve(async (req) => {
     let aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro-preview-05-06", messages: currentMessages, tools: toolDefinitions, stream: false }),
+      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
     });
 
     if (!aiResponse.ok) {
@@ -2210,7 +2210,7 @@ serve(async (req) => {
       aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gemini-2.5-pro-preview-05-06", messages: currentMessages, tools: toolDefinitions, stream: false }),
+        body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
       });
 
       if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
@@ -2246,7 +2246,7 @@ serve(async (req) => {
             method: "POST",
             headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash-lite-preview-06-17",
+              model: "gemini-2.5-flash",
               messages: [
                 {
                   role: "system",
@@ -2325,7 +2325,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
             method: "POST",
             headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash-lite-preview-06-17",
+              model: "gemini-2.5-flash",
             messages: [
               supervisorData.choices?.[0]?.message ?
                   { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
@@ -2396,7 +2396,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
         const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gemini-2.5-pro-preview-05-06", messages: retryMessages, stream: false }),
+          body: JSON.stringify({ model: "gemini-2.5-pro", messages: retryMessages, stream: false }),
         });
 
         if (retryRes.ok) {
@@ -2496,7 +2496,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
     const fallbackResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro-preview-05-06", messages: currentMessages, stream: false }),
+      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, stream: false }),
     });
 
     if (!fallbackResponse.ok) throw new Error(`Fallback error: ${fallbackResponse.status}`);
