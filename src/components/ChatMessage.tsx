@@ -1,7 +1,7 @@
 import React, { memo, useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PropertyCard, { parsePropertyCard } from "@/components/PropertyCard";
+import PropertyCard, { parsePropertyCard, parseMultiplePropertyCards } from "@/components/PropertyCard";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
@@ -309,8 +309,27 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
 const AssistantContent = memo(({ content }: { content: string }) => {
   const { agentCode } = useAuth();
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
-  const propertyData = useMemo(() => parsePropertyCard(processedContent), [processedContent]);
-  const draftBlock = useMemo(() => !propertyData ? extractDraftBlock(processedContent) : null, [processedContent, propertyData]);
+  const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
+  const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
+  const draftBlock = useMemo(() => !propertyData && !multiCards ? extractDraftBlock(processedContent) : null, [processedContent, propertyData, multiCards]);
+
+  if (multiCards) {
+    return (
+      <div className="space-y-3">
+        {multiCards.map((segment, i) =>
+          segment.type === "property" && segment.property ? (
+            <PropertyCard key={i} {...segment.property} agentCode={agentCode} />
+          ) : (
+            <div key={i} className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word]">
+              <ReactMarkdown components={{
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
+              }}>{segment.text || ""}</ReactMarkdown>
+            </div>
+          )
+        )}
+      </div>
+    );
+  }
 
   if (propertyData) {
     return <PropertyCard {...propertyData} agentCode={agentCode} />;
