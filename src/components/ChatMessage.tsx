@@ -234,28 +234,47 @@ const DRAFT_START = "<<<DRAFT_START>>>";
 const DRAFT_END = "<<<DRAFT_END>>>";
 const WHATSAPP_TO_RE = /<<<WHATSAPP_TO:([\d+]+)>>>/;
 
-/** Detects if content contains a drafted email/message block using explicit markers */
-function extractDraftBlock(content: string): { intro: string; draft: string; outro: string; whatsappNumber?: string } | null {
-  const startIdx = content.indexOf(DRAFT_START);
-  const endIdx = content.indexOf(DRAFT_END);
+type DraftSegment = { type: "text"; text: string } | { type: "draft"; draft: string; whatsappNumber?: string };
 
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
+/** Extracts ALL draft blocks from content, returning interleaved text + draft segments */
+function extractMultipleDraftBlocks(content: string): DraftSegment[] | null {
+  if (!content.includes(DRAFT_START)) return null;
 
-  let intro = content.slice(0, startIdx).trim();
-  const draft = content.slice(startIdx + DRAFT_START.length, endIdx).trim();
-  const outro = content.slice(endIdx + DRAFT_END.length).trim();
+  const segments: DraftSegment[] = [];
+  let remaining = content;
 
-  if (draft.length < 20) return null;
+  while (remaining.length > 0) {
+    const startIdx = remaining.indexOf(DRAFT_START);
+    if (startIdx === -1) {
+      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
+      break;
+    }
 
-  // Extract WhatsApp number if present
-  let whatsappNumber: string | undefined;
-  const waMatch = intro.match(WHATSAPP_TO_RE);
-  if (waMatch) {
-    whatsappNumber = waMatch[1];
-    intro = intro.replace(WHATSAPP_TO_RE, "").trim();
+    let beforeDraft = remaining.slice(0, startIdx).trim();
+    const endIdx = remaining.indexOf(DRAFT_END, startIdx);
+    if (endIdx === -1) {
+      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
+      break;
+    }
+
+    let whatsappNumber: string | undefined;
+    const waMatch = beforeDraft.match(WHATSAPP_TO_RE);
+    if (waMatch) {
+      whatsappNumber = waMatch[1];
+      beforeDraft = beforeDraft.replace(WHATSAPP_TO_RE, "").trim();
+    }
+
+    if (beforeDraft) segments.push({ type: "text", text: beforeDraft });
+
+    const draft = remaining.slice(startIdx + DRAFT_START.length, endIdx).trim();
+    if (draft.length >= 20) {
+      segments.push({ type: "draft", draft, whatsappNumber });
+    }
+
+    remaining = remaining.slice(endIdx + DRAFT_END.length);
   }
 
-  return { intro, draft, outro, whatsappNumber };
+  return segments.length > 0 ? segments : null;
 }
 
 const WhatsAppIcon = () => (
@@ -311,7 +330,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
   const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
-  const draftBlock = useMemo(() => !propertyData && !multiCards ? extractDraftBlock(processedContent) : null, [processedContent, propertyData, multiCards]);
+  const draftSegments = useMemo(() => !propertyData && !multiCards ? extractMultipleDraftBlocks(processedContent) : null, [processedContent, propertyData, multiCards]);
 
   if (multiCards) {
     return (
@@ -335,21 +354,19 @@ const AssistantContent = memo(({ content }: { content: string }) => {
     return <PropertyCard {...propertyData} agentCode={agentCode} />;
   }
 
-  if (draftBlock) {
+  if (draftSegments) {
     return (
       <div>
-        {draftBlock.intro && (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] mb-2">
-            <ReactMarkdown components={{
-              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
-            }}>{draftBlock.intro}</ReactMarkdown>
-          </div>
-        )}
-        <CopyableDraft draft={draftBlock.draft} whatsappNumber={draftBlock.whatsappNumber} />
-        {draftBlock.outro && (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 overflow-hidden break-words [word-break:break-word] mt-2">
-            <ReactMarkdown>{draftBlock.outro}</ReactMarkdown>
-          </div>
+        {draftSegments.map((seg, i) =>
+          seg.type === "draft" ? (
+            <CopyableDraft key={i} draft={seg.draft} whatsappNumber={seg.whatsappNumber} />
+          ) : (
+            <div key={i} className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] my-2">
+              <ReactMarkdown components={{
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
+              }}>{seg.text}</ReactMarkdown>
+            </div>
+          )
         )}
       </div>
     );
