@@ -389,12 +389,15 @@ const Properties = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los tipos</SelectItem>
-                      <SelectItem value="Casa">Casa</SelectItem>
-                      <SelectItem value="Departamento">Departamento</SelectItem>
-                      <SelectItem value="Terreno">Terreno</SelectItem>
-                      <SelectItem value="Local">Local</SelectItem>
-                      <SelectItem value="Oficina">Oficina</SelectItem>
-                      <SelectItem value="Galpón">Galpón</SelectItem>
+                      <SelectItem value="casa">Casa</SelectItem>
+                      <SelectItem value="departamento">Departamento</SelectItem>
+                      <SelectItem value="terreno">Terreno</SelectItem>
+                      <SelectItem value="ph">PH</SelectItem>
+                      <SelectItem value="local">Local</SelectItem>
+                      <SelectItem value="oficina">Oficina</SelectItem>
+                      <SelectItem value="cochera">Cochera</SelectItem>
+                      <SelectItem value="campo">Campo</SelectItem>
+                      <SelectItem value="galpon">Galpón</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
