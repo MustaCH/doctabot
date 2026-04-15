@@ -1,58 +1,103 @@
 
 
-## Problema: Los matches matutinos no se renderizan como cards
+## Mejorar mensaje inicial de Morning Matches con contexto del cliente
 
-### Causa raíz
-
-El parser de `PropertyCard` (`parsePropertyCard`) requiere el emoji `🏠` para activar el renderizado como tarjeta de propiedad. Necesita líneas estructuradas con emojis específicos:
-- `🏠 **Título**` → título
-- `💰 Precio` → precio  
-- `📍 Ubicación` → ubicación
-- `🔗 [Ver propiedad](url)` → link
-
-Pero `formatPropertyLine` en `morning-matches/index.ts` genera una sola línea plana:
-```
-**VENTA DUPLEX 3 DORMITORIOS** · USD 180.000 · Pampas de Manantiales · 158 m² · 4 amb. · [Ver propiedad](url)
-```
-
-Sin `🏠`, el parser devuelve `null` y el contenido se renderiza como markdown plano.
+### Problema
+El mensaje dice "Encontré X propiedades que coinciden con los intereses de tu cliente" pero no dice **cuáles** son esos intereses. El agente no sabe por qué matchean sin leer cada "Coincide por".
 
 ### Solución
+Agregar un resumen de la búsqueda del cliente después del título, construido dinámicamente desde sus datos estructurados y notas.
 
-Cambiar `formatPropertyLine` para que genere el formato de emojis que `parsePropertyCard` espera. Pero como el morning-matches envía **múltiples propiedades en un solo mensaje**, y `parsePropertyCard` solo detecta **una card por mensaje**, necesitamos que el mensaje use `===MSG_BREAK===` para separar cada propiedad en su propio mensaje... pero eso no aplica aquí porque es un insert directo, no streaming.
+### Cambio en `supabase/functions/morning-matches/index.ts`
 
-**Enfoque práctico**: Como el morning-matches mete varias propiedades en un solo mensaje, no podemos convertir cada una en una card individual (el parser solo soporta una por mensaje). Lo mejor es:
+Agregar función `buildClientSearchSummary` que genere una línea como:
 
-1. Reformatear `formatPropertyLine` para que cada propiedad tenga las líneas con emojis (`🏠`, `💰`, `📍`, `🔗`) separadas por `\n`
-2. Actualizar `AssistantContent` para detectar mensajes con **múltiples** bloques `🏠` y renderizar múltiples `PropertyCard` en secuencia, en lugar de solo uno
+> 🔍 **Busca:** Duplex en Docta, hasta USD 110.000
 
-### Cambios
+Construida desde:
+- `preferred_zones` + zonas extraídas de `notes` → zonas
+- `property_type_interest` + tipos extraídos de `notes` → tipo
+- `budget_min` / `budget_max` + `budget_currency` → presupuesto
+- Si todo está vacío, mostrar la línea de notas directamente
 
-**1. `supabase/functions/morning-matches/index.ts`** — Reformatear `formatPropertyLine`:
+Ejemplo de output:
+```
+🔔 **Nuevas propiedades para Aldana Ludueña**
+
+🔍 **Busca:** Duplex en Docta · Hasta USD 110.000
+
+Encontré 3 propiedades que coinciden:
+
+🏠 **VENTA DUPLEX 3 DORM...**
+💰 USD 105.000
+📍 Docta
+🔗 [Ver propiedad](url)
+_Coincide por: 📍 Zona: docta, 💰 Presupuesto compatible, 🏗️ Tipo: duplex_
+```
+
+### Implementación
+
+En el bloque de construcción del mensaje (líneas 372-375), insertar después del título:
+
 ```typescript
-function formatPropertyLine(p: PropertyRow): string {
-  const lines: string[] = [];
-  if (p.title) lines.push(`🏠 **${p.title}**`);
-  if (p.price) lines.push(`💰 ${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
-  if (p.address) lines.push(`📍 ${p.address}`);
-  const surfaceParts: string[] = [];
-  if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
-  if (p.ambientes) surfaceParts.push(`${p.ambientes} amb.`);
-  if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
-  if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
-  return lines.join("\n");
+function buildClientSearchSummary(client: ClientRow): string {
+  const parts: string[] = [];
+  
+  // Tipo
+  const types = client.property_type_interest
+    ?.split(",").map(t => t.trim()).filter(Boolean) || [];
+  // Extraer tipo de notas si no hay estructurado
+  if (types.length === 0 && client.notes) {
+    const noteTypes = extractTypeFromTitle(client.notes);
+    if (noteTypes.length) types.push(...noteTypes);
+  }
+  
+  // Zonas
+  const zones = client.preferred_zones
+    ?.split(",").map(z => z.trim()).filter(Boolean) || [];
+  if (client.notes) {
+    const noteZones = extractClientZonesFromNotes(client.notes);
+    for (const z of noteZones) {
+      if (!zones.some(ez => ez.toLowerCase() === z)) zones.push(z);
+    }
+  }
+  
+  // Construir texto tipo + zona
+  const typeStr = types.length ? types.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join("/") : null;
+  const zoneStr = zones.length ? zones.join(", ") : null;
+  if (typeStr && zoneStr) parts.push(`${typeStr} en ${zoneStr}`);
+  else if (typeStr) parts.push(typeStr);
+  else if (zoneStr) parts.push(`en ${zoneStr}`);
+  
+  // Presupuesto
+  if (client.budget_max) {
+    const curr = client.budget_currency || "USD";
+    parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
+  } else if (client.budget_min) {
+    const curr = client.budget_currency || "USD";
+    parts.push(`Desde ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
+  }
+  
+  // Fallback: si no hay datos estructurados, usar notas
+  if (parts.length === 0 && client.notes) {
+    return `🔍 **Busca:** ${client.notes.substring(0, 100)}`;
+  }
+  
+  return parts.length ? `🔍 **Busca:** ${parts.join(" · ")}` : "";
 }
 ```
 
-Eliminar el separador `---\n` entre propiedades (ya no es necesario).
+Luego en las líneas del mensaje (372-375):
+```typescript
+const lines: string[] = [
+  `🔔 **Nuevas propiedades para ${client.full_name}**\n`,
+];
+const summary = buildClientSearchSummary(client);
+if (summary) lines.push(`${summary}\n`);
+lines.push(`Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""}:\n`);
+```
 
-**2. `src/components/ChatMessage.tsx`** — Soportar múltiples cards en un mensaje:
-Actualizar `AssistantContent` para que, cuando el contenido tenga múltiples bloques `🏠`, los separe y renderice cada uno como `PropertyCard`, con el texto introductorio y los "Coincide por" como markdown normal.
-
-**3. `src/components/PropertyCard.tsx`** — Agregar función `parseMultiplePropertyCards` que divida el contenido por bloques `🏠` y devuelva un array de cards + texto intercalado.
-
-### Archivos a tocar
-- `supabase/functions/morning-matches/index.ts` — reformatear output
-- `src/components/ChatMessage.tsx` — renderizar múltiples cards
-- `src/components/PropertyCard.tsx` — agregar parser multi-card
+### Archivos
+- `supabase/functions/morning-matches/index.ts` — agregar `buildClientSearchSummary` y actualizar template del mensaje
+- Deploy de la edge function
 
