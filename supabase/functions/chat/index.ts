@@ -2218,11 +2218,7 @@ serve(async (req) => {
         } catch { executedTools.push(tc.function.name); }
       }
 
-      aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
-      });
+      aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
 
       if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
       aiData = await aiResponse.json();
