@@ -60,6 +60,15 @@ const Chat = () => {
     loadConversations();
   }, [loadConversations]);
 
+  // Handle deep link from push notification (?c=conversationId)
+  useEffect(() => {
+    const convParam = searchParams.get("c");
+    if (convParam) {
+      setActiveConvId(convParam);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setActiveConvId, setSearchParams]);
+
   // Mark active conversation as read on switch only
   useEffect(() => {
     if (activeConvId) {
