@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/use-conversations";
 import { useChatMessages } from "@/hooks/use-chat-messages";
@@ -20,6 +21,7 @@ const Chat = () => {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { updateAvailable } = useSwUpdate();
 
   const {
@@ -57,6 +59,15 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Handle deep link from push notification (?c=conversationId)
+  useEffect(() => {
+    const convParam = searchParams.get("c");
+    if (convParam) {
+      setActiveConvId(convParam);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setActiveConvId, setSearchParams]);
 
   // Mark active conversation as read on switch only
   useEffect(() => {

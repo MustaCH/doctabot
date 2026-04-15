@@ -224,7 +224,17 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id, title, body, url } = await req.json();
+    const body = await req.json();
+    
+    // Allow clients to fetch the VAPID public key to stay in sync
+    if (body.action === "get_vapid_key") {
+      const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY")!;
+      return new Response(JSON.stringify({ vapid_public_key: vapidPublicKey }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { user_id, title, body: pushBody, url } = body;
     if (!user_id || !title) {
       return new Response(JSON.stringify({ error: "user_id and title required" }), {
         status: 400,
@@ -252,7 +262,7 @@ serve(async (req) => {
     const vapidPrivateKeyB64 = Deno.env.get("VAPID_PRIVATE_KEY")!;
     const { privateKey, publicKeyRaw } = await importVapidKeys(vapidPublicKey, vapidPrivateKeyB64);
 
-    const payload = JSON.stringify({ title, body: body || "", url: url || "/" });
+    const payload = JSON.stringify({ title, body: pushBody || "", url: url || "/" });
     let sent = 0;
 
     for (const sub of subs) {
