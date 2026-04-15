@@ -1,95 +1,36 @@
-<final-text>
-## Hallazgos
-Identifiqué 4 causas probables del problema:
 
-1. **Las push están fallando en backend**
-   - Hay errores reales de entrega: `VapidPkHashMismatch`.
-   - Eso significa que las suscripciones guardadas y la clave VAPID usada para enviar notificaciones **no están alineadas**.
-   - Mientras eso siga así, **la notificación no va a llegar**.
 
-2. **Existe una ruta de respuesta que no persiste el mensaje**
-   - En `supabase/functions/chat/index.ts` hay un fallback final que hace:
-   - `return new Response(streamResponse.body...)`
-   - Esa ruta **streamea directo desde la IA** y **saltea** la persistencia del mensaje, la actualización de la conversación y la notificación.
-   - Si Alan cae en esa ruta y el usuario sale de la app, el mensaje puede quedar **vacío, parcial o directamente perderse**.
+## Diagnóstico
 
-3. **El deep link de la notificación apunta a una ruta incorrecta**
-   - Hoy se envía `url: /chat?c=...`
-   - Pero la app usa `"/"` como pantalla de chat, no `"/chat"`.
-   - Incluso si la push empezara a llegar, el click no abriría correctamente la conversación.
+Encontré dos problemas en la función SQL `search_properties_filtered`:
 
-4. **La recuperación del chat al volver no es lo bastante robusta**
-   - `use-chat-messages.ts` solo recarga ante ciertos errores de red.
-   - Además, al rehidratar mensajes desde DB sigue separando por `---`, mientras el protocolo actual usa `===MSG_BREAK===`.
-   - Eso puede causar recuperación incompleta o render inconsistente.
+### Problema 1: La búsqueda por texto también busca en `office`
+La función busca "Docta" en `p.office`, lo que devuelve **368 propiedades** de RE/MAX Docta que no tienen nada que ver con la zona Docta. Las propiedades que realmente mencionan "Docta" en título, zona o dirección son solo **105**. El usuario quiere buscar por ubicación/título, no por oficina.
+
+### Problema 2: El filtro de tipo de propiedad no coincide con los valores de la DB
+Los valores del selector son `"Departamento"`, `"Casa"`, `"Terreno"`, etc., pero en la base de datos los valores reales son slugs como `departamento_estandar`, `departamento_duplex`, `casa`, `terrenos_y_lotes`, `casa_duplex`, `ph`, etc. La comparación exacta (`p.property_type = type_filter`) nunca coincide para "Departamento" o "Terreno".
 
 ## Plan
-### 1) Blindar la generación para que siempre haya persistencia
-Modificar `supabase/functions/chat/index.ts` para que **toda** respuesta de Alan termine en el mismo flujo:
-- obtener contenido final
-- guardarlo en base de datos
-- actualizar `updated_at`
-- disparar notificación si corresponde
-- recién después devolverlo al cliente
 
-Puntualmente:
-- eliminar o reemplazar la ruta fallback que hoy transmite directo sin persistir
-- si el primer intento no devuelve `finalContent`, hacer una generación alternativa **cerrada** en backend hasta obtener texto final
-- si aun así no hubiera contenido, registrar el error y devolver una salida controlada, pero **nunca** dejar una respuesta “en el aire”
+### 1. Actualizar la función SQL `search_properties_filtered`
+- **Quitar `office`** de los campos de búsqueda por texto — dejar solo `title`, `address`, `locality`, `zone`
+- **Cambiar el filtro de tipo** de comparación exacta a `ILIKE` con prefijo, para que `"departamento"` coincida con `departamento_estandar`, `departamento_duplex`, `departamento_monoambiente`, etc. Y `"terreno"` coincida con `terrenos_y_lotes`
 
-### 2) Corregir el sistema de notificaciones push
-Actualizar el flujo de push para que cliente y backend usen la **misma identidad VAPID**:
-- alinear la clave pública usada en `src/hooks/use-push-notifications.ts` con la del backend
-- validar que el par de claves del backend sea consistente
-- limpiar o invalidar suscripciones viejas que quedaron asociadas a otra clave
-- forzar o automatizar la re-suscripción del dispositivo cuando detectemos desalineación
+Lógica del type_filter:
+```sql
+AND (type_filter = '' OR 
+     lower(p.property_type) ILIKE lower(type_filter) || '%'
+     OR (lower(type_filter) = 'terreno' AND lower(p.property_type) LIKE 'terreno%'))
+```
 
-Esto resuelve el `VapidPkHashMismatch`.
+### 2. Actualizar las opciones del selector de tipo en `Properties.tsx`
+Agregar los tipos que faltan y usar valores que matcheen como prefijo con la DB:
+- `Casa` → matchea `casa`, `casa_duplex`, `casa_triplex`
+- `Departamento` → matchea `departamento_estandar`, `departamento_duplex`, etc.
+- `Terreno` → matchea `terrenos_y_lotes` (necesita lógica especial)
+- Agregar `PH`, `Cochera`, `Campo`
 
-### 3) Arreglar la apertura de conversación desde notificación
-Cambiar el link push a algo compatible con la app actual, por ejemplo:
-- `/?c=<conversationId>`
+### Archivos a tocar
+- **Migración SQL**: recrear `search_properties_filtered` sin `office` en búsqueda y con filtro de tipo flexible
+- **`src/pages/Properties.tsx`**: actualizar opciones del `<Select>` de tipo de propiedad
 
-Y luego:
-- leer ese parámetro al abrir el chat
-- activar esa conversación automáticamente
-- limpiar el parámetro una vez aplicado para no dejarlo persistido en la URL
-
-### 4) Hacer más robusta la recuperación al volver a la app
-Reforzar `src/hooks/use-chat-messages.ts` para que, cuando el usuario vuelva al foreground:
-- recargue mensajes si había una respuesta en curso, aunque no haya habido error visible
-- refresque también la lista de conversaciones
-- use el separador actual `===MSG_BREAK===` al reconstruir mensajes guardados
-
-Así, si Alan terminó mientras la app estaba minimizada, al volver se verá la respuesta real guardada en base de datos.
-
-### 5) Verificación end-to-end
-Probar estos escenarios después de implementar:
-- salir y volver rápido mientras Alan sigue escribiendo
-- salir y esperar a que termine
-- recibir notificación con la app minimizada
-- tocar la notificación y abrir la conversación correcta
-- confirmar que el mensaje ya está guardado aunque el stream se haya cortado
-
-## Archivos a tocar
-- `supabase/functions/chat/index.ts`
-- `supabase/functions/send-push-notification/index.ts`
-- `src/hooks/use-push-notifications.ts`
-- `src/hooks/use-chat-messages.ts`
-- `src/pages/Chat.tsx` o `src/hooks/use-conversations.ts` para leer `?c=...`
-
-## Resultado esperado
-- Alan no vuelve a “perder” respuestas al salir de la app
-- la conversación no aparece vacía al regresar
-- no quedan mensajes parciales tipo `"!"`
-- la notificación llega cuando corresponde
-- al tocarla, abre la conversación correcta
-
-## Detalles técnicos
-- El problema principal no parece ser solo de UI: hay una combinación de **push rota + fallback sin persistencia**.
-- La evidencia más fuerte es:
-  - logs con `VapidPkHashMismatch`
-  - fallback en `chat/index.ts` que devuelve `streamResponse.body` sin guardar
-  - URL push apuntando a `/chat?c=...` aunque esa ruta no existe
-  - rehidratación local usando un separador viejo distinto al protocolo actual
-</final-text>
