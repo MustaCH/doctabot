@@ -2170,12 +2170,23 @@ serve(async (req) => {
       ...buildAIMessages(messages),
     ];
 
+    // Resilient fetch: tries gemini-2.5-pro, falls back to gemini-2.5-flash on 5xx
+    const PRIMARY_MODEL = "gemini-2.5-pro";
+    const FALLBACK_MODEL = "gemini-2.5-flash";
+    const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+
+    const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
+      const res = await fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: PRIMARY_MODEL }) });
+      if (res.status >= 500) {
+        console.warn(`Primary model ${PRIMARY_MODEL} returned ${res.status}, falling back to ${FALLBACK_MODEL}`);
+        return fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: FALLBACK_MODEL }) });
+      }
+      return res;
+    };
+
     // First call – non-streaming to handle tool calls
-    let aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
-    });
+    let aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
