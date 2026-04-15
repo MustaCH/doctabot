@@ -197,6 +197,122 @@ function buildClientSearchSummary(client: ClientRow): string {
   return parts.length ? `🔍 **Busca:** ${parts.join(" · ")}` : "";
 }
 
+function buildSellerSummary(seller: ClientRow): string {
+  const parts: string[] = [];
+
+  const types = seller.property_type_interest
+    ?.split(",").map((t) => t.trim()).filter(Boolean) || [];
+  if (types.length === 0 && seller.notes) {
+    const noteTypes = extractTypeFromTitle(seller.notes);
+    if (noteTypes.length) types.push(...noteTypes);
+  }
+
+  const zones = seller.preferred_zones
+    ?.split(",").map((z) => z.trim()).filter(Boolean) || [];
+  if (seller.notes) {
+    const noteZones = extractClientZonesFromNotes(seller.notes);
+    for (const z of noteZones) {
+      if (!zones.some((ez) => ez.toLowerCase() === z)) zones.push(z);
+    }
+  }
+
+  const typeStr = types.length
+    ? types.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join("/")
+    : null;
+  const zoneStr = zones.length ? zones.join(", ") : null;
+  if (typeStr && zoneStr) parts.push(`${typeStr} en ${zoneStr}`);
+  else if (typeStr) parts.push(typeStr);
+  else if (zoneStr) parts.push(`en ${zoneStr}`);
+
+  if (seller.budget_min) {
+    const curr = seller.budget_currency || "USD";
+    parts.push(`${curr} ${seller.budget_min.toLocaleString("es-AR")}`);
+  }
+
+  if (parts.length === 0 && seller.notes) {
+    return `🏷️ **Vende:** ${seller.notes.substring(0, 100)}`;
+  }
+
+  return parts.length ? `🏷️ **Vende:** ${parts.join(" · ")}` : "";
+}
+
+function findSellerBuyerMatchReasons(seller: ClientRow, buyer: ClientRow): string[] {
+  // Extract what the seller is selling
+  const sellerTypes = seller.property_type_interest
+    ? seller.property_type_interest.split(",").map((t) => t.trim()).filter(Boolean).flatMap(normalizePropertyType)
+    : [];
+  if (sellerTypes.length === 0 && seller.notes) {
+    sellerTypes.push(...extractTypeFromTitle(seller.notes));
+  }
+
+  const sellerZones = seller.preferred_zones
+    ? seller.preferred_zones.split(",").map((z) => z.trim()).filter(Boolean)
+    : [];
+  if (seller.notes) {
+    const noteZones = extractClientZonesFromNotes(seller.notes);
+    for (const z of noteZones) {
+      if (!sellerZones.some((ez) => ez.toLowerCase() === z)) sellerZones.push(z);
+    }
+  }
+
+  // Extract what the buyer wants
+  const buyerTypes = buyer.property_type_interest
+    ? buyer.property_type_interest.split(",").map((t) => t.trim()).filter(Boolean).flatMap(normalizePropertyType)
+    : [];
+  if (buyerTypes.length === 0 && buyer.notes) {
+    buyerTypes.push(...extractTypeFromTitle(buyer.notes));
+  }
+
+  const buyerZones = buyer.preferred_zones
+    ? buyer.preferred_zones.split(",").map((z) => z.trim()).filter(Boolean)
+    : [];
+  if (buyer.notes) {
+    const noteZones = extractClientZonesFromNotes(buyer.notes);
+    for (const z of noteZones) {
+      if (!buyerZones.some((ez) => ez.toLowerCase() === z)) buyerZones.push(z);
+    }
+  }
+
+  const reasons: string[] = [];
+
+  // Zone — mandatory if seller has zone info
+  if (sellerZones.length > 0) {
+    if (buyerZones.length === 0) return [];
+    const zoneMatch = sellerZones.some((sz) => buyerZones.some((bz) => zonesMatch(sz, bz)));
+    if (!zoneMatch) return [];
+    reasons.push(`📍 Zona: ${sellerZones.join(", ")}`);
+  } else if (buyerZones.length > 0 && sellerZones.length === 0) {
+    // Seller has no zone info — can't confirm zone match
+    return [];
+  }
+
+  // Type
+  if (sellerTypes.length > 0 && buyerTypes.length > 0) {
+    if (sellerTypes.some((st) => buyerTypes.includes(st))) {
+      reasons.push(`🏗️ Tipo: ${[...new Set(sellerTypes)].join("/")}`);
+    }
+  }
+
+  // Budget compatibility (buyer budget vs seller asking price)
+  if (seller.budget_min && buyer.budget_max) {
+    const sameCurrency = !seller.budget_currency || !buyer.budget_currency || seller.budget_currency === buyer.budget_currency;
+    if (sameCurrency && buyer.budget_max >= seller.budget_min * 0.85) {
+      reasons.push("💰 Presupuesto compatible");
+    }
+  }
+
+  return reasons;
+}
+
+function formatBuyerLine(buyer: ClientRow): string {
+  const lines: string[] = [];
+  lines.push(`👤 **${buyer.full_name}**`);
+  const summary = buildClientSearchSummary(buyer);
+  if (summary) lines.push(summary);
+  if ((buyer as any).phone) lines.push(`📞 ${(buyer as any).phone}`);
+  return lines.join("\n");
+}
+
 function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
   const effectiveZone =
     property.zone
