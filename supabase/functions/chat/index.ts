@@ -2400,11 +2400,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
           { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.${toolWarning}` }
         ];
 
-        const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gemini-2.5-pro", messages: retryMessages, stream: false }),
-        });
+        const retryRes = await resilientAIFetch({ messages: retryMessages, stream: false });
 
         if (retryRes.ok) {
           const retryData = await retryRes.json();
@@ -2499,12 +2495,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
       return buildSSEResponse(finalContent);
     }
 
-    // Fallback: generate non-streaming response so we can persist it
-    const fallbackResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, stream: false }),
-    });
+    const fallbackResponse = await resilientAIFetch({ messages: currentMessages, stream: false });
 
     if (!fallbackResponse.ok) throw new Error(`Fallback error: ${fallbackResponse.status}`);
     const fallbackData = await fallbackResponse.json();
