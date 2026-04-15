@@ -340,36 +340,29 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
     }
     reasons.push(`📍 Zona: ${effectiveZone}`);
   } else if (effectiveZone && client.preferred_zones) {
-    // Fallback for structured-only (shouldn't happen after above, but defensive)
     const clientZones = client.preferred_zones.split(",").map((z) => z.trim()).filter(Boolean);
     if (clientZones.some((z) => zonesMatch(effectiveZone, z))) {
       reasons.push(`📍 Zona: ${effectiveZone}`);
     }
   }
 
-  // Budget
-  if (property.price && (client.budget_min || client.budget_max)) {
-    const sameCurrency = !property.currency || !client.budget_currency || property.currency === client.budget_currency;
-    if (sameCurrency) {
-      const inMin = !client.budget_min || property.price >= client.budget_min;
-      const BUDGET_TOLERANCE = 1.15;
-      if (inMin) {
-        if (!client.budget_max || property.price <= client.budget_max) {
-          reasons.push("💰 Presupuesto compatible");
-        } else if (client.budget_max && property.price <= client.budget_max * BUDGET_TOLERANCE) {
-          reasons.push("💰 Presupuesto negociable");
-        }
-      }
+  // Type — MANDATORY if client has type preference
+  if (client.property_type_interest) {
+    const clientTokens = client.property_type_interest
+      .split(",").map((t) => t.trim()).filter(Boolean).flatMap(normalizePropertyType);
+
+    const allTypeTokens = [...effectiveTypeTokens];
+    if (allTypeTokens.length === 0 && property.title) {
+      allTypeTokens.push(...extractTypeFromTitle(property.title));
     }
+
+    if (allTypeTokens.length === 0 || !allTypeTokens.some((pt) => clientTokens.includes(pt))) {
+      return []; // No type match → skip entirely
+    }
+    reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
   }
 
-  // Type
-  if (effectiveTypeTokens.length > 0 && client.property_type_interest) {
-    const clientTokens = client.property_type_interest.split(",").map((t) => t.trim()).filter(Boolean).flatMap(normalizePropertyType);
-    if (effectiveTypeTokens.some((pt) => clientTokens.includes(pt))) {
-      reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
-    }
-  }
+  // Budget
 
   // Notes supplement
   if (client.notes) {

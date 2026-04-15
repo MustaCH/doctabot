@@ -335,38 +335,26 @@ export function usePropertyMatches() {
             reasons.push(`📍 Zona: ${effectiveZone}`);
           }
 
-          // Budget match
-          if (property.price && (c.budget_min || c.budget_max)) {
-            const sameCurrency =
-              !property.currency ||
-              !c.budget_currency ||
-              property.currency === c.budget_currency;
-            if (sameCurrency) {
-              const inMin = !c.budget_min || property.price >= c.budget_min;
-              const BUDGET_TOLERANCE = 1.15;
-              if (inMin) {
-                if (!c.budget_max || property.price <= c.budget_max) {
-                  reasons.push(`💰 Presupuesto compatible`);
-                } else if (c.budget_max && property.price <= c.budget_max * BUDGET_TOLERANCE) {
-                  const overPercent = Math.round((property.price / c.budget_max - 1) * 100);
-                  reasons.push(`💰 Presupuesto negociable (~${overPercent}% sobre máx.)`);
-                }
-              }
-            }
-          }
-
-          // Property type match
-          if (effectiveTypeTokens.length > 0 && c.property_type_interest) {
+          // Type — MANDATORY if client has type preference
+          if (c.property_type_interest) {
             const clientInterests = c.property_type_interest
               .split(",")
               .map((t: string) => t.trim())
               .filter(Boolean);
             const clientTokens = clientInterests.flatMap(normalizePropertyType);
-            const hasOverlap = effectiveTypeTokens.some((pt) => clientTokens.includes(pt));
-            if (hasOverlap) {
-              reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
+
+            const allTypeTokens = [...effectiveTypeTokens];
+            if (allTypeTokens.length === 0 && property.title) {
+              allTypeTokens.push(...extractTypeFromTitle(property.title));
             }
+
+            if (allTypeTokens.length === 0 || !allTypeTokens.some((pt) => clientTokens.includes(pt))) {
+              continue; // No type match → skip entirely
+            }
+            reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
           }
+
+          // Budget match
 
           // --- Always check notes as supplement ---
           if (c.notes) {
