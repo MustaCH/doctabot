@@ -150,6 +150,53 @@ interface ClientRow {
   notes: string | null;
 }
 
+function buildClientSearchSummary(client: ClientRow): string {
+  const parts: string[] = [];
+
+  // Tipo
+  const types = client.property_type_interest
+    ?.split(",").map((t) => t.trim()).filter(Boolean) || [];
+  if (types.length === 0 && client.notes) {
+    const noteTypes = extractTypeFromTitle(client.notes);
+    if (noteTypes.length) types.push(...noteTypes);
+  }
+
+  // Zonas
+  const zones = client.preferred_zones
+    ?.split(",").map((z) => z.trim()).filter(Boolean) || [];
+  if (client.notes) {
+    const noteZones = extractClientZonesFromNotes(client.notes);
+    for (const z of noteZones) {
+      if (!zones.some((ez) => ez.toLowerCase() === z)) zones.push(z);
+    }
+  }
+
+  // Construir texto tipo + zona
+  const typeStr = types.length
+    ? types.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join("/")
+    : null;
+  const zoneStr = zones.length ? zones.join(", ") : null;
+  if (typeStr && zoneStr) parts.push(`${typeStr} en ${zoneStr}`);
+  else if (typeStr) parts.push(typeStr);
+  else if (zoneStr) parts.push(`en ${zoneStr}`);
+
+  // Presupuesto
+  if (client.budget_max) {
+    const curr = client.budget_currency || "USD";
+    parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
+  } else if (client.budget_min) {
+    const curr = client.budget_currency || "USD";
+    parts.push(`Desde ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
+  }
+
+  // Fallback: si no hay datos estructurados, usar notas
+  if (parts.length === 0 && client.notes) {
+    return `🔍 **Busca:** ${client.notes.substring(0, 100)}`;
+  }
+
+  return parts.length ? `🔍 **Busca:** ${parts.join(" · ")}` : "";
+}
+
 function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
   const effectiveZone =
     property.zone
@@ -371,8 +418,10 @@ serve(async (req) => {
         // Build message content
         const lines: string[] = [
           `🔔 **Nuevas propiedades para ${client.full_name}**\n`,
-          `Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""} con los intereses de tu cliente:\n`,
         ];
+        const summary = buildClientSearchSummary(client);
+        if (summary) lines.push(`${summary}\n`);
+        lines.push(`Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""}:\n`);
 
         for (const { prop, reasons } of matchedProps.slice(0, 5)) {
           lines.push(formatPropertyLine(prop));
