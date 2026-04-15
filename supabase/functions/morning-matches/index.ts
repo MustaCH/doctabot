@@ -602,8 +602,157 @@ serve(async (req) => {
           console.error(`Push notification failed for user ${userId}:`, pushErr);
         }
       }
-    }
+      }
 
+      // ========== SELLER-TO-BUYER MATCHING ==========
+      // 7. Get this user's seller clients
+      const { data: sellers } = await admin
+        .from("clients")
+        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
+        .eq("user_id", userId)
+        .eq("client_type", "seller");
+
+      if (sellers && sellers.length > 0) {
+        // Get buyers for cross-matching
+        const { data: buyers } = await admin
+          .from("clients")
+          .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes, phone, email, status")
+          .eq("user_id", userId)
+          .neq("client_type", "seller");
+
+        if (buyers && buyers.length > 0) {
+          // Get already-notified seller-buyer pairs (stored as client_id=seller, property_id=buyer)
+          const { data: sellerNotified } = await admin
+            .from("notified_matches")
+            .select("client_id, property_id")
+            .eq("user_id", userId);
+
+          const sellerNotifiedSet = new Set(
+            (sellerNotified || []).map((r: any) => `${r.client_id}:${r.property_id}`)
+          );
+
+          let sellerMatchCount = 0;
+
+          for (const seller of sellers as ClientRow[]) {
+            const matchedBuyers: { buyer: ClientRow & { phone?: string; email?: string }; reasons: string[] }[] = [];
+
+            for (const buyer of buyers as (ClientRow & { phone?: string; email?: string })[]) {
+              // Skip if already notified (seller_id:buyer_id)
+              if (sellerNotifiedSet.has(`${seller.id}:${buyer.id}`)) continue;
+
+              const reasons = findSellerBuyerMatchReasons(seller, buyer);
+              if (reasons.length >= 2) {
+                matchedBuyers.push({ buyer, reasons });
+              }
+            }
+
+            if (matchedBuyers.length === 0) continue;
+
+            // Find or create conversation for this seller
+            const { data: existingConv } = await admin
+              .from("conversations")
+              .select("id")
+              .eq("user_id", userId)
+              .eq("client_id", seller.id)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            let convId: string;
+            if (existingConv) {
+              convId = existingConv.id;
+            } else {
+              const { data: newConv, error: convErr } = await admin
+                .from("conversations")
+                .insert({
+                  user_id: userId,
+                  title: `🔔 Compradores para ${seller.full_name}`,
+                  client_id: seller.id,
+                  conversation_type: "proactive_match",
+                })
+                .select("id")
+                .single();
+
+              if (convErr) {
+                console.error(`Failed to create conv for seller ${seller.id}:`, convErr);
+                continue;
+              }
+              convId = newConv.id;
+            }
+
+            // Build seller match message
+            const lines: string[] = [
+              `🔔 **Posibles compradores para el inmueble de ${seller.full_name}**\n`,
+            ];
+            const sellerSummary = buildSellerSummary(seller);
+            if (sellerSummary) lines.push(`${sellerSummary}\n`);
+            lines.push(`Encontré ${matchedBuyers.length} comprador${matchedBuyers.length > 1 ? "es" : ""} que podría${matchedBuyers.length > 1 ? "n" : ""} estar interesado${matchedBuyers.length > 1 ? "s" : ""}:\n`);
+
+            for (const { buyer, reasons } of matchedBuyers.slice(0, 5)) {
+              lines.push(formatBuyerLine(buyer));
+              lines.push(`_Coincide por: ${reasons.join(", ")}_\n`);
+            }
+
+            if (matchedBuyers.length > 5) {
+              lines.push(`\n_...y ${matchedBuyers.length - 5} comprador${matchedBuyers.length - 5 > 1 ? "es" : ""} más._`);
+            }
+
+            lines.push("\n¿Querés que te prepare un mensaje para contactar a alguno?");
+
+            await admin.from("messages").insert({
+              conversation_id: convId,
+              role: "assistant",
+              content: lines.join("\n"),
+            });
+
+            await admin
+              .from("conversations")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", convId);
+
+            // Record notified seller-buyer pairs (reuse notified_matches: client_id=seller, property_id=buyer)
+            const notifyRecords = matchedBuyers.slice(0, 5).map(({ buyer }) => ({
+              user_id: userId,
+              client_id: seller.id,
+              property_id: buyer.id, // buyer id stored as property_id for dedup
+            }));
+            await admin.from("notified_matches").upsert(notifyRecords, {
+              onConflict: "user_id,client_id,property_id",
+              ignoreDuplicates: true,
+            });
+
+            sellerMatchCount++;
+            totalMatches++;
+          }
+
+          // Push notification for seller matches
+          if (sellerMatchCount > 0) {
+            const sellerNames = (sellers as ClientRow[])
+              .filter((s) => true)
+              .map((s) => s.full_name)
+              .slice(0, 3);
+            const extra = sellerMatchCount > 3 ? ` y ${sellerMatchCount - 3} más` : "";
+
+            try {
+              await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${serviceKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  user_id: userId,
+                  title: "🔔 Compradores encontrados",
+                  body: `Encontré compradores para ${sellerNames.join(", ")}${extra}`,
+                  url: "/chat",
+                }),
+              });
+            } catch (pushErr) {
+              console.error(`Push notification (seller) failed for user ${userId}:`, pushErr);
+            }
+          }
+        }
+      }
     console.log(`Morning matches completed: ${totalMatches} client-match groups created`);
 
     return new Response(JSON.stringify({ matches: totalMatches }), {
