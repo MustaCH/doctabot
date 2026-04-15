@@ -1,103 +1,73 @@
 
 
-## Mejorar mensaje inicial de Morning Matches con contexto del cliente
+## Problema: Morning Matches no distingue Compradores de Vendedores
 
-### Problema
-El mensaje dice "Encontré X propiedades que coinciden con los intereses de tu cliente" pero no dice **cuáles** son esos intereses. El agente no sabe por qué matchean sin leer cada "Coincide por".
+### Diagnóstico
 
-### Solución
-Agregar un resumen de la búsqueda del cliente después del título, construido dinámicamente desde sus datos estructurados y notas.
+El código actual en `morning-matches/index.ts` **excluye completamente a los vendedores** (líneas 335 y 348: `.neq("client_type", "seller")`). Solo procesa compradores y los matchea contra propiedades nuevas.
 
-### Cambio en `supabase/functions/morning-matches/index.ts`
+Pero un **vendedor** necesita un match diferente: no busca propiedades para comprar, sino **compradores interesados en lo que él vende**. En el caso de Valentín Minguez (vendedor, notas: "Lote Docta Parque"), el sistema debería encontrar clientes compradores que buscan lotes en Docta — no mostrarle propiedades en venta.
 
-Agregar función `buildClientSearchSummary` que genere una línea como:
+### Solución: Flujo dual de matching
 
-> 🔍 **Busca:** Duplex en Docta, hasta USD 110.000
+**Para compradores** (flujo actual): Propiedad nueva → matchear con clientes compradores por zona/tipo/presupuesto.
 
-Construida desde:
-- `preferred_zones` + zonas extraídas de `notes` → zonas
-- `property_type_interest` + tipos extraídos de `notes` → tipo
-- `budget_min` / `budget_max` + `budget_currency` → presupuesto
-- Si todo está vacío, mostrar la línea de notas directamente
+**Para vendedores** (flujo nuevo): Clientes compradores nuevos o propiedades nuevas del catálogo → buscar compradores que coincidan con lo que el vendedor ofrece. Pero esto es más complejo porque no sabemos el precio/zona exacta del vendedor desde sus datos estructurados.
 
-Ejemplo de output:
-```
-🔔 **Nuevas propiedades para Aldana Ludueña**
+**Enfoque práctico**: Como los datos del vendedor suelen estar en `notes` (ej: "Lote Docta Parque"), el matching de vendedores cruzaría:
+1. Extraer del vendedor: tipo de propiedad que vende y zona (desde `notes`, `property_type_interest`, `preferred_zones`)
+2. Buscar **clientes compradores** del mismo agente que buscan ese tipo en esa zona
+3. Generar un mensaje diferente: "Encontré X compradores interesados en lo que vende tu cliente"
 
-🔍 **Busca:** Duplex en Docta · Hasta USD 110.000
+### Cambios en `supabase/functions/morning-matches/index.ts`
 
-Encontré 3 propiedades que coinciden:
-
-🏠 **VENTA DUPLEX 3 DORM...**
-💰 USD 105.000
-📍 Docta
-🔗 [Ver propiedad](url)
-_Coincide por: 📍 Zona: docta, 💰 Presupuesto compatible, 🏗️ Tipo: duplex_
-```
-
-### Implementación
-
-En el bloque de construcción del mensaje (líneas 372-375), insertar después del título:
+**1. Nuevo flujo para vendedores** después del flujo de compradores:
 
 ```typescript
-function buildClientSearchSummary(client: ClientRow): string {
-  const parts: string[] = [];
-  
-  // Tipo
-  const types = client.property_type_interest
-    ?.split(",").map(t => t.trim()).filter(Boolean) || [];
-  // Extraer tipo de notas si no hay estructurado
-  if (types.length === 0 && client.notes) {
-    const noteTypes = extractTypeFromTitle(client.notes);
-    if (noteTypes.length) types.push(...noteTypes);
-  }
-  
-  // Zonas
-  const zones = client.preferred_zones
-    ?.split(",").map(z => z.trim()).filter(Boolean) || [];
-  if (client.notes) {
-    const noteZones = extractClientZonesFromNotes(client.notes);
-    for (const z of noteZones) {
-      if (!zones.some(ez => ez.toLowerCase() === z)) zones.push(z);
-    }
-  }
-  
-  // Construir texto tipo + zona
-  const typeStr = types.length ? types.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join("/") : null;
-  const zoneStr = zones.length ? zones.join(", ") : null;
-  if (typeStr && zoneStr) parts.push(`${typeStr} en ${zoneStr}`);
-  else if (typeStr) parts.push(typeStr);
-  else if (zoneStr) parts.push(`en ${zoneStr}`);
-  
-  // Presupuesto
-  if (client.budget_max) {
-    const curr = client.budget_currency || "USD";
-    parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
-  } else if (client.budget_min) {
-    const curr = client.budget_currency || "USD";
-    parts.push(`Desde ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
-  }
-  
-  // Fallback: si no hay datos estructurados, usar notas
-  if (parts.length === 0 && client.notes) {
-    return `🔍 **Busca:** ${client.notes.substring(0, 100)}`;
-  }
-  
-  return parts.length ? `🔍 **Busca:** ${parts.join(" · ")}` : "";
-}
+// --- SELLER MATCHING: find buyers for sellers ---
+const { data: sellers } = await admin
+  .from("clients")
+  .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
+  .eq("user_id", userId)
+  .eq("client_type", "seller");
+
+const { data: buyers } = await admin
+  .from("clients")
+  .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes, phone, email, status")
+  .eq("user_id", userId)
+  .neq("client_type", "seller");
 ```
 
-Luego en las líneas del mensaje (372-375):
-```typescript
-const lines: string[] = [
-  `🔔 **Nuevas propiedades para ${client.full_name}**\n`,
-];
-const summary = buildClientSearchSummary(client);
-if (summary) lines.push(`${summary}\n`);
-lines.push(`Encontré ${matchedProps.length} propiedad${matchedProps.length > 1 ? "es" : ""} que coincide${matchedProps.length > 1 ? "n" : ""}:\n`);
+Para cada vendedor, extraer qué vende (tipo + zona desde notas/campos) y buscar compradores compatibles. Usar la misma lógica de zona obligatoria y tipo de propiedad.
+
+**2. Mensaje diferenciado para vendedores**:
+
+```
+🔔 **Posibles compradores para el inmueble de Valentín Minguez**
+
+🏷️ **Vende:** Lote en Docta
+
+Encontré 2 compradores que podrían estar interesados:
+
+👤 **Agustín Paz**
+🔍 Busca: Lote en Docta · Hasta USD 45.000
+📞 549351...
+_Coincide por: 📍 Zona: Docta, 🏗️ Tipo: lote_
+
+¿Querés que te prepare un mensaje para contactar a alguno?
 ```
 
-### Archivos
-- `supabase/functions/morning-matches/index.ts` — agregar `buildClientSearchSummary` y actualizar template del mensaje
+**3. Deduplicación**: Usar `notified_matches` con un esquema `seller_client_id + buyer_client_id` para no repetir notificaciones. Se puede reutilizar la misma tabla usando `property_id` como el `buyer_client_id` (o agregar una columna `match_type`).
+
+**4. Función `findSellerBuyerMatchReasons`**: Similar a `findMatchReasons` pero cruza los datos del vendedor (qué vende) contra los datos del comprador (qué busca).
+
+**5. `buildSellerSummary`**: Genera la línea "🏷️ **Vende:** Lote en Docta" desde los datos del vendedor.
+
+### Archivos a modificar
+- `supabase/functions/morning-matches/index.ts` — agregar flujo de vendedores, nuevo formato de mensaje, funciones auxiliares
 - Deploy de la edge function
+
+### Lo que NO cambia
+- El frontend `use-property-matches.ts` (matchea propiedades con clientes, no clientes con clientes)
+- El flujo de compradores existente sigue igual
 
