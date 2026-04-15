@@ -33,6 +33,9 @@ function buildPropertyUrl(url: string, agentCode?: string | null): string {
 
 /** Try to parse a markdown block into structured property data */
 export function parsePropertyCard(md: string): PropertyCardProps | null {
+  // For multi-card messages, don't parse as single card
+  const houseCount = (md.match(/🏠/g) || []).length;
+  if (houseCount > 1) return null;
   // Must have at least a title line with 🏠
   if (!md.includes("🏠")) return null;
 
@@ -102,6 +105,88 @@ export function parsePropertyCard(md: string): PropertyCardProps | null {
 
   if (!title) return null;
   return { photo, title, office, price, location, surface, url, extras };
+}
+
+/** Parse a message with multiple property blocks (each starting with 🏠) into segments */
+export interface ContentSegment {
+  type: "text" | "property";
+  text?: string;
+  property?: PropertyCardProps;
+}
+
+export function parseMultiplePropertyCards(md: string): ContentSegment[] | null {
+  const houseCount = (md.match(/🏠/g) || []).length;
+  if (houseCount < 2) return null;
+
+  const segments: ContentSegment[] = [];
+  // Split by lines, group into property blocks and text blocks
+  const lines = md.split("\n");
+  let currentTextLines: string[] = [];
+  let currentPropLines: string[] = [];
+  let inPropertyBlock = false;
+
+  const flushText = () => {
+    const text = currentTextLines.join("\n").trim();
+    if (text) segments.push({ type: "text", text });
+    currentTextLines = [];
+  };
+
+  const flushProperty = () => {
+    if (currentPropLines.length === 0) return;
+    const propMd = currentPropLines.join("\n");
+    const parsed = parsePropertyCard(propMd);
+    if (parsed) {
+      segments.push({ type: "property", property: parsed });
+    } else {
+      // Fallback: render as text
+      const text = propMd.trim();
+      if (text) segments.push({ type: "text", text });
+    }
+    currentPropLines = [];
+  };
+
+  for (const line of lines) {
+    if (line.includes("🏠")) {
+      // Starting a new property block
+      if (inPropertyBlock) {
+        flushProperty();
+      } else {
+        flushText();
+      }
+      inPropertyBlock = true;
+      currentPropLines = [line];
+    } else if (inPropertyBlock) {
+      // Check if this line is still part of the property block (emoji-prefixed or empty)
+      const trimmed = line.trim();
+      if (
+        trimmed === "" ||
+        trimmed.startsWith("💰") ||
+        trimmed.startsWith("📍") ||
+        trimmed.startsWith("📐") ||
+        trimmed.startsWith("🔗") ||
+        trimmed.startsWith("🏢") ||
+        /^!\[/.test(trimmed)
+      ) {
+        currentPropLines.push(line);
+      } else {
+        // End of property block
+        flushProperty();
+        inPropertyBlock = false;
+        currentTextLines.push(line);
+      }
+    } else {
+      currentTextLines.push(line);
+    }
+  }
+
+  // Flush remaining
+  if (inPropertyBlock) {
+    flushProperty();
+  } else {
+    flushText();
+  }
+
+  return segments.length > 0 ? segments : null;
 }
 
 const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, whatsappPhone }: PropertyCardProps) => {

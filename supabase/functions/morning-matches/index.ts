@@ -239,14 +239,16 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
 }
 
 function formatPropertyLine(p: PropertyRow): string {
-  const parts: string[] = [];
-  if (p.title) parts.push(`**${p.title}**`);
-  if (p.price) parts.push(`${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
-  if (p.address) parts.push(p.address);
-  if (p.m2_total) parts.push(`${p.m2_total} m²`);
-  if (p.ambientes) parts.push(`${p.ambientes} amb.`);
-  if (p.url) parts.push(`[Ver propiedad](${p.url})`);
-  return parts.join(" · ");
+  const lines: string[] = [];
+  if (p.title) lines.push(`🏠 **${p.title}**`);
+  if (p.price) lines.push(`💰 ${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
+  if (p.address) lines.push(`📍 ${p.address}`);
+  const surfaceParts: string[] = [];
+  if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
+  if (p.ambientes) surfaceParts.push(`${p.ambientes} amb.`);
+  if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
+  if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
+  return lines.join("\n");
 }
 
 // ---- Main handler ----
@@ -373,7 +375,7 @@ serve(async (req) => {
         ];
 
         for (const { prop, reasons } of matchedProps.slice(0, 5)) {
-          lines.push(`---\n${formatPropertyLine(prop)}`);
+          lines.push(formatPropertyLine(prop));
           lines.push(`_Coincide por: ${reasons.join(", ")}_\n`);
         }
 
