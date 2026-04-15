@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useConversations } from "@/hooks/use-conversations";
 import { useChatMessages } from "@/hooks/use-chat-messages";
