@@ -55,7 +55,7 @@ function extractZoneFromTitle(title: string): string | null {
   // Common zone/neighborhood keywords in Córdoba real estate
   const zonePatterns = [
     // Desarrollos / countries conocidos
-    /\b(docta(?:\s+central)?)\b/i,
+    /\b(docta)\b/i,
     /\b(manantiales)\b/i,
     /\b(valle escondido)\b/i,
     /\b(housing)\b/i,
@@ -180,6 +180,40 @@ function extractTypeFromTitle(title: string): string[] {
   return [...new Set(tokens)];
 }
 
+/** Extract zone keywords from client notes */
+function extractClientZonesFromNotes(notes: string): string[] {
+  const lower = notes.toLowerCase();
+  const zones: string[] = [];
+  const zonePatterns = [
+    /\b(docta)\b/i, /\b(manantiales)\b/i, /\b(valle escondido)\b/i,
+    /\b(greenville)\b/i, /\b(claros del bosque)\b/i, /\b(siete soles)\b/i,
+    /\b(la calandria)\b/i, /\b(la cascada)\b/i, /\b(jardín claret)\b/i,
+    /\b(jardin claret)\b/i, /\b(lomas de la carolina)\b/i, /\b(la rufina)\b/i,
+    /\b(cinco lomas)\b/i, /\b(causana)\b/i, /\b(altos del chateau)\b/i,
+    /\b(chacras del norte)\b/i, /\b(tierra alta)\b/i, /\b(cuesta colorada)\b/i,
+    /\b(nuevo poeta)\b/i, /\b(poeta lugones)\b/i,
+    /\b(arguello)\b/i, /\b(argüello)\b/i, /\b(villa allende)\b/i,
+    /\b(mendiolaza)\b/i, /\b(unquillo)\b/i, /\b(villa warcalde)\b/i,
+    /\b(cerro de las rosas)\b/i,
+    /\b(nueva córdoba)\b/i, /\b(nueva cordoba)\b/i,
+    /\b(general paz)\b/i, /\b(alto alberdi)\b/i, /\b(alberdi)\b/i,
+    /\b(alta córdoba)\b/i, /\b(alta cordoba)\b/i,
+    /\b(güemes)\b/i, /\b(guemes)\b/i, /\b(cofico)\b/i,
+    /\b(san vicente)\b/i, /\b(observatorio)\b/i,
+    /\b(villa cabrera)\b/i, /\b(urca)\b/i, /\b(villa belgrano)\b/i,
+    /\b(barrio jardín)\b/i, /\b(barrio jardin)\b/i,
+    /\b(saldán)\b/i, /\b(saldan)\b/i,
+    /\b(río ceballos)\b/i, /\b(rio ceballos)\b/i,
+    /\b(la calera)\b/i, /\b(villa carlos paz)\b/i,
+    /\b(centro)\b/i,
+  ];
+  for (const pattern of zonePatterns) {
+    const match = lower.match(pattern);
+    if (match) zones.push(match[1].toLowerCase());
+  }
+  return [...new Set(zones)];
+}
+
 /** Check if two zones match (case-insensitive, trimmed, also partial) */
 function zonesMatch(propertyZone: string, clientZone: string): boolean {
   const pz = propertyZone.trim().toLowerCase();
@@ -275,7 +309,7 @@ export function usePropertyMatches() {
         const baseTypeTokens = property.property_type
           ? normalizePropertyType(property.property_type)
           : [];
-        const titleTypeTokens = property.title ? extractTypeFromTitle(property.title) : [];
+        const titleTypeTokens = (!property.property_type && property.title) ? extractTypeFromTitle(property.title) : [];
         const effectiveTypeTokens = [...new Set([...baseTypeTokens, ...titleTypeTokens])];
 
         const matched: MatchedClient[] = [];
@@ -286,17 +320,19 @@ export function usePropertyMatches() {
 
           const reasons: string[] = [];
 
-          // --- Structured data matching ---
+          // --- Build client zones from structured data + notes ---
+          const structuredZones = c.preferred_zones
+            ? c.preferred_zones.split(",").map((z: string) => z.trim()).filter(Boolean)
+            : [];
+          const noteZones = c.notes ? extractClientZonesFromNotes(c.notes) : [];
+          const allClientZones = [...new Set([...structuredZones, ...noteZones])];
 
-          // Zone match
-          if (effectiveZone && c.preferred_zones) {
-            const clientZones = c.preferred_zones
-              .split(",")
-              .map((z: string) => z.trim())
-              .filter(Boolean);
-            if (clientZones.some((z: string) => zonesMatch(effectiveZone, z))) {
-              reasons.push(`📍 Zona: ${effectiveZone}`);
+          // Zone — MANDATORY if client has zone preferences
+          if (allClientZones.length > 0) {
+            if (!effectiveZone || !allClientZones.some((z: string) => zonesMatch(effectiveZone, z))) {
+              continue; // No zone match → skip entirely
             }
+            reasons.push(`📍 Zona: ${effectiveZone}`);
           }
 
           // Budget match
