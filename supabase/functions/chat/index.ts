@@ -2485,22 +2485,57 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
             user_id: userId,
             title: "Alan respondió",
             body: finalContent.slice(0, 100).replace(/[#*_`]/g, "") + (finalContent.length > 100 ? "…" : ""),
-            url: `/chat?c=${conversationId}`,
+            url: `/?c=${conversationId}`,
           }),
         }).catch((err: unknown) => console.error("Push notification error:", err));
       }
       return buildSSEResponse(finalContent);
     }
 
-    // Fallback: stream from AI directly
-    const streamResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    // Fallback: generate non-streaming response so we can persist it
+    const fallbackResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-flash", messages: currentMessages, stream: true }),
+      body: JSON.stringify({ model: "gemini-2.5-flash", messages: currentMessages, stream: false }),
     });
 
-    if (!streamResponse.ok) throw new Error(`Stream error: ${streamResponse.status}`);
-    return new Response(streamResponse.body, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+    if (!fallbackResponse.ok) throw new Error(`Fallback error: ${fallbackResponse.status}`);
+    const fallbackData = await fallbackResponse.json();
+    const fallbackContent = fallbackData.choices?.[0]?.message?.content || "Lo siento, no pude generar una respuesta. ¿Podés intentar de nuevo?";
+
+    // Persist fallback message
+    if (conversationId) {
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+      await supabaseAdmin.from("messages").insert({
+        conversation_id: conversationId,
+        role: "assistant",
+        content: fallbackContent,
+      });
+      await supabaseAdmin.from("conversations").update({
+        updated_at: new Date().toISOString(),
+      }).eq("id", conversationId);
+
+      // Send push notification for fallback too
+      const elapsed = Date.now() - requestStartTime;
+      if (elapsed > 3000 && userId) {
+        const pushUrl = `${supabaseUrl}/functions/v1/send-push-notification`;
+        fetch(pushUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            title: "Alan respondió",
+            body: fallbackContent.slice(0, 100).replace(/[#*_`]/g, "") + (fallbackContent.length > 100 ? "…" : ""),
+            url: `/?c=${conversationId}`,
+          }),
+        }).catch((err: unknown) => console.error("Push notification error:", err));
+      }
+    }
+
+    return buildSSEResponse(fallbackContent);
   } catch (e) {
     console.error("chat error:", e);
     return new Response(JSON.stringify({ error: "Error al procesar la solicitud" }), {

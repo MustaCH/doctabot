@@ -37,10 +37,14 @@ export function useChatMessages(
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
     if (data) {
+      const MSG_BREAK = "===MSG_BREAK===";
+      const LEGACY_BREAK = "\n\n---\n\n";
       const expanded: Msg[] = [];
       for (const msg of data) {
-        if (msg.role === "assistant" && msg.content.includes("\n\n---\n\n")) {
-          const parts = msg.content.split("\n\n---\n\n");
+        if (msg.role === "assistant" && (msg.content.includes(MSG_BREAK) || msg.content.includes(LEGACY_BREAK))) {
+          // Split by current separator first, then legacy
+          const separator = msg.content.includes(MSG_BREAK) ? MSG_BREAK : LEGACY_BREAK;
+          const parts = msg.content.split(separator);
           for (const part of parts) {
             if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
           }
@@ -68,17 +72,29 @@ export function useChatMessages(
     reloadMessagesFromDB(activeConvId);
   }, [activeConvId, reloadMessagesFromDB]);
 
-  // Auto-reload when app returns from background after stream interruption
+  // Auto-reload when app returns from background — always reload if there was
+  // a stream in progress OR if the app was hidden for any period
   useEffect(() => {
+    let hiddenSince: number | null = null;
     const handler = () => {
-      if (document.visibilityState === "visible" && streamInterruptedRef.current && activeConvId) {
+      if (document.visibilityState === "hidden") {
+        hiddenSince = Date.now();
+        return;
+      }
+      // Visible again
+      if (!activeConvId) return;
+      const wasInterrupted = streamInterruptedRef.current;
+      const wasHiddenLongEnough = hiddenSince && (Date.now() - hiddenSince) > 2000;
+      if (wasInterrupted || wasHiddenLongEnough) {
         reloadMessagesFromDB(activeConvId);
         streamInterruptedRef.current = false;
+        loadConversations();
       }
+      hiddenSince = null;
     };
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
-  }, [activeConvId, reloadMessagesFromDB]);
+  }, [activeConvId, reloadMessagesFromDB, loadConversations]);
 
   // Detect if an error is a network/background interruption (not user-initiated)
   const isBackgroundNetworkError = (err: any): boolean => {
