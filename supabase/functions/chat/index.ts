@@ -2170,12 +2170,23 @@ serve(async (req) => {
       ...buildAIMessages(messages),
     ];
 
+    // Resilient fetch: tries gemini-2.5-pro, falls back to gemini-2.5-flash on 5xx
+    const PRIMARY_MODEL = "gemini-2.5-pro";
+    const FALLBACK_MODEL = "gemini-2.5-flash";
+    const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+
+    const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
+      const res = await fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: PRIMARY_MODEL }) });
+      if (res.status >= 500) {
+        console.warn(`Primary model ${PRIMARY_MODEL} returned ${res.status}, falling back to ${FALLBACK_MODEL}`);
+        return fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: FALLBACK_MODEL }) });
+      }
+      return res;
+    };
+
     // First call – non-streaming to handle tool calls
-    let aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
-    });
+    let aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
@@ -2207,11 +2218,7 @@ serve(async (req) => {
         } catch { executedTools.push(tc.function.name); }
       }
 
-      aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, tools: toolDefinitions, stream: false }),
-      });
+      aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
 
       if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
       aiData = await aiResponse.json();
@@ -2393,11 +2400,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
           { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.${toolWarning}` }
         ];
 
-        const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gemini-2.5-pro", messages: retryMessages, stream: false }),
-        });
+        const retryRes = await resilientAIFetch({ messages: retryMessages, stream: false });
 
         if (retryRes.ok) {
           const retryData = await retryRes.json();
@@ -2492,12 +2495,7 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
       return buildSSEResponse(finalContent);
     }
 
-    // Fallback: generate non-streaming response so we can persist it
-    const fallbackResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gemini-2.5-pro", messages: currentMessages, stream: false }),
-    });
+    const fallbackResponse = await resilientAIFetch({ messages: currentMessages, stream: false });
 
     if (!fallbackResponse.ok) throw new Error(`Fallback error: ${fallbackResponse.status}`);
     const fallbackData = await fallbackResponse.json();
