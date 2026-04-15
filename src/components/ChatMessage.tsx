@@ -330,7 +330,7 @@ const AssistantContent = memo(({ content }: { content: string }) => {
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
   const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
-  const draftBlock = useMemo(() => !propertyData && !multiCards ? extractDraftBlock(processedContent) : null, [processedContent, propertyData, multiCards]);
+  const draftSegments = useMemo(() => !propertyData && !multiCards ? extractMultipleDraftBlocks(processedContent) : null, [processedContent, propertyData, multiCards]);
 
   if (multiCards) {
     return (
@@ -354,21 +354,19 @@ const AssistantContent = memo(({ content }: { content: string }) => {
     return <PropertyCard {...propertyData} agentCode={agentCode} />;
   }
 
-  if (draftBlock) {
+  if (draftSegments) {
     return (
       <div>
-        {draftBlock.intro && (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] mb-2">
-            <ReactMarkdown components={{
-              a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
-            }}>{draftBlock.intro}</ReactMarkdown>
-          </div>
-        )}
-        <CopyableDraft draft={draftBlock.draft} whatsappNumber={draftBlock.whatsappNumber} />
-        {draftBlock.outro && (
-          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 overflow-hidden break-words [word-break:break-word] mt-2">
-            <ReactMarkdown>{draftBlock.outro}</ReactMarkdown>
-          </div>
+        {draftSegments.map((seg, i) =>
+          seg.type === "draft" ? (
+            <CopyableDraft key={i} draft={seg.draft} whatsappNumber={seg.whatsappNumber} />
+          ) : (
+            <div key={i} className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] my-2">
+              <ReactMarkdown components={{
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
+              }}>{seg.text}</ReactMarkdown>
+            </div>
+          )
         )}
       </div>
     );
