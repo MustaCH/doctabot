@@ -1,60 +1,95 @@
+<final-text>
+## Hallazgos
+Identifiqué 4 causas probables del problema:
 
+1. **Las push están fallando en backend**
+   - Hay errores reales de entrega: `VapidPkHashMismatch`.
+   - Eso significa que las suscripciones guardadas y la clave VAPID usada para enviar notificaciones **no están alineadas**.
+   - Mientras eso siga así, **la notificación no va a llegar**.
 
-## Fix: Error al reconectar con Alan al volver a la PWA
+2. **Existe una ruta de respuesta que no persiste el mensaje**
+   - En `supabase/functions/chat/index.ts` hay un fallback final que hace:
+   - `return new Response(streamResponse.body...)`
+   - Esa ruta **streamea directo desde la IA** y **saltea** la persistencia del mensaje, la actualización de la conversación y la notificación.
+   - Si Alan cae en esa ruta y el usuario sale de la app, el mensaje puede quedar **vacío, parcial o directamente perderse**.
 
-### Problema
-Cuando el usuario minimiza la PWA mientras Alan procesa, el SO móvil corta la conexión de red del fetch stream. Al volver, el `reader.read()` falla con un error de red, que cae en el catch genérico mostrando "Error al conectar con Alan". Pero Alan ya puede haber terminado y guardado su respuesta en la DB.
+3. **El deep link de la notificación apunta a una ruta incorrecta**
+   - Hoy se envía `url: /chat?c=...`
+   - Pero la app usa `"/"` como pantalla de chat, no `"/chat"`.
+   - Incluso si la push empezara a llegar, el click no abriría correctamente la conversación.
 
-### Solución
+4. **La recuperación del chat al volver no es lo bastante robusta**
+   - `use-chat-messages.ts` solo recarga ante ciertos errores de red.
+   - Además, al rehidratar mensajes desde DB sigue separando por `---`, mientras el protocolo actual usa `===MSG_BREAK===`.
+   - Eso puede causar recuperación incompleta o render inconsistente.
 
-**Detectar que el error fue por desconexión (app en segundo plano) y recargar mensajes desde la DB en vez de mostrar error.**
+## Plan
+### 1) Blindar la generación para que siempre haya persistencia
+Modificar `supabase/functions/chat/index.ts` para que **toda** respuesta de Alan termine en el mismo flujo:
+- obtener contenido final
+- guardarlo en base de datos
+- actualizar `updated_at`
+- disparar notificación si corresponde
+- recién después devolverlo al cliente
 
-#### 1. `src/hooks/use-chat-messages.ts` — Catch inteligente
+Puntualmente:
+- eliminar o reemplazar la ruta fallback que hoy transmite directo sin persistir
+- si el primer intento no devuelve `finalContent`, hacer una generación alternativa **cerrada** en backend hasta obtener texto final
+- si aun así no hubiera contenido, registrar el error y devolver una salida controlada, pero **nunca** dejar una respuesta “en el aire”
 
-En ambos catch blocks (texto y audio):
-- Detectar si el error es de red (`TypeError` con message de network/fetch, o `AbortError` no intencional)
-- Añadir un listener de `visibilitychange` que, al volver visible, recargue los mensajes desde la DB para esa conversación
-- No mostrar toast de error si el documento estaba oculto cuando ocurrió el fallo
-- Limpiar `isStreaming` correctamente
+### 2) Corregir el sistema de notificaciones push
+Actualizar el flujo de push para que cliente y backend usen la **misma identidad VAPID**:
+- alinear la clave pública usada en `src/hooks/use-push-notifications.ts` con la del backend
+- validar que el par de claves del backend sea consistente
+- limpiar o invalidar suscripciones viejas que quedaron asociadas a otra clave
+- forzar o automatizar la re-suscripción del dispositivo cuando detectemos desalineación
 
-Lógica concreta:
-```typescript
-// En el catch:
-const wasHidden = document.visibilityState === "hidden";
-if (err.name === "AbortError" && !abortRef.current?.signal.aborted) {
-  // Network killed by OS, not user-initiated abort
-  // Reload messages from DB when app becomes visible
-} else if (wasHidden || err.message?.includes("network") || err instanceof TypeError) {
-  // App was backgrounded, network dropped
-}
-```
+Esto resuelve el `VapidPkHashMismatch`.
 
-#### 2. `src/hooks/use-chat-messages.ts` — Auto-reload on visibility restore
+### 3) Arreglar la apertura de conversación desde notificación
+Cambiar el link push a algo compatible con la app actual, por ejemplo:
+- `/?c=<conversationId>`
 
-Agregar un efecto que, cuando `isStreaming` es true y el documento vuelve a ser visible tras estar oculto, recargue los mensajes desde la DB:
+Y luego:
+- leer ese parámetro al abrir el chat
+- activar esa conversación automáticamente
+- limpiar el parámetro una vez aplicado para no dejarlo persistido en la URL
 
-```typescript
-useEffect(() => {
-  const handler = () => {
-    if (document.visibilityState === "visible" && streamInterruptedRef.current && activeConvId) {
-      // Reload messages from DB
-      reloadMessagesFromDB(activeConvId);
-      streamInterruptedRef.current = false;
-    }
-  };
-  document.addEventListener("visibilitychange", handler);
-  return () => document.removeEventListener("visibilitychange", handler);
-}, [activeConvId]);
-```
+### 4) Hacer más robusta la recuperación al volver a la app
+Reforzar `src/hooks/use-chat-messages.ts` para que, cuando el usuario vuelva al foreground:
+- recargue mensajes si había una respuesta en curso, aunque no haya habido error visible
+- refresque también la lista de conversaciones
+- use el separador actual `===MSG_BREAK===` al reconstruir mensajes guardados
 
-#### 3. Función de recarga desde DB
+Así, si Alan terminó mientras la app estaba minimizada, al volver se verá la respuesta real guardada en base de datos.
 
-Extraer la lógica de carga de mensajes (ya existente en el useEffect de `activeConvId`) a una función reutilizable que se pueda llamar tanto al cambiar de conversación como al recuperarse de una interrupción.
+### 5) Verificación end-to-end
+Probar estos escenarios después de implementar:
+- salir y volver rápido mientras Alan sigue escribiendo
+- salir y esperar a que termine
+- recibir notificación con la app minimizada
+- tocar la notificación y abrir la conversación correcta
+- confirmar que el mensaje ya está guardado aunque el stream se haya cortado
 
-### Archivos a modificar
+## Archivos a tocar
+- `supabase/functions/chat/index.ts`
+- `supabase/functions/send-push-notification/index.ts`
+- `src/hooks/use-push-notifications.ts`
 - `src/hooks/use-chat-messages.ts`
+- `src/pages/Chat.tsx` o `src/hooks/use-conversations.ts` para leer `?c=...`
 
-### Resultado esperado
-- Si Alan terminó mientras la app estaba en segundo plano → al volver se ve la respuesta completa sin error
-- Si Alan no terminó (edge function también cortada) → al volver se ven los mensajes hasta donde llegaron, sin toast de error confuso
+## Resultado esperado
+- Alan no vuelve a “perder” respuestas al salir de la app
+- la conversación no aparece vacía al regresar
+- no quedan mensajes parciales tipo `"!"`
+- la notificación llega cuando corresponde
+- al tocarla, abre la conversación correcta
 
+## Detalles técnicos
+- El problema principal no parece ser solo de UI: hay una combinación de **push rota + fallback sin persistencia**.
+- La evidencia más fuerte es:
+  - logs con `VapidPkHashMismatch`
+  - fallback en `chat/index.ts` que devuelve `streamResponse.body` sin guardar
+  - URL push apuntando a `/chat?c=...` aunque esa ruta no existe
+  - rehidratación local usando un separador viejo distinto al protocolo actual
+</final-text>
