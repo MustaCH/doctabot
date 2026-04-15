@@ -21,6 +21,7 @@ const Chat = () => {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { updateAvailable } = useSwUpdate();
 
   const {
