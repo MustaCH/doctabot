@@ -2325,9 +2325,9 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
             method: "POST",
             headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-pro",
-              messages: [
-                supervisorData.choices?.[0]?.message ? 
+              model: "gemini-2.5-flash-lite",
+            messages: [
+              supervisorData.choices?.[0]?.message ?
                   { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
                   { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response." },
                 { role: "user", content: `MENSAJE DEL USUARIO:\n${alanResponse.slice(0, 500)}\n\nEvaluá con la herramienta evaluate_response. Verdict: approved o rejected.` }
