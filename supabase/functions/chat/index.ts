@@ -2172,11 +2172,11 @@ serve(async (req) => {
       ...buildAIMessages(messages),
     ];
 
-    // Resilient fetch: tries gemini-2.5-pro, falls back to gemini-2.5-flash on 5xx
-    const PRIMARY_MODEL = "gemini-2.5-pro";
-    const FALLBACK_MODEL = "gemini-2.5-flash";
-    const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+    // Resilient fetch via Lovable AI Gateway: tries openai/gpt-5.2, falls back to gemini-2.5-flash on 5xx
+    const PRIMARY_MODEL = "openai/gpt-5.2";
+    const FALLBACK_MODEL = "google/gemini-2.5-flash";
+    const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const aiHeaders = { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" };
 
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
       const res = await fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: PRIMARY_MODEL }) });
