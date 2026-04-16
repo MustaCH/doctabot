@@ -2127,8 +2127,10 @@ serve(async (req) => {
 
   try {
     const { messages, conversationId } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    // Backwards-compat alias to minimize downstream changes
+    const GEMINI_API_KEY = LOVABLE_API_KEY;
 
     // Validate message lengths to prevent abuse
     if (Array.isArray(messages)) {
