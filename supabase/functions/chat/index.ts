@@ -2065,11 +2065,11 @@ async function generateTitle(
           ? messages[0].content.filter((c: any) => c.type === "text").map((c: any) => c.text).join(" ")
           : "";
 
-    const titleRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    const titleRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-2.5-flash",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
           { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
@@ -2127,8 +2127,10 @@ serve(async (req) => {
 
   try {
     const { messages, conversationId } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    // Backwards-compat alias to minimize downstream changes
+    const GEMINI_API_KEY = LOVABLE_API_KEY;
 
     // Validate message lengths to prevent abuse
     if (Array.isArray(messages)) {
@@ -2170,11 +2172,11 @@ serve(async (req) => {
       ...buildAIMessages(messages),
     ];
 
-    // Resilient fetch: tries gemini-2.5-pro, falls back to gemini-2.5-flash on 5xx
-    const PRIMARY_MODEL = "gemini-2.5-pro";
-    const FALLBACK_MODEL = "gemini-2.5-flash";
-    const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+    // Resilient fetch via Lovable AI Gateway: tries openai/gpt-5.2, falls back to gemini-2.5-flash on 5xx
+    const PRIMARY_MODEL = "openai/gpt-5.2";
+    const FALLBACK_MODEL = "google/gemini-2.5-flash";
+    const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const aiHeaders = { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" };
 
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
       const res = await fetch(AI_URL, { method: "POST", headers: aiHeaders, body: JSON.stringify({ ...body, model: PRIMARY_MODEL }) });
@@ -2249,11 +2251,11 @@ serve(async (req) => {
       const runSupervisor = async (alanResponse: string): Promise<{ verdict: string; score: number; reason: string }> => {
         const supervisorStart = Date.now();
         try {
-          const supervisorRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+          const supervisorRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
-            headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash",
+              model: "google/gemini-2.5-flash",
               messages: [
                 {
                   role: "system",
@@ -2328,11 +2330,11 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
           }
           // Retry once if supervisor didn't return a tool call
           console.warn("Supervisor did not return tool call, retrying...");
-          const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+          const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
-            headers: { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" },
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "gemini-2.5-flash",
+              model: "google/gemini-2.5-flash",
             messages: [
               supervisorData.choices?.[0]?.message ?
                   { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
