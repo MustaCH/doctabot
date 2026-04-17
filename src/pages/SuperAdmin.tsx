@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,13 +20,17 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 
-const ADMIN_PIN = "7742";
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`;
 
 async function adminFetch(pin: string, action: string, extra: Record<string, unknown> = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
   const res = await fetch(FUNCTION_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ pin, action, ...extra }),
   });
   if (!res.ok) throw new Error("Request failed");
@@ -89,16 +96,54 @@ interface MessageRow {
 const PAGE_SIZE = 25;
 
 const SuperAdmin = () => {
-  const [authed, setAuthed] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean | null>(null);
   const [pin, setPin] = useState("");
+  const [pinValidated, setPinValidated] = useState(false);
   const [pinError, setPinError] = useState(false);
+  const [validating, setValidating] = useState(false);
 
-  const handlePin = () => {
-    if (pin === ADMIN_PIN) { setAuthed(true); setPinError(false); }
-    else setPinError(true);
+  // Server-side role check (RLS on user_roles blocks public access, so we use the RPC).
+  useEffect(() => {
+    if (!user) { setIsSuperAdmin(false); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc("has_role", {
+        _user_id: user.id,
+        _role: "super_admin",
+      });
+      if (!cancelled) setIsSuperAdmin(!error && data === true);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Validate PIN against the edge function (which checks SUPER_ADMIN_PIN secret).
+  const handlePin = async () => {
+    if (!pin.trim()) return;
+    setValidating(true);
+    setPinError(false);
+    try {
+      await adminFetch(pin, "stats");
+      setPinValidated(true);
+    } catch {
+      setPinError(true);
+    } finally {
+      setValidating(false);
+    }
   };
 
-  if (!authed) {
+  if (authLoading || isSuperAdmin === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
+
+  if (!pinValidated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <div className="w-full max-w-xs space-y-4 rounded-xl border border-border bg-card p-6 shadow-lg">
@@ -112,9 +157,12 @@ const SuperAdmin = () => {
             onChange={(e) => { setPin(e.target.value); setPinError(false); }}
             onKeyDown={(e) => e.key === "Enter" && handlePin()}
             className={pinError ? "border-destructive" : ""} autoFocus
+            disabled={validating}
           />
           {pinError && <p className="text-xs text-destructive text-center">PIN incorrecto</p>}
-          <Button className="w-full" onClick={handlePin}>Acceder</Button>
+          <Button className="w-full" onClick={handlePin} disabled={validating}>
+            {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Acceder"}
+          </Button>
         </div>
       </div>
     );

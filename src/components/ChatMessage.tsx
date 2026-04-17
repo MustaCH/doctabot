@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState, useRef, useEffect } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { parsePropertyCard, parseMultiplePropertyCards } from "@/components/PropertyCard";
@@ -151,7 +151,7 @@ const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
   );
 };
 
-const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, onReply }: ChatMessageProps) => {
+const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -226,9 +226,7 @@ const ChatMessage = memo(({ role, content, attachments, audioUrl, isTranscribing
       </div>
     </div>
   );
-});
-
-ChatMessage.displayName = "ChatMessage";
+};
 
 const DRAFT_START = "<<<DRAFT_START>>>";
 const DRAFT_END = "<<<DRAFT_END>>>";
@@ -325,7 +323,7 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
 };
 
 /** Renders assistant content – detects property cards or falls back to markdown */
-const AssistantContent = memo(({ content }: { content: string }) => {
+const AssistantContent = ({ content }: { content: string }) => {
   const { agentCode } = useAuth();
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
@@ -380,7 +378,6 @@ const AssistantContent = memo(({ content }: { content: string }) => {
       }}>{processedContent}</ReactMarkdown>
     </div>
   );
-});
-AssistantContent.displayName = "AssistantContent";
+};
 
 export default ChatMessage;
