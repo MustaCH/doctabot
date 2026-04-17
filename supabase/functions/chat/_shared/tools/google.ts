@@ -76,6 +76,18 @@ export function buildCalendarEvent(args: {
   return body;
 }
 
+/** Normalize ISO-ish datetime strings; returns Date or null. */
+export function normalizeDatetime(input: string): Date | null {
+  if (!input) return null;
+  let s = String(input).trim();
+  // If only date provided (YYYY-MM-DD), assume 09:00 local
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s = `${s}T09:00:00-03:00`;
+  // If datetime without timezone, append Argentina offset (-03:00)
+  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) s = `${s}-03:00`;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /** Parse and validate start/end datetimes for calendar events */
 export function parseEventDates(args: any): { startDate: Date; endDate: Date } | { error: string } {
   const startStr = typeof args.start_datetime === "string" ? args.start_datetime : null;
