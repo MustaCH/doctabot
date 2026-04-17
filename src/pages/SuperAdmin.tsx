@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,13 +20,17 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 
-const ADMIN_PIN = "7742";
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-stats`;
 
 async function adminFetch(pin: string, action: string, extra: Record<string, unknown> = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
   const res = await fetch(FUNCTION_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ pin, action, ...extra }),
   });
   if (!res.ok) throw new Error("Request failed");

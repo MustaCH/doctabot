@@ -6,7 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const ADMIN_PIN = "7742";
+// PIN is read from env (SUPER_ADMIN_PIN secret). Fallback kept ONLY for backwards
+// compatibility during the rollout — remove after confirming secret is set in production.
+const ADMIN_PIN = Deno.env.get("SUPER_ADMIN_PIN") ?? "";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -17,7 +19,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { pin, action, page, pageSize, search, conversationId, userId } = body;
 
-    if (pin !== ADMIN_PIN) {
+    // Defense-in-depth: require BOTH a valid PIN AND a valid super_admin JWT in Authorization header.
+    if (!ADMIN_PIN || pin !== ADMIN_PIN) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -28,6 +31,35 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Verify caller is a super_admin (role-based check on top of PIN).
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: "Missing auth token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(jwt);
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: roleRow } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user.id)
+      .eq("role", "super_admin")
+      .maybeSingle();
+    if (!roleRow) {
+      return new Response(JSON.stringify({ error: "Forbidden: super_admin role required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const pg = page ?? 0;
     const ps = pageSize ?? 25;
