@@ -602,6 +602,42 @@ export type Database = {
         }
         Relationships: []
       }
+      push_delivery_logs: {
+        Row: {
+          created_at: string
+          endpoint_preview: string
+          error_message: string | null
+          http_status: number | null
+          id: string
+          pruned: boolean
+          status: string
+          trigger_source: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint_preview: string
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          pruned?: boolean
+          status: string
+          trigger_source?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint_preview?: string
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          pruned?: boolean
+          status?: string
+          trigger_source?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           auth: string
