@@ -200,9 +200,10 @@ serve(async (req) => {
         }).eq("id", conversationId);
       }
 
-      // Send push notification if response took >3s (fire-and-forget)
+      // Send push notification if response took >1.5s (fire-and-forget)
+      // Faster responses are assumed to mean the user is actively viewing the chat.
       const elapsed = Date.now() - requestStartTime;
-      if (elapsed > 3000 && userId && conversationId) {
+      if (elapsed > 1500 && userId && conversationId) {
         sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: finalContent });
       }
       return buildSSEResponse(finalContent);
@@ -228,7 +229,7 @@ serve(async (req) => {
 
       // Send push notification for fallback too
       const elapsed = Date.now() - requestStartTime;
-      if (elapsed > 3000 && userId) {
+      if (elapsed > 1500 && userId) {
         sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: fallbackContent });
       }
     }
