@@ -586,6 +586,53 @@ Deno.serve(async (req) => {
       return json({ data: data ?? [] });
     }
 
+    // ---------- LIST USERS WITH PUSH SUBSCRIPTIONS ----------
+    if (action === "push-subscribers") {
+      const { data: subs } = await supabaseAdmin
+        .from("push_subscriptions")
+        .select("user_id, endpoint, created_at");
+      const userIds = [...new Set((subs ?? []).map((s: any) => s.user_id))];
+      const { data: profiles } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds);
+      const nameMap: Record<string, string> = {};
+      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+      // Count subs per user
+      const countMap: Record<string, number> = {};
+      (subs ?? []).forEach((s: any) => {
+        countMap[s.user_id] = (countMap[s.user_id] ?? 0) + 1;
+      });
+      const users = userIds.map((uid) => ({
+        user_id: uid,
+        full_name: nameMap[uid] ?? "Sin nombre",
+        subscription_count: countMap[uid] ?? 0,
+      }));
+      return json({ users });
+    }
+
+    // ---------- SEND TEST PUSH NOTIFICATION ----------
+    if (action === "test-push") {
+      const targetUserId = body.targetUserId;
+      if (!targetUserId) return json({ error: "targetUserId required" }, 400);
+      const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`;
+      const res = await fetch(pushUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          user_id: targetUserId,
+          title: "🔔 Notificación de prueba",
+          body: "Si recibís esto, las notificaciones funcionan correctamente.",
+          url: "/",
+        }),
+      });
+      const result = await res.json().catch(() => ({}));
+      return json({ ok: res.ok, status: res.status, result });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (err) {
     return new Response(JSON.stringify({ error: "Internal error" }), {
