@@ -27,7 +27,7 @@ const Profile = () => {
   const [hasGmailScope, setHasGmailScope] = useState(true);
   const { updateAvailable, applyUpdate } = useSwUpdate();
   const [updating, setUpdating] = useState(false);
-  const { enabled: pushEnabled, loading: pushLoading, supported: pushSupported, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications();
+  const { enabled: pushEnabled, loading: pushLoading, supported: pushSupported, capability: pushCapability, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -297,38 +297,44 @@ const Profile = () => {
         </div>
 
         {/* Push Notifications */}
-        {pushSupported && (
-          <div className="md:max-w-sm">
-            <div className="rounded-lg border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {pushEnabled ? (
-                    <Bell className="h-4 w-4 text-primary" />
-                  ) : (
-                    <BellOff className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="text-sm font-medium">Notificaciones</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {pushLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                  <Switch
-                    checked={pushEnabled}
-                    disabled={pushLoading}
-                    onCheckedChange={(checked) => {
-                      if (checked) pushSubscribe();
-                      else pushUnsubscribe();
-                    }}
-                  />
-                </div>
+        <div className="md:max-w-sm">
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {pushEnabled ? (
+                  <Bell className="h-4 w-4 text-primary" />
+                ) : (
+                  <BellOff className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="text-sm font-medium">Notificaciones</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {pushEnabled
-                  ? "Recibirás notificaciones cuando Alan responda"
-                  : "Activá para recibir notificaciones de Alan"}
-              </p>
+              <div className="flex items-center gap-2">
+                {pushLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                <Switch
+                  checked={pushEnabled}
+                  disabled={pushLoading || !pushSupported}
+                  onCheckedChange={(checked) => {
+                    if (checked) pushSubscribe();
+                    else pushUnsubscribe();
+                  }}
+                />
+              </div>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {pushCapability.status === "ios-needs-install" ? (
+                <>Para recibir notificaciones en iPhone, agregá Alan a la pantalla de inicio (Compartir → "Agregar a inicio") y abrilo desde ahí.</>
+              ) : pushCapability.status === "ios-too-old" ? (
+                <>Tu iPhone tiene iOS {pushCapability.iosVersion ?? "desconocido"}. Las notificaciones web requieren iOS 16.4 o superior.</>
+              ) : pushCapability.status === "unsupported" ? (
+                <>Este navegador no soporta notificaciones push.</>
+              ) : pushEnabled ? (
+                "Recibirás notificaciones cuando Alan responda."
+              ) : (
+                "Activá para recibir notificaciones de Alan."
+              )}
+            </p>
           </div>
-        )}
+        </div>
 
 
         {/* Profile fields */}

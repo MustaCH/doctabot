@@ -590,23 +590,33 @@ Deno.serve(async (req) => {
     if (action === "push-subscribers") {
       const { data: subs } = await supabaseAdmin
         .from("push_subscriptions")
-        .select("user_id, endpoint, created_at");
+        .select("user_id, endpoint, device_label, is_standalone, platform, last_seen_at, created_at");
       const userIds = [...new Set((subs ?? []).map((s: any) => s.user_id))];
-      const { data: profiles } = await supabaseAdmin
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", userIds);
+      const { data: profiles } = userIds.length > 0
+        ? await supabaseAdmin
+            .from("profiles")
+            .select("user_id, full_name")
+            .in("user_id", userIds)
+        : { data: [] };
       const nameMap: Record<string, string> = {};
       (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
-      // Count subs per user
-      const countMap: Record<string, number> = {};
+      // Group subs per user with detail
+      const byUser: Record<string, any[]> = {};
       (subs ?? []).forEach((s: any) => {
-        countMap[s.user_id] = (countMap[s.user_id] ?? 0) + 1;
+        if (!byUser[s.user_id]) byUser[s.user_id] = [];
+        byUser[s.user_id].push({
+          endpoint_preview: (s.endpoint as string).slice(0, 60),
+          device_label: s.device_label ?? null,
+          is_standalone: s.is_standalone ?? null,
+          platform: s.platform ?? null,
+          last_seen_at: s.last_seen_at ?? s.created_at,
+        });
       });
       const users = userIds.map((uid) => ({
         user_id: uid,
         full_name: nameMap[uid] ?? "Sin nombre",
-        subscription_count: countMap[uid] ?? 0,
+        subscription_count: byUser[uid]?.length ?? 0,
+        devices: byUser[uid] ?? [],
       }));
       return json({ users });
     }

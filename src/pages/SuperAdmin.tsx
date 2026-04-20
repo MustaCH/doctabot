@@ -504,10 +504,18 @@ function ScrapingStatus({ pin }: { pin: string }) {
 }
 
 /* ==================== PUSH TEST PANEL ==================== */
+interface PushDevice {
+  endpoint_preview: string;
+  device_label: string | null;
+  is_standalone: boolean | null;
+  platform: string | null;
+  last_seen_at: string;
+}
 interface PushSubscriber {
   user_id: string;
   full_name: string;
   subscription_count: number;
+  devices: PushDevice[];
 }
 
 function PushTestPanel({ pin }: { pin: string }) {
@@ -543,12 +551,12 @@ function PushTestPanel({ pin }: { pin: string }) {
         sent: res.result?.sent,
         status: res.status,
         message: res.ok
-          ? `Enviada a ${res.result?.sent ?? 0} dispositivo(s)`
+          ? `Push aceptada por ${res.result?.sent ?? 0} dispositivo(s). En iOS solo se muestra si la app está instalada en la pantalla de inicio.`
           : `Error HTTP ${res.status}: ${res.result?.error ?? "Falló el envío"}`,
       });
       // Reload in case dead subs were pruned
       setTimeout(loadSubscribers, 500);
-    } catch (err) {
+    } catch {
       setResult({ ok: false, message: "Error de red" });
     }
     setSending(false);
@@ -592,6 +600,23 @@ function PushTestPanel({ pin }: { pin: string }) {
             </select>
           </div>
 
+          {selectedSub && selectedSub.devices.length > 0 && (
+            <div className="rounded-md border border-border bg-muted/30 p-2 space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Dispositivos del usuario</p>
+              {selectedSub.devices.map((d, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="font-medium">
+                    {d.device_label ?? "Desconocido"}
+                    {d.is_standalone === true && <span className="ml-1 text-emerald-600 dark:text-emerald-400">· Instalada</span>}
+                    {d.is_standalone === false && <span className="ml-1 text-amber-600 dark:text-amber-400">· Tab navegador</span>}
+                    {d.is_standalone === null && <span className="ml-1 text-muted-foreground">· Sin metadatos</span>}
+                  </span>
+                  <span className="font-mono text-muted-foreground truncate max-w-[180px]" title={d.endpoint_preview}>{d.endpoint_preview}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
               {selectedSub ? `${selectedSub.subscription_count} suscripción(es) activa(s)` : ""}
@@ -613,6 +638,9 @@ function PushTestPanel({ pin }: { pin: string }) {
               {result.message}
             </div>
           )}
+          <p className="text-[11px] text-muted-foreground">
+            "Aceptada" = el servidor de Apple/Google recibió el envío (HTTP 201). En iOS, la notificación solo se muestra si la app fue agregada a la pantalla de inicio y se abre desde el ícono.
+          </p>
         </>
       )}
     </div>
