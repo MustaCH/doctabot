@@ -2,11 +2,87 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Fetch the VAPID key from the edge function config so client and server always match
+// ---------- Capability detection ----------
+
+export type PushSupportStatus =
+  | "supported"        // Browser + context allow push, can subscribe
+  | "ios-needs-install" // iOS Safari tab — must Add to Home Screen first
+  | "ios-too-old"      // iOS < 16.4 — no web push support
+  | "unsupported";     // Browser has no PushManager / serviceWorker
+
+interface PushCapability {
+  status: PushSupportStatus;
+  isIOS: boolean;
+  iosVersion: number | null;
+  isStandalone: boolean;
+}
+
+function detectIOSVersion(): number | null {
+  const ua = navigator.userAgent;
+  // Matches "OS 16_4" / "Version/16.4" patterns
+  const match = ua.match(/OS (\d+)[._](\d+)/);
+  if (!match) return null;
+  return parseFloat(`${match[1]}.${match[2]}`);
+}
+
+function detectIsIOS(): boolean {
+  const ua = navigator.userAgent;
+  // iPad on iOS 13+ identifies as Mac — also check touch capability
+  return (
+    /iPhone|iPad|iPod/.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
+}
+
+function detectIsStandalone(): boolean {
+  // PWA installed to Home Screen on iOS exposes navigator.standalone
+  // Other platforms use display-mode media query
+  if ((navigator as Navigator & { standalone?: boolean }).standalone === true) return true;
+  if (window.matchMedia?.("(display-mode: standalone)").matches) return true;
+  return false;
+}
+
+function detectCapability(): PushCapability {
+  const isIOS = detectIOSVersion() !== null && detectIsIOS();
+  const iosVersion = isIOS ? detectIOSVersion() : null;
+  const isStandalone = detectIsStandalone();
+  const hasAPIs =
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window;
+
+  let status: PushSupportStatus;
+  if (!hasAPIs) {
+    status = "unsupported";
+  } else if (isIOS && iosVersion !== null && iosVersion < 16.4) {
+    status = "ios-too-old";
+  } else if (isIOS && !isStandalone) {
+    // Web Push on iOS requires the app to be installed to Home Screen.
+    status = "ios-needs-install";
+  } else {
+    status = "supported";
+  }
+
+  return { status, isIOS, iosVersion, isStandalone };
+}
+
+function buildDeviceLabel(): string {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  if (/Android/.test(ua)) return "Android";
+  if (/Macintosh/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows";
+  if (/Linux/.test(ua)) return "Linux";
+  return "Desconocido";
+}
+
+// ---------- VAPID key resolution ----------
+
 let _cachedVapidKey: string | null = null;
 async function getVapidPublicKey(): Promise<string> {
   if (_cachedVapidKey) return _cachedVapidKey;
-  // Try fetching from edge function
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-push-notification`;
     const res = await fetch(url, {
@@ -22,9 +98,8 @@ async function getVapidPublicKey(): Promise<string> {
       }
     }
   } catch {
-    // Fall through to hardcoded key
+    // fall through
   }
-  // Fallback to hardcoded key
   _cachedVapidKey = "BBli4ZxvrgXo2eh39AGYKoJz7YpnGyyDDA9akOy4o3588KRSWX7ThpZDERp9vGEjd7dLoSaY3frCCxcta_42QXU";
   return _cachedVapidKey!;
 }
@@ -38,73 +113,83 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+// ---------- Subscription persistence ----------
+
+async function persistSubscription(userId: string, sub: PushSubscription) {
+  const json = sub.toJSON();
+  await supabase.from("push_subscriptions").upsert(
+    {
+      user_id: userId,
+      endpoint: json.endpoint!,
+      p256dh: json.keys!.p256dh,
+      auth: json.keys!.auth,
+      user_agent: navigator.userAgent.slice(0, 500),
+      platform: navigator.platform || null,
+      is_standalone: detectIsStandalone(),
+      device_label: buildDeviceLabel(),
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" }
+  );
+}
+
+// Get the unified service-worker registration. The SW is registered by
+// vite-plugin-pwa (autoUpdate) at the root scope as /sw.js.
+async function getActiveRegistration(): Promise<ServiceWorkerRegistration | null> {
+  try {
+    // Wait for the SW to be ready (controls the page) so subscribe works on first try
+    const ready = await navigator.serviceWorker.ready;
+    return ready ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------- Hook ----------
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [supported, setSupported] = useState(false);
+  const [capability, setCapability] = useState<PushCapability>(() => ({
+    status: "unsupported",
+    isIOS: false,
+    iosVersion: null,
+    isStandalone: false,
+  }));
 
   useEffect(() => {
-    const isSupported = "serviceWorker" in navigator && "PushManager" in window;
-    setSupported(isSupported);
-    if (!isSupported || !user) {
+    const cap = detectCapability();
+    setCapability(cap);
+
+    if (cap.status !== "supported" || !user) {
       setLoading(false);
       return;
     }
 
-    // Check current state
     (async () => {
       try {
         if (Notification.permission === "granted") {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          let foundSub = false;
-          for (const reg of registrations) {
-            const sub = await reg.pushManager.getSubscription();
-            if (sub) {
-              foundSub = true;
-              setEnabled(true);
-              // Re-sync subscription to DB in case VAPID key changed
-              const json = sub.toJSON();
-              await supabase.from("push_subscriptions").upsert(
-                {
-                  user_id: user.id,
-                  endpoint: json.endpoint!,
-                  p256dh: json.keys!.p256dh,
-                  auth: json.keys!.auth,
-                },
-                { onConflict: "endpoint" }
-              );
-              break;
-            }
-          }
-
-          // Permission granted but no subscription found (typical after VapidPkHashMismatch on iOS).
-          // Auto-resubscribe so the UI doesn't lie to the user.
-          if (!foundSub) {
-            console.warn(
-              "[push] Notification.permission=granted but no active subscription. Auto-resubscribing…"
-            );
+          const reg = await getActiveRegistration();
+          const sub = reg ? await reg.pushManager.getSubscription() : null;
+          if (sub) {
+            setEnabled(true);
+            await persistSubscription(user.id, sub);
+          } else {
+            // Permission granted but no subscription — re-create silently
+            console.warn("[push] permission=granted but no subscription, re-subscribing…");
             try {
               const vapidKey = await getVapidPublicKey();
-              const reg = await navigator.serviceWorker.register("/sw-push.js");
-              await reg.update();
-              const newSub = await reg.pushManager.subscribe({
+              const r = reg ?? (await navigator.serviceWorker.register("/sw.js"));
+              await r.update();
+              const newSub = await r.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(vapidKey),
               });
-              const json = newSub.toJSON();
-              await supabase.from("push_subscriptions").upsert(
-                {
-                  user_id: user.id,
-                  endpoint: json.endpoint!,
-                  p256dh: json.keys!.p256dh,
-                  auth: json.keys!.auth,
-                },
-                { onConflict: "endpoint" }
-              );
+              await persistSubscription(user.id, newSub);
               setEnabled(true);
-            } catch (resubErr) {
-              console.warn("[push] Auto-resubscribe failed; user must tap to reactivate:", resubErr);
+            } catch (e) {
+              console.warn("[push] silent re-subscribe failed:", e);
               setEnabled(false);
             }
           }
@@ -117,7 +202,7 @@ export function usePushNotifications() {
   }, [user]);
 
   const subscribe = useCallback(async () => {
-    if (!user) return;
+    if (!user || capability.status !== "supported") return;
     setLoading(true);
     try {
       const permission = await Notification.requestPermission();
@@ -128,49 +213,36 @@ export function usePushNotifications() {
 
       const vapidKey = await getVapidPublicKey();
 
-      // Unsubscribe any existing subscription first to avoid VAPID mismatch
-      const existingRegs = await navigator.serviceWorker.getRegistrations();
-      for (const reg of existingRegs) {
-        const existingSub = await reg.pushManager.getSubscription();
-        if (existingSub) {
-          const oldEndpoint = existingSub.endpoint;
-          await existingSub.unsubscribe();
-          await supabase.from("push_subscriptions").delete().eq("endpoint", oldEndpoint);
-        }
-      }
-
-      const reg = await navigator.serviceWorker.register("/sw-push.js");
+      // Clean any stale subscription on the active worker first
+      const reg = (await getActiveRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
       await reg.update();
+
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        const oldEndpoint = existing.endpoint;
+        await existing.unsubscribe();
+        await supabase.from("push_subscriptions").delete().eq("endpoint", oldEndpoint);
+      }
 
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
 
-      const json = sub.toJSON();
-      await supabase.from("push_subscriptions").upsert(
-        {
-          user_id: user.id,
-          endpoint: json.endpoint!,
-          p256dh: json.keys!.p256dh,
-          auth: json.keys!.auth,
-        },
-        { onConflict: "endpoint" }
-      );
-
+      await persistSubscription(user.id, sub);
       setEnabled(true);
     } catch (err) {
       console.error("Push subscribe error:", err);
     }
     setLoading(false);
-  }, [user]);
+  }, [user, capability.status]);
 
   const unsubscribe = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of registrations) {
+      const reg = await getActiveRegistration();
+      if (reg) {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
           const endpoint = sub.endpoint;
@@ -185,5 +257,12 @@ export function usePushNotifications() {
     setLoading(false);
   }, [user]);
 
-  return { enabled, loading, supported, subscribe, unsubscribe };
+  return {
+    enabled,
+    loading,
+    supported: capability.status === "supported",
+    capability,
+    subscribe,
+    unsubscribe,
+  };
 }
