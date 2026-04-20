@@ -627,10 +627,77 @@ Deno.serve(async (req) => {
           title: "🔔 Notificación de prueba",
           body: "Si recibís esto, las notificaciones funcionan correctamente.",
           url: "/",
+          trigger_source: "admin_test",
         }),
       });
       const result = await res.json().catch(() => ({}));
       return json({ ok: res.ok, status: res.status, result });
+    }
+
+    // ---------- PUSH DELIVERY STATS (last 7 days) ----------
+    if (action === "push-delivery-stats") {
+      const since = new Date();
+      since.setDate(since.getDate() - 7);
+      const sinceISO = since.toISOString();
+
+      const { data: rows, error } = await supabaseAdmin
+        .from("push_delivery_logs")
+        .select("status, created_at")
+        .gte("created_at", sinceISO);
+
+      if (error) return json({ error: error.message }, 500);
+
+      let sent = 0;
+      let failed = 0;
+      let pruned = 0;
+      const dayMap: Record<string, { sent: number; failed: number; pruned: number }> = {};
+      for (const r of rows ?? []) {
+        const day = (r as any).created_at.slice(0, 10);
+        if (!dayMap[day]) dayMap[day] = { sent: 0, failed: 0, pruned: 0 };
+        const status = (r as any).status as "sent" | "failed" | "pruned";
+        if (status === "sent") sent++;
+        else if (status === "failed") failed++;
+        else if (status === "pruned") pruned++;
+        dayMap[day][status]++;
+      }
+
+      // Build a 7-day series including empty days
+      const series: Array<{ date: string; sent: number; failed: number; pruned: number }> = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        const entry = dayMap[key] ?? { sent: 0, failed: 0, pruned: 0 };
+        series.push({ date: key.slice(5), ...entry });
+      }
+
+      // Latest 20 errors (failed only — pruned are expected cleanup)
+      const { data: errors } = await supabaseAdmin
+        .from("push_delivery_logs")
+        .select("id, user_id, endpoint_preview, http_status, error_message, status, created_at")
+        .eq("status", "failed")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      const userIds = [...new Set((errors ?? []).map((e: any) => e.user_id))];
+      const { data: profiles } = userIds.length > 0
+        ? await supabaseAdmin.from("profiles").select("user_id, full_name").in("user_id", userIds)
+        : { data: [] };
+      const nameMap: Record<string, string> = {};
+      (profiles ?? []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+      const errorsEnriched = (errors ?? []).map((e: any) => ({
+        ...e,
+        user_name: nameMap[e.user_id] ?? "Desconocido",
+      }));
+
+      const total = sent + failed + pruned;
+      const successRate = total > 0 ? Math.round((sent / total) * 100) : 0;
+
+      return json({
+        totals: { total, sent, failed, pruned, successRate },
+        series,
+        errors: errorsEnriched,
+      });
     }
 
     return json({ error: "Unknown action" }, 400);

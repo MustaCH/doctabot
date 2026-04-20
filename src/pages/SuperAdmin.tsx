@@ -244,6 +244,7 @@ function AdminDashboard({ pin }: { pin: string }) {
             <ActivityCharts pin={pin} />
             <ScrapingStatus pin={pin} />
             <PushTestPanel pin={pin} />
+            <PushDeliveryPanel pin={pin} />
             <MorningMatchesPanel />
           </TabsContent>
 
@@ -681,6 +682,150 @@ function MorningMatchesPanel() {
       <p className="text-xs text-muted-foreground">
         El matching se ejecuta automáticamente todos los días a las 9:00 AM (ART). Cruza propiedades nuevas con los intereses de los clientes y notifica matches por chat y push.
       </p>
+    </div>
+  );
+}
+
+/* ==================== PUSH DELIVERY METRICS ==================== */
+interface PushDeliveryStats {
+  totals: { total: number; sent: number; failed: number; pruned: number; successRate: number };
+  series: Array<{ date: string; sent: number; failed: number; pruned: number }>;
+  errors: Array<{
+    id: string;
+    user_id: string;
+    user_name: string;
+    endpoint_preview: string;
+    http_status: number | null;
+    error_message: string | null;
+    status: string;
+    created_at: string;
+  }>;
+}
+
+function PushDeliveryPanel({ pin }: { pin: string }) {
+  const [stats, setStats] = useState<PushDeliveryStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch(pin, "push-delivery-stats");
+      setStats(res);
+    } catch {
+      setStats(null);
+    }
+    setLoading(false);
+  }, [pin]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Delivery de notificaciones push (últimos 7 días)</h2>
+        </div>
+        <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {loading ? (
+        <LoadingSpinner />
+      ) : !stats ? (
+        <p className="text-xs text-muted-foreground">No se pudieron cargar las métricas.</p>
+      ) : (
+        <>
+          {/* Totals */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total enviadas</p>
+              <p className="text-xl font-bold">{stats.totals.total.toLocaleString("es-AR")}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Exitosas</p>
+              <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
+                {stats.totals.sent.toLocaleString("es-AR")}
+                <span className="text-xs font-normal ml-1.5">({stats.totals.successRate}%)</span>
+              </p>
+            </div>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-destructive">Fallidas</p>
+              <p className="text-xl font-bold text-destructive">{stats.totals.failed.toLocaleString("es-AR")}</p>
+            </div>
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">Suscripciones limpiadas</p>
+              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">{stats.totals.pruned.toLocaleString("es-AR")}</p>
+            </div>
+          </div>
+
+          {/* Daily chart */}
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={stats.series}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="sent" name="Exitosas" stackId="a" fill="hsl(var(--chart-2))" />
+              <Bar dataKey="failed" name="Fallidas" stackId="a" fill="hsl(var(--destructive))" />
+              <Bar dataKey="pruned" name="Limpiadas" stackId="a" fill="hsl(var(--chart-4))" />
+            </BarChart>
+          </ResponsiveContainer>
+
+          {/* Latest errors */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+              <h3 className="text-xs font-semibold">Últimos errores ({stats.errors.length})</h3>
+            </div>
+            {stats.errors.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">Sin errores recientes.</p>
+            ) : (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Fecha</TableHead>
+                      <TableHead className="text-xs">Usuario</TableHead>
+                      <TableHead className="text-xs">HTTP</TableHead>
+                      <TableHead className="text-xs">Error</TableHead>
+                      <TableHead className="text-xs">Endpoint</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stats.errors.map((e) => (
+                      <TableRow key={e.id}>
+                        <TableCell className="text-[11px] whitespace-nowrap">
+                          {new Date(e.created_at).toLocaleString("es-AR", {
+                            day: "2-digit", month: "2-digit",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </TableCell>
+                        <TableCell className="text-[11px]">{e.user_name}</TableCell>
+                        <TableCell className="text-[11px]">
+                          {e.http_status ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-[11px] max-w-xs truncate" title={e.error_message ?? ""}>
+                          {e.error_message ?? <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-[11px] font-mono text-muted-foreground max-w-[180px] truncate" title={e.endpoint_preview}>
+                          {e.endpoint_preview}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            Las suscripciones limpiadas son endpoints expirados o con clave VAPID antigua que el sistema elimina automáticamente — es comportamiento esperado, no un error.
+          </p>
+        </>
+      )}
     </div>
   );
 }
