@@ -642,25 +642,40 @@ export type Database = {
         Row: {
           auth: string
           created_at: string
+          device_label: string | null
           endpoint: string
           id: string
+          is_standalone: boolean | null
+          last_seen_at: string
           p256dh: string
+          platform: string | null
+          user_agent: string | null
           user_id: string
         }
         Insert: {
           auth: string
           created_at?: string
+          device_label?: string | null
           endpoint: string
           id?: string
+          is_standalone?: boolean | null
+          last_seen_at?: string
           p256dh: string
+          platform?: string | null
+          user_agent?: string | null
           user_id: string
         }
         Update: {
           auth?: string
           created_at?: string
+          device_label?: string | null
           endpoint?: string
           id?: string
+          is_standalone?: boolean | null
+          last_seen_at?: string
           p256dh?: string
+          platform?: string | null
+          user_agent?: string | null
           user_id?: string
         }
         Relationships: []
