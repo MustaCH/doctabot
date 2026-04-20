@@ -244,6 +244,7 @@ function AdminDashboard({ pin }: { pin: string }) {
             <ActivityCharts pin={pin} />
             <ScrapingStatus pin={pin} />
             <PushTestPanel pin={pin} />
+            <PushDeliveryPanel pin={pin} />
             <MorningMatchesPanel />
           </TabsContent>
 
