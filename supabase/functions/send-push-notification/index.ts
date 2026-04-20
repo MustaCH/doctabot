@@ -242,6 +242,10 @@ serve(async (req) => {
       });
     }
 
+    const triggerSource = typeof body.trigger_source === "string"
+      ? body.trigger_source.slice(0, 64)
+      : null;
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -264,8 +268,18 @@ serve(async (req) => {
 
     const payload = JSON.stringify({ title, body: pushBody || "", url: url || "/" });
     let sent = 0;
+    const deliveryLogs: Array<{
+      user_id: string;
+      endpoint_preview: string;
+      status: "sent" | "failed" | "pruned";
+      http_status: number | null;
+      error_message: string | null;
+      pruned: boolean;
+      trigger_source: string | null;
+    }> = [];
 
     for (const sub of subs) {
+      const endpointPreview = sub.endpoint.slice(0, 80);
       try {
         const encrypted = await encryptPayload(payload, sub.p256dh, sub.auth);
         const authHeader = await createVapidAuthHeader(
@@ -289,25 +303,68 @@ serve(async (req) => {
 
         if (res.ok || res.status === 201) {
           sent++;
+          deliveryLogs.push({
+            user_id,
+            endpoint_preview: endpointPreview,
+            status: "sent",
+            http_status: res.status,
+            error_message: null,
+            pruned: false,
+            trigger_source: triggerSource,
+          });
         } else {
           const respText = await res.text();
-          // Treat permanent failures as "delete this sub":
-          // - 410 Gone / 404 Not Found: subscription expired/unregistered
-          // - 400 with VapidPk* or BadJwtToken: subscription registered with old VAPID key (Apple)
           const isVapidMismatch =
             res.status === 400 && /VapidPk|BadJwtToken/i.test(respText);
-          if (res.status === 410 || res.status === 404 || isVapidMismatch) {
+          const shouldPrune =
+            res.status === 410 || res.status === 404 || isVapidMismatch;
+          if (shouldPrune) {
             await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
-            const endpointPreview = sub.endpoint.slice(0, 60);
             console.log(
               `Removed dead subscription ${sub.id} (status=${res.status}, endpoint=${endpointPreview}…): ${respText}`
             );
+            deliveryLogs.push({
+              user_id,
+              endpoint_preview: endpointPreview,
+              status: "pruned",
+              http_status: res.status,
+              error_message: respText.slice(0, 500),
+              pruned: true,
+              trigger_source: triggerSource,
+            });
           } else {
             console.error(`Push failed for ${sub.id}: ${res.status} ${respText}`);
+            deliveryLogs.push({
+              user_id,
+              endpoint_preview: endpointPreview,
+              status: "failed",
+              http_status: res.status,
+              error_message: respText.slice(0, 500),
+              pruned: false,
+              trigger_source: triggerSource,
+            });
           }
         }
       } catch (err) {
         console.error(`Push error for ${sub.id}:`, err);
+        deliveryLogs.push({
+          user_id,
+          endpoint_preview: endpointPreview,
+          status: "failed",
+          http_status: null,
+          error_message: (err as Error)?.message?.slice(0, 500) ?? "unknown error",
+          pruned: false,
+          trigger_source: triggerSource,
+        });
+      }
+    }
+
+    if (deliveryLogs.length > 0) {
+      const { error: logErr } = await supabaseAdmin
+        .from("push_delivery_logs")
+        .insert(deliveryLogs);
+      if (logErr) {
+        console.error("Failed to insert push_delivery_logs:", logErr.message);
       }
     }
 
