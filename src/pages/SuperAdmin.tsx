@@ -502,6 +502,122 @@ function ScrapingStatus({ pin }: { pin: string }) {
   );
 }
 
+/* ==================== PUSH TEST PANEL ==================== */
+interface PushSubscriber {
+  user_id: string;
+  full_name: string;
+  subscription_count: number;
+}
+
+function PushTestPanel({ pin }: { pin: string }) {
+  const [subscribers, setSubscribers] = useState<PushSubscriber[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; sent?: number; status?: number; message?: string } | null>(null);
+
+  const loadSubscribers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch(pin, "push-subscribers");
+      const list: PushSubscriber[] = res.users ?? [];
+      setSubscribers(list);
+      if (list.length > 0 && !selectedUserId) setSelectedUserId(list[0].user_id);
+    } catch {
+      setSubscribers([]);
+    }
+    setLoading(false);
+  }, [pin, selectedUserId]);
+
+  useEffect(() => { loadSubscribers(); }, [loadSubscribers]);
+
+  const sendTest = async () => {
+    if (!selectedUserId) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await adminFetch(pin, "test-push", { targetUserId: selectedUserId });
+      setResult({
+        ok: res.ok,
+        sent: res.result?.sent,
+        status: res.status,
+        message: res.ok
+          ? `Enviada a ${res.result?.sent ?? 0} dispositivo(s)`
+          : `Error HTTP ${res.status}: ${res.result?.error ?? "Falló el envío"}`,
+      });
+      // Reload in case dead subs were pruned
+      setTimeout(loadSubscribers, 500);
+    } catch (err) {
+      setResult({ ok: false, message: "Error de red" });
+    }
+    setSending(false);
+  };
+
+  const selectedSub = subscribers.find((s) => s.user_id === selectedUserId);
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Send className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Probar notificaciones push</h2>
+        </div>
+        <Button size="sm" variant="ghost" onClick={loadSubscribers} disabled={loading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+      ) : subscribers.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-2">
+          No hay usuarios con suscripciones push activas. Cuando un usuario active las notificaciones desde su Perfil aparecerá acá.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <label className="text-xs text-muted-foreground">Usuario destinatario</label>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+              disabled={sending}
+            >
+              {subscribers.map((s) => (
+                <option key={s.user_id} value={s.user_id}>
+                  {s.full_name} ({s.subscription_count} {s.subscription_count === 1 ? "dispositivo" : "dispositivos"})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {selectedSub ? `${selectedSub.subscription_count} suscripción(es) activa(s)` : ""}
+            </p>
+            <Button size="sm" onClick={sendTest} disabled={sending || !selectedUserId}>
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+              {sending ? "Enviando..." : "Enviar prueba"}
+            </Button>
+          </div>
+
+          {result && (
+            <div
+              className={`rounded-md border p-2.5 text-xs ${
+                result.ok
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "border-destructive/30 bg-destructive/10 text-destructive"
+              }`}
+            >
+              {result.message}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ==================== MORNING MATCHES ==================== */
 function MorningMatchesPanel() {
   const [running, setRunning] = useState(false);
