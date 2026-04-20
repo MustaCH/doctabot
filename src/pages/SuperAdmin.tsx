@@ -13,7 +13,7 @@ import {
   Shield, Database, Users, Heart, MessageSquare, Home,
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
-  BarChart3, Flame, Thermometer, Snowflake, FileDown,
+  BarChart3, Flame, Thermometer, Snowflake, FileDown, Send,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
