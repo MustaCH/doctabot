@@ -17,14 +17,19 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
+      // Use injectManifest so we have a SINGLE service worker that handles
+      // both PWA precaching AND web push (push / notificationclick events).
+      // Previously we had vite-plugin-pwa's generated SW + a separate
+      // /sw-push.js, which competed for the root scope and could leave
+      // pushes accepted by Apple but never displayed on iOS.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "alan-192.png", "alan-512.png"],
-      workbox: {
-        navigateFallbackDenylist: [/^\/~oauth/],
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-        skipWaiting: true,
-        clientsClaim: true,
       },
       manifest: {
         name: "Alan - Asistente RE/MAX Docta",
