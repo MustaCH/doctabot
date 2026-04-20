@@ -287,13 +287,24 @@ serve(async (req) => {
           body: encrypted,
         });
 
-        if (res.status === 410 || res.status === 404) {
-          await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
-          console.log(`Removed expired subscription ${sub.id}`);
-        } else if (res.ok || res.status === 201) {
+        if (res.ok || res.status === 201) {
           sent++;
         } else {
-          console.error(`Push failed for ${sub.id}: ${res.status} ${await res.text()}`);
+          const respText = await res.text();
+          // Treat permanent failures as "delete this sub":
+          // - 410 Gone / 404 Not Found: subscription expired/unregistered
+          // - 400 with VapidPk* or BadJwtToken: subscription registered with old VAPID key (Apple)
+          const isVapidMismatch =
+            res.status === 400 && /VapidPk|BadJwtToken/i.test(respText);
+          if (res.status === 410 || res.status === 404 || isVapidMismatch) {
+            await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
+            const endpointPreview = sub.endpoint.slice(0, 60);
+            console.log(
+              `Removed dead subscription ${sub.id} (status=${res.status}, endpoint=${endpointPreview}…): ${respText}`
+            );
+          } else {
+            console.error(`Push failed for ${sub.id}: ${res.status} ${respText}`);
+          }
         }
       } catch (err) {
         console.error(`Push error for ${sub.id}:`, err);

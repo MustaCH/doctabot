@@ -57,12 +57,13 @@ export function usePushNotifications() {
       try {
         if (Notification.permission === "granted") {
           const registrations = await navigator.serviceWorker.getRegistrations();
+          let foundSub = false;
           for (const reg of registrations) {
             const sub = await reg.pushManager.getSubscription();
             if (sub) {
+              foundSub = true;
               setEnabled(true);
               // Re-sync subscription to DB in case VAPID key changed
-              const vapidKey = await getVapidPublicKey();
               const json = sub.toJSON();
               await supabase.from("push_subscriptions").upsert(
                 {
@@ -74,6 +75,37 @@ export function usePushNotifications() {
                 { onConflict: "endpoint" }
               );
               break;
+            }
+          }
+
+          // Permission granted but no subscription found (typical after VapidPkHashMismatch on iOS).
+          // Auto-resubscribe so the UI doesn't lie to the user.
+          if (!foundSub) {
+            console.warn(
+              "[push] Notification.permission=granted but no active subscription. Auto-resubscribing…"
+            );
+            try {
+              const vapidKey = await getVapidPublicKey();
+              const reg = await navigator.serviceWorker.register("/sw-push.js");
+              await reg.update();
+              const newSub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidKey),
+              });
+              const json = newSub.toJSON();
+              await supabase.from("push_subscriptions").upsert(
+                {
+                  user_id: user.id,
+                  endpoint: json.endpoint!,
+                  p256dh: json.keys!.p256dh,
+                  auth: json.keys!.auth,
+                },
+                { onConflict: "endpoint" }
+              );
+              setEnabled(true);
+            } catch (resubErr) {
+              console.warn("[push] Auto-resubscribe failed; user must tap to reactivate:", resubErr);
+              setEnabled(false);
             }
           }
         }
