@@ -110,11 +110,11 @@ Usá la herramienta evaluate_response para dar tu veredicto.`
       }
       // Retry once if supervisor didn't return a tool call
       console.warn("Supervisor did not return tool call, retrying...");
-      const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             supervisorData.choices?.[0]?.message ?
               { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
