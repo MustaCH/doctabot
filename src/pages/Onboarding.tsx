@@ -209,14 +209,23 @@ const Onboarding = () => {
                 <Input
                   id="inviteCode"
                   value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                  placeholder="Ej: DOCTA1"
-                  maxLength={10}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="Ej: RMX7K2P"
+                  maxLength={20}
                   className="pl-9 tracking-widest font-mono uppercase"
                   autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
                   required
                 />
               </div>
+              {normalizedPreview && normalizedPreview !== inviteCode && (
+                <p className="text-xs text-muted-foreground font-mono">
+                  Se enviará: <span className="font-semibold text-foreground">{normalizedPreview}</span>
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Si no tenés un código, contactá a tu broker.
               </p>
