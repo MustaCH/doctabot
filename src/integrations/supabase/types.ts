@@ -399,6 +399,36 @@ export type Database = {
         }
         Relationships: []
       }
+      invitation_attempts: {
+        Row: {
+          created_at: string
+          id: string
+          normalized_input: string
+          raw_bytes: string
+          raw_input: string
+          status: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          normalized_input: string
+          raw_bytes: string
+          raw_input: string
+          status: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          normalized_input?: string
+          raw_bytes?: string
+          raw_input?: string
+          status?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       invitation_codes: {
         Row: {
           code: string
@@ -848,6 +878,10 @@ export type Database = {
       validate_invitation_code: {
         Args: { input_code: string }
         Returns: boolean
+      }
+      validate_invitation_code_v2: {
+        Args: { input_code: string }
+        Returns: string
       }
     }
     Enums: {
