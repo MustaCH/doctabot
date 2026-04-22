@@ -54,6 +54,10 @@ const Onboarding = () => {
     return 1;
   });
   const [inviteCode, setInviteCode] = useState("");
+  // Normaliza agresivamente: mayúsculas y solo A-Z 0-9 (elimina espacios, invisibles, comillas, guiones)
+  const normalizeCode = (raw: string) =>
+    raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizedPreview = normalizeCode(inviteCode);
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name ?? "");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(false);
