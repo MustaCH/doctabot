@@ -54,6 +54,10 @@ const Onboarding = () => {
     return 1;
   });
   const [inviteCode, setInviteCode] = useState("");
+  // Normaliza agresivamente: mayúsculas y solo A-Z 0-9 (elimina espacios, invisibles, comillas, guiones)
+  const normalizeCode = (raw: string) =>
+    raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizedPreview = normalizeCode(inviteCode);
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name ?? "");
   const [agentCode, setAgentCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,19 +85,28 @@ const Onboarding = () => {
   // Step 1: validate invitation code
   const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = inviteCode.trim();
-    if (!trimmed) {
+    const normalized = normalizeCode(inviteCode);
+    if (!normalized) {
       toast.error("Ingresá el código de invitación");
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase.rpc("validate_invitation_code", { input_code: trimmed });
+    const { data, error } = await supabase.rpc("validate_invitation_code_v2", { input_code: normalized });
     setLoading(false);
-    if (error || !data) {
-      toast.error("Código de invitación inválido. Consultá con tu broker.");
+    if (error) {
+      toast.error("Error al verificar el código. Intentá de nuevo.");
       return;
     }
-    setStep(2);
+    if (data === "valid") {
+      setStep(2);
+      return;
+    }
+    if (data === "inactive") {
+      toast.error("Este código ya no está vigente. Pedile uno nuevo a tu broker.");
+      return;
+    }
+    // not_found
+    toast.error("Código no reconocido. Verificá que sea exactamente el que te pasó tu broker.");
   };
 
   // Step 2: save profile
@@ -196,14 +209,23 @@ const Onboarding = () => {
                 <Input
                   id="inviteCode"
                   value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                  placeholder="Ej: DOCTA1"
-                  maxLength={10}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="Ej: RMX7K2P"
+                  maxLength={20}
                   className="pl-9 tracking-widest font-mono uppercase"
                   autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  inputMode="text"
                   required
                 />
               </div>
+              {normalizedPreview && normalizedPreview !== inviteCode && (
+                <p className="text-xs text-muted-foreground font-mono">
+                  Se enviará: <span className="font-semibold text-foreground">{normalizedPreview}</span>
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Si no tenés un código, contactá a tu broker.
               </p>
