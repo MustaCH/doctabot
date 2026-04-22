@@ -85,19 +85,28 @@ const Onboarding = () => {
   // Step 1: validate invitation code
   const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = inviteCode.trim();
-    if (!trimmed) {
+    const normalized = normalizeCode(inviteCode);
+    if (!normalized) {
       toast.error("Ingresá el código de invitación");
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase.rpc("validate_invitation_code", { input_code: trimmed });
+    const { data, error } = await supabase.rpc("validate_invitation_code_v2", { input_code: normalized });
     setLoading(false);
-    if (error || !data) {
-      toast.error("Código de invitación inválido. Consultá con tu broker.");
+    if (error) {
+      toast.error("Error al verificar el código. Intentá de nuevo.");
       return;
     }
-    setStep(2);
+    if (data === "valid") {
+      setStep(2);
+      return;
+    }
+    if (data === "inactive") {
+      toast.error("Este código ya no está vigente. Pedile uno nuevo a tu broker.");
+      return;
+    }
+    // not_found
+    toast.error("Código no reconocido. Verificá que sea exactamente el que te pasó tu broker.");
   };
 
   // Step 2: save profile
