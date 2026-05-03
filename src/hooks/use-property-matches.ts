@@ -271,7 +271,7 @@ function extractFromNotes(
       const val = parseNumberWithSuffix(match[1], match[2]);
       if (val > 1000) parsedNumbers.push(val);
     }
-    const BUDGET_TOLERANCE = 1.15;
+    const BUDGET_TOLERANCE = 1.30;
     if (parsedNumbers.some((n) => property.price! <= n * BUDGET_TOLERANCE && property.price! >= n * 0.5)) {
       reasons.push(`💰 Presupuesto (notas)`);
     }
