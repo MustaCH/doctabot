@@ -185,8 +185,9 @@ function buildClientSearchSummary(client: ClientRow): string {
     const curr = client.budget_currency || "USD";
     parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
   } else if (client.budget_min) {
+    // Legacy: single value stored in min = treat as max
     const curr = client.budget_currency || "USD";
-    parts.push(`Desde ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
+    parts.push(`Hasta ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
   }
 
   // Fallback: si no hay datos estructurados, usar notas
@@ -294,9 +295,10 @@ function findSellerBuyerMatchReasons(seller: ClientRow, buyer: ClientRow): strin
   }
 
   // Budget compatibility (buyer budget vs seller asking price)
-  if (seller.budget_min && buyer.budget_max) {
+  const buyerEffectiveMax = buyer.budget_max ?? buyer.budget_min;
+  if (seller.budget_min && buyerEffectiveMax) {
     const sameCurrency = !seller.budget_currency || !buyer.budget_currency || seller.budget_currency === buyer.budget_currency;
-    if (sameCurrency && buyer.budget_max >= seller.budget_min * 0.85) {
+    if (sameCurrency && buyerEffectiveMax * 1.30 >= seller.budget_min) {
       reasons.push("💰 Presupuesto compatible");
     }
   }
@@ -362,7 +364,19 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
     reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
   }
 
-  // Budget
+  // Budget (structured fields)
+  if (property.price) {
+    const effectiveMax = client.budget_max ?? client.budget_min;
+    const effectiveMin = client.budget_max ? client.budget_min : null;
+    const sameCurrency = !client.budget_currency || !property.currency || client.budget_currency === property.currency;
+    if (sameCurrency && effectiveMax) {
+      const upperLimit = effectiveMax * 1.30;
+      const lowerLimit = effectiveMin ? effectiveMin * 0.85 : 0;
+      if (property.price <= upperLimit && property.price >= lowerLimit) {
+        reasons.push(`💰 Presupuesto: ${client.budget_currency || "USD"} ${effectiveMax.toLocaleString("es-AR")}`);
+      }
+    }
+  }
 
   // Notes supplement
   if (client.notes) {
@@ -383,7 +397,7 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
       let match;
       while ((match = budgetRegex.exec(lower)) !== null) {
         const val = parseNumberWithSuffix(match[1], match[2]);
-        if (val > 1000 && property.price <= val * 1.15 && property.price >= val * 0.5) {
+        if (val > 1000 && property.price <= val * 1.30 && property.price >= val * 0.5) {
           reasons.push("💰 Presupuesto (notas)");
           break;
         }

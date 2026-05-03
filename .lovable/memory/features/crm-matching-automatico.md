@@ -1,14 +1,22 @@
 ---
 name: Auto Property Matching
-description: Exact zone (mandatory if client has preferences), mandatory type (if client specifies), normalized type, budget regex, 15% tolerance. Zone extracted from notes too.
+description: Exact zone, normalized type, budget as max with 30% tolerance
 type: feature
 ---
-Motor de matching automático (use-property-matches.ts + morning-matches edge function) que cruza propiedades con clientes:
 
-- **Zona obligatoria**: Si el cliente tiene zonas preferidas (en `preferred_zones` o extraídas de `notes` con `extractClientZonesFromNotes`), la propiedad DEBE coincidir en zona. Si no coincide → no es match sin importar budget/tipo.
-- **Tipo obligatorio**: Si el cliente tiene `property_type_interest`, la propiedad DEBE coincidir en tipo (via `normalizePropertyType` o fallback `extractTypeFromTitle`). Si no coincide → no es match. Sin `property_type_interest` → cualquier tipo es válido.
-- **Presupuesto**: Tolerancia del 15% sobre budget_max. También se parsean presupuestos de notas con regex (K/M suffixes).
-- **Notas**: `extractClientZonesFromNotes` y `extractFromNotes` complementan datos estructurados faltantes.
-- **Umbral**: Mínimo 2 criterios coincidentes para considerar un match.
-- **"Docta"**: Agregado como patrón de zona independiente (`/\b(docta)\b/i`).
-- **Seller-to-Buyer**: `findSellerBuyerMatchReasons` cruza vendedores con compradores (zona obligatoria, tipo, presupuesto).
+## Matching Rules
+- Zone: MANDATORY if client has zone prefs. Matches structured + notes zones.
+- Type: MANDATORY if client has type pref. Normalized tokens (duplex↔ph, lote↔terreno).
+- Budget: Single value = budget_max (client's ceiling). AI must store single numbers in `budget_max`.
+  - Tolerance: properties up to **30% above** budget_max are included (negotiation margin).
+  - If both min and max: `price >= min * 0.85 AND price <= max * 1.30`.
+- Notes: Supplementary matching for zone, type, and budget from free text.
+- Minimum 2 criteria required to avoid false positives.
+
+## Budget Display
+- Single value → "Hasta USD X" (never "Desde")
+- Two values → "USD min – max"
+
+## AI Tool Descriptions
+- `budget_max`: "Si el cliente menciona un solo número, usarlo aquí"
+- `budget_min`: "Solo si el cliente da un rango explícito con dos valores"

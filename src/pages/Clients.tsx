@@ -184,8 +184,9 @@ const Clients = () => {
   const formatBudget = (min: number | null, max: number | null) => {
     if (!min && !max) return null;
     if (min && max) return `USD ${min.toLocaleString("es-AR")} – ${max.toLocaleString("es-AR")}`;
-    if (min) return `Desde USD ${min.toLocaleString("es-AR")}`;
-    return `Hasta USD ${max!.toLocaleString("es-AR")}`;
+    if (max) return `Hasta USD ${max.toLocaleString("es-AR")}`;
+    // Single value in min (legacy) = treat as max
+    return `Hasta USD ${min!.toLocaleString("es-AR")}`;
   };
 
   const filterButtons: { key: TypeFilter; label: string }[] = [

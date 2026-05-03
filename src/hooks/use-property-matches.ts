@@ -271,7 +271,7 @@ function extractFromNotes(
       const val = parseNumberWithSuffix(match[1], match[2]);
       if (val > 1000) parsedNumbers.push(val);
     }
-    const BUDGET_TOLERANCE = 1.15;
+    const BUDGET_TOLERANCE = 1.30;
     if (parsedNumbers.some((n) => property.price! <= n * BUDGET_TOLERANCE && property.price! >= n * 0.5)) {
       reasons.push(`💰 Presupuesto (notas)`);
     }
@@ -354,7 +354,21 @@ export function usePropertyMatches() {
             reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
           }
 
-          // Budget match
+          // Budget match (structured fields)
+          if (property.price) {
+            const effectiveMax = c.budget_max ?? c.budget_min;
+            const effectiveMin = c.budget_max ? c.budget_min : null;
+            const sameCurrency = !c.budget_currency || !property.currency || c.budget_currency === property.currency;
+            
+            if (sameCurrency && effectiveMax) {
+              const upperLimit = effectiveMax * 1.30;
+              const lowerLimit = effectiveMin ? effectiveMin * 0.85 : 0;
+              
+              if (property.price <= upperLimit && property.price >= lowerLimit) {
+                reasons.push(`💰 Presupuesto: ${c.budget_currency || "USD"} ${effectiveMax.toLocaleString("es-AR")}`);
+              }
+            }
+          }
 
           // --- Always check notes as supplement ---
           if (c.notes) {
