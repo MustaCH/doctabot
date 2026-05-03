@@ -295,9 +295,10 @@ function findSellerBuyerMatchReasons(seller: ClientRow, buyer: ClientRow): strin
   }
 
   // Budget compatibility (buyer budget vs seller asking price)
-  if (seller.budget_min && buyer.budget_max) {
+  const buyerEffectiveMax = buyer.budget_max ?? buyer.budget_min;
+  if (seller.budget_min && buyerEffectiveMax) {
     const sameCurrency = !seller.budget_currency || !buyer.budget_currency || seller.budget_currency === buyer.budget_currency;
-    if (sameCurrency && buyer.budget_max >= seller.budget_min * 0.85) {
+    if (sameCurrency && buyerEffectiveMax * 1.30 >= seller.budget_min) {
       reasons.push("💰 Presupuesto compatible");
     }
   }
