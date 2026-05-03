@@ -397,7 +397,7 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
       let match;
       while ((match = budgetRegex.exec(lower)) !== null) {
         const val = parseNumberWithSuffix(match[1], match[2]);
-        if (val > 1000 && property.price <= val * 1.15 && property.price >= val * 0.5) {
+        if (val > 1000 && property.price <= val * 1.30 && property.price >= val * 0.5) {
           reasons.push("💰 Presupuesto (notas)");
           break;
         }
