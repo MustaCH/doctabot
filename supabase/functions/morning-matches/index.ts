@@ -185,8 +185,9 @@ function buildClientSearchSummary(client: ClientRow): string {
     const curr = client.budget_currency || "USD";
     parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
   } else if (client.budget_min) {
+    // Legacy: single value stored in min = treat as max
     const curr = client.budget_currency || "USD";
-    parts.push(`Desde ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
+    parts.push(`Hasta ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
   }
 
   // Fallback: si no hay datos estructurados, usar notas
