@@ -364,7 +364,19 @@ function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
     reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
   }
 
-  // Budget
+  // Budget (structured fields)
+  if (property.price) {
+    const effectiveMax = client.budget_max ?? client.budget_min;
+    const effectiveMin = client.budget_max ? client.budget_min : null;
+    const sameCurrency = !client.budget_currency || !property.currency || client.budget_currency === property.currency;
+    if (sameCurrency && effectiveMax) {
+      const upperLimit = effectiveMax * 1.30;
+      const lowerLimit = effectiveMin ? effectiveMin * 0.85 : 0;
+      if (property.price <= upperLimit && property.price >= lowerLimit) {
+        reasons.push(`💰 Presupuesto: ${client.budget_currency || "USD"} ${effectiveMax.toLocaleString("es-AR")}`);
+      }
+    }
+  }
 
   // Notes supplement
   if (client.notes) {
