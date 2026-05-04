@@ -1,41 +1,49 @@
-## Problema
 
-La funcion `zonesMatch` tiene un check de palabras parciales demasiado agresivo. La linea:
+## Problemas identificados
 
-```js
-pzWords.some((w) => w.length > 3 && czWords.some((cw) => cw.includes(w) || w.includes(cw)))
+1. **Búsqueda no incluye el título**: Alan busca por `locality` y `zone`, pero muchas propiedades tienen la ubicación específica solo en el `title` (ej: "Las Tipas Manantiales"). Resultado: no encuentra nada aunque existan.
+
+2. **No distingue propiedades de RE/MAX Docta**: De 3492 propiedades en la base, solo 393 son de la oficina "REMAX Docta". Cuando el agente pregunta "cuántas propiedades tenemos", Alan devuelve el total general en vez de las de Docta.
+
+---
+
+## Solución
+
+### 1. Agregar parámetro `title` a `search_properties`
+
+**Archivo**: `supabase/functions/chat/_shared/tools/definitions.ts`
+
+- Agregar un parámetro `title` con descripción: "Buscar por palabras clave en el título de la propiedad (ej: Las Tipas, Country Cañuelas)"
+- Agregar un parámetro `office` con descripción: "Filtrar por oficina: 'REMAX Docta' para solo propiedades propias, o vacío para todas"
+
+**Archivo**: `supabase/functions/chat/_shared/tools/executor.ts`
+
+- En el case `search_properties`, agregar filtro `ilike("title", ...)` cuando se pase `title`
+- Agregar filtro `ilike("office", ...)` cuando se pase `office`
+- Cuando no se encuentren resultados por `locality`, hacer un fallback automático buscando por `title` con el mismo texto (para cubrir casos como "Las Tipas" que no está en locality pero sí en title)
+
+### 2. Actualizar el prompt de Alan
+
+**Archivo**: `supabase/functions/chat/_shared/prompt.ts`
+
+- Instruir a Alan que la base tiene propiedades de varias oficinas RE/MAX, pero que las de "REMAX Docta" son las propias
+- Cuando el agente pregunte por "nuestras propiedades" o "cuántas tenemos", debe filtrar por `office: "REMAX Docta"`
+- Cuando busque por nombre de barrio/zona y no encuentre resultados por locality, debe reintentar usando el parámetro `title`
+
+### 3. Redeploy
+
+Redesplegar la edge function `chat`.
+
+---
+
+## Detalle técnico
+
+En `executor.ts`, la lógica de fallback por título sería:
+
+```text
+1. Buscar con los filtros normales (locality, zone, etc.)
+2. Si locality fue provisto y resultados = 0, re-intentar reemplazando el filtro locality por un ilike en title
+3. Devolver los resultados del fallback indicando que se buscó por título
 ```
 
-Hace que "santa" (de "Santa Maria") matchee con "san" (de "San Salvador") porque `"santa".includes("san")` es `true`. Esto genera falsos positivos como Falda del Carmen matcheando con Barrio San Salvador.
-
-## Solucion
-
-Endurecer la funcion `zonesMatch` en ambos archivos (frontend y backend):
-
-1. **Subir el minimo de longitud de palabra** de 3 a 4 caracteres para evitar que "san" sea candidato
-2. **Requerir que ambas palabras tengan al menos 4 caracteres** antes de comparar substrings
-3. **Exigir un ratio minimo de similitud** — solo matchear si la palabra mas corta tiene al menos 80% de la longitud de la mas larga (evita que "santa" matchee "san" pero permite que "cordoba" matchee "córdoba")
-
-Concretamente, reemplazar la logica de palabras parciales por:
-
-```js
-// Only match words where both are 4+ chars and one is nearly a full substring of the other
-return pzWords.some((w) => w.length >= 4 && czWords.some((cw) => {
-  if (cw.length < 4) return false;
-  const shorter = w.length <= cw.length ? w : cw;
-  const longer = w.length > cw.length ? w : cw;
-  return longer.includes(shorter) && shorter.length / longer.length >= 0.75;
-}));
-```
-
-Esto:
-- "santa" vs "san": `"san".length < 4` → false (no matchea)
-- "cordoba" vs "córdoba": No van a matchear por acento, pero ya se cubren con `pz.includes(cz)` si la zona es exacta
-- "villa" vs "villa": 5/5 = 1.0 >= 0.75 → true (matchea correctamente)
-- "allende" vs "allen": 5/7 = 0.71 → false (no matchea, correcto)
-
-## Archivos a modificar
-
-1. `src/hooks/use-property-matches.ts` — funcion `zonesMatch` (linea 218-226)
-2. `supabase/functions/morning-matches/index.ts` — funcion `zonesMatch` (linea 108-115)
-3. Redeploy de `morning-matches`
+Esto cubre el caso donde el agente escribe "Las Tipas" — Alan lo manda como `locality`, no encuentra nada, y automáticamente reintenta buscando en `title`.
