@@ -11,6 +11,7 @@ export const toolDefinitions = [
         properties: {
           locality: { type: "string", description: "Localidad o barrio (ej: Nueva Córdoba, Alto Alberdi)" },
           zone: { type: "string", description: "Zona de Córdoba Capital: Ruta 20, Nueva Córdoba, Centro, Alberdi, Alta Córdoba, General Paz, Zona Sur, Zona Norte" },
+          title: { type: "string", description: "Buscar por palabras clave en el título de la propiedad (ej: Las Tipas, Country Cañuelas, Manantiales II). Útil cuando la zona o barrio específico no es una localidad estándar sino un desarrollo o loteo." },
           operation: { type: "string", description: "Tipo de operación: Venta o Alquiler" },
           property_type: { type: "string", description: "Tipo de propiedad: Departamento, Casa, Terreno, Local, Oficina, etc." },
           min_price: { type: "number", description: "Precio mínimo" },
@@ -18,6 +19,7 @@ export const toolDefinitions = [
           currency: { type: "string", description: "Moneda: USD o ARS" },
           min_ambientes: { type: "integer", description: "Cantidad mínima de ambientes" },
           max_ambientes: { type: "integer", description: "Cantidad máxima de ambientes" },
+          office: { type: "string", description: "Filtrar por oficina: 'REMAX Docta' para propiedades propias de la oficina, vacío para todas las propiedades de RE/MAX Córdoba" },
           limit: { type: "integer", description: "Cantidad máxima de resultados (default 5)" },
         },
         additionalProperties: false,

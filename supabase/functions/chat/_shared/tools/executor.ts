@@ -35,21 +35,22 @@ export async function executeTool(
     case "search_properties": {
       const zone = sanitizePattern(args.zone);
       const locality = sanitizePattern(args.locality);
+      const titleSearch = sanitizePattern(args.title);
       const operation = sanitizePattern(args.operation);
       const property_type = sanitizePattern(args.property_type);
       const currency = sanitizePattern(args.currency);
+      const office = sanitizePattern(args.office);
       const min_price = safePositiveNumber(args.min_price);
       const max_price = safePositiveNumber(args.max_price);
       const min_ambientes = safePositiveInt(args.min_ambientes);
       const max_ambientes = safePositiveInt(args.max_ambientes);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
 
-      let baseQuery = supabase.from("properties").select("*", { count: "exact", head: true });
-      let dataQuery = supabase.from("properties").select("*");
-
-      const applyFilters = (q: any) => {
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean }) => {
         if (zone) q = q.ilike("zone", `%${zone}%`);
-        if (locality) q = q.ilike("locality", `%${locality}%`);
+        if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
+        if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
+        if (titleSearch) q = q.ilike("title", `%${titleSearch}%`);
         if (operation) q = q.ilike("operation", `%${operation}%`);
         if (property_type) q = q.ilike("property_type", `%${property_type}%`);
         if (min_price !== null) q = q.gte("price", min_price);
@@ -57,16 +58,36 @@ export async function executeTool(
         if (currency) q = q.ilike("currency", `%${currency}%`);
         if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
         if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
+        if (office) q = q.ilike("office", `%${office}%`);
         return q;
       };
 
-      baseQuery = applyFilters(baseQuery);
-      dataQuery = applyFilters(dataQuery);
-      dataQuery = dataQuery.limit(limit);
+      // Primary search
+      let baseQuery = applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }));
+      let dataQuery = applyFilters(supabase.from("properties").select("*")).limit(limit);
 
       const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
-      const totalCount = countResult.count ?? 0;
-      const { data, error } = dataResult;
+      let totalCount = countResult.count ?? 0;
+      let data = dataResult.data;
+      let error = dataResult.error;
+
+      // Fallback: if locality was provided but got 0 results, retry searching in title
+      if (!error && (!data || data.length === 0) && locality && !titleSearch) {
+        const fbBase = applyFilters(
+          supabase.from("properties").select("*", { count: "exact", head: true }),
+          { useLocalityAsTitle: true }
+        );
+        const fbData = applyFilters(
+          supabase.from("properties").select("*"),
+          { useLocalityAsTitle: true }
+        ).limit(limit);
+        const [fbCountRes, fbDataRes] = await Promise.all([fbBase, fbData]);
+        if (!fbDataRes.error && fbDataRes.data && fbDataRes.data.length > 0) {
+          totalCount = fbCountRes.count ?? 0;
+          data = fbDataRes.data;
+          error = fbDataRes.error;
+        }
+      }
 
       if (error) return JSON.stringify({ error: safeDbError(error) });
       if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
@@ -78,7 +99,10 @@ export async function executeTool(
         return aDocta - bDocta;
       });
 
-      return JSON.stringify({ total_count: totalCount, showing: data.length, results: data });
+      // Add docta_count info for context
+      const doctaCount = data.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
+
+      return JSON.stringify({ total_count: totalCount, showing: data.length, docta_in_results: doctaCount, results: data });
     }
 
     case "compare_properties": {
