@@ -1,64 +1,41 @@
-## Plan: Corregir lógica de presupuesto de clientes
+## Problema
 
-### Problema
+La funcion `zonesMatch` tiene un check de palabras parciales demasiado agresivo. La linea:
 
-Cuando el agente carga un solo valor de presupuesto, el sistema lo guarda en `budget_min` y lo muestra como "Desde USD X". Esto es incorrecto: un solo dato de presupuesto representa el **maximo** que el cliente puede pagar.
-
-Datos reales: 27 clientes tienen `budget_min` sin `budget_max`. Son todos casos donde el agente puso un solo número que deberia ser el tope.
-
-Ademas, el sistema de matching no usa los campos estructurados de presupuesto (solo extrae numeros de las notas), y la tolerancia es 15% en vez de 30%.
-
-### Cambios
-
-#### 1. Migrar datos existentes (SQL migration)
-
-Mover `budget_min` a `budget_max` en todos los registros donde solo hay `budget_min` y no `budget_max`:
-
-```sql
-UPDATE clients 
-SET budget_max = budget_min, budget_min = NULL 
-WHERE budget_min IS NOT NULL AND budget_max IS NULL;
+```js
+pzWords.some((w) => w.length > 3 && czWords.some((cw) => cw.includes(w) || w.includes(cw)))
 ```
 
-#### 2. Corregir las tool definitions del AI (edge function)
+Hace que "santa" (de "Santa Maria") matchee con "san" (de "San Salvador") porque `"santa".includes("san")` es `true`. Esto genera falsos positivos como Falda del Carmen matcheando con Barrio San Salvador.
 
-En `supabase/functions/chat/_shared/tools/definitions.ts`:
-- Cambiar la descripcion de `budget_min` y `budget_max` para que el AI entienda: si el cliente dice un solo numero, ponerlo en `budget_max`.
-- Descripcion de budget_max: "Presupuesto maximo del cliente. Si el cliente menciona un solo número, usarlo aqui."
-- Descripcion de budget_min: "Presupuesto minimo (solo si el cliente da un rango explicito con dos valores)"
+## Solucion
 
-Hacer lo mismo en el bloque de `update_client`.
+Endurecer la funcion `zonesMatch` en ambos archivos (frontend y backend):
 
-#### 3. Corregir el display en la lista de clientes
+1. **Subir el minimo de longitud de palabra** de 3 a 4 caracteres para evitar que "san" sea candidato
+2. **Requerir que ambas palabras tengan al menos 4 caracteres** antes de comparar substrings
+3. **Exigir un ratio minimo de similitud** — solo matchear si la palabra mas corta tiene al menos 80% de la longitud de la mas larga (evita que "santa" matchee "san" pero permite que "cordoba" matchee "córdoba")
 
-En `src/pages/Clients.tsx`, funcion `formatBudget`:
-- Cuando solo hay `budget_min` (sin max): mostrar "Hasta USD X" en vez de "Desde USD X" (por si quedan datos legacy).
-- Mejor aun: tratarlo como max conceptualmente.
+Concretamente, reemplazar la logica de palabras parciales por:
 
-#### 4. Agregar matching estructurado de presupuesto
+```js
+// Only match words where both are 4+ chars and one is nearly a full substring of the other
+return pzWords.some((w) => w.length >= 4 && czWords.some((cw) => {
+  if (cw.length < 4) return false;
+  const shorter = w.length <= cw.length ? w : cw;
+  const longer = w.length > cw.length ? w : cw;
+  return longer.includes(shorter) && shorter.length / longer.length >= 0.75;
+}));
+```
 
-En `src/hooks/use-property-matches.ts`, despues de la seccion de Type matching (linea 357), agregar logica real de budget:
+Esto:
+- "santa" vs "san": `"san".length < 4` → false (no matchea)
+- "cordoba" vs "córdoba": No van a matchear por acento, pero ya se cubren con `pz.includes(cz)` si la zona es exacta
+- "villa" vs "villa": 5/5 = 1.0 >= 0.75 → true (matchea correctamente)
+- "allende" vs "allen": 5/7 = 0.71 → false (no matchea, correcto)
 
-- Si el cliente tiene `budget_max`: la propiedad matchea si `property.price <= budget_max * 1.30`
-- Si el cliente tiene `budget_min` y `budget_max`: la propiedad matchea si `property.price >= budget_min * 0.85` AND `property.price <= budget_max * 1.30`
-- Agregar razon "Presupuesto" a los matches
-- Misma moneda (o ignorar si no hay dato de moneda)
+## Archivos a modificar
 
-#### 5. Actualizar tolerancia en notas
-
-En `use-property-matches.ts`, cambiar `BUDGET_TOLERANCE` de 1.15 a 1.30.
-
-#### 6. Corregir morning-matches (edge function)
-
-En `supabase/functions/morning-matches/index.ts`:
-- Misma logica: si solo hay `budget_min`, tratarlo como max
-- Ajustar tolerancia a 30%
-
-### Archivos a modificar
-
-- Nueva migracion SQL (data fix)
-- `supabase/functions/chat/_shared/tools/definitions.ts` (descripciones AI)
-- `src/pages/Clients.tsx` (display)
-- `src/hooks/use-property-matches.ts` (matching + tolerancia)
-- `supabase/functions/morning-matches/index.ts` (matching backend)
-- Memoria: `mem://features/crm-matching-automatico.md`
+1. `src/hooks/use-property-matches.ts` — funcion `zonesMatch` (linea 218-226)
+2. `supabase/functions/morning-matches/index.ts` — funcion `zonesMatch` (linea 108-115)
+3. Redeploy de `morning-matches`
