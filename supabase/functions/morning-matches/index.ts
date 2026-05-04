@@ -109,9 +109,15 @@ function zonesMatch(propertyZone: string, clientZone: string): boolean {
   const pz = propertyZone.trim().toLowerCase();
   const cz = clientZone.trim().toLowerCase();
   if (pz === cz || pz.includes(cz) || cz.includes(pz)) return true;
+  // Strict partial word matching: both words must be 4+ chars and similar length
   const pzWords = pz.split(/\s+/);
   const czWords = cz.split(/\s+/);
-  return pzWords.some((w) => w.length > 3 && czWords.some((cw) => cw.includes(w) || w.includes(cw)));
+  return pzWords.some((w) => w.length >= 4 && czWords.some((cw) => {
+    if (cw.length < 4) return false;
+    const shorter = w.length <= cw.length ? w : cw;
+    const longer = w.length > cw.length ? w : cw;
+    return longer.includes(shorter) && shorter.length / longer.length >= 0.75;
+  }));
 }
 
 function parseNumberWithSuffix(numStr: string, suffix?: string): number {
