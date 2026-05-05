@@ -117,10 +117,20 @@ function urlBase64ToUint8Array(base64String: string) {
 
 async function persistSubscription(userId: string, sub: PushSubscription) {
   const json = sub.toJSON();
+  const endpoint = json.endpoint!;
+
+  // Clean up any stale subscriptions for this user that have a different endpoint
+  // This prevents orphaned endpoints from receiving pushes nobody can handle
+  await supabase
+    .from("push_subscriptions")
+    .delete()
+    .eq("user_id", userId)
+    .neq("endpoint", endpoint);
+
   await supabase.from("push_subscriptions").upsert(
     {
       user_id: userId,
-      endpoint: json.endpoint!,
+      endpoint,
       p256dh: json.keys!.p256dh,
       auth: json.keys!.auth,
       user_agent: navigator.userAgent.slice(0, 500),
