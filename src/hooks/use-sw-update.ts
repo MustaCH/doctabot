@@ -2,51 +2,48 @@ import { useState, useEffect, useCallback } from "react";
 
 /**
  * Detects when a new Service Worker is waiting to activate.
- * Auto-applies the update immediately without user intervention.
- * Still exposes `updateAvailable` and `applyUpdate` as fallback.
+ * Uses non-destructive lifecycle: sends SKIP_WAITING and waits for
+ * controllerchange before reloading. NEVER unregisters the SW,
+ * because that destroys push subscriptions.
  */
 export function useSwUpdate() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-  const applyUpdate = useCallback(async (worker?: ServiceWorker | null) => {
-    const sw = worker ?? waitingWorker;
-    // Tell the waiting SW to skip waiting
-    if (sw) {
-      sw.postMessage({ type: "SKIP_WAITING" });
+  const applyUpdate = useCallback(async () => {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const waiting = reg?.waiting;
+    if (waiting) {
+      waiting.postMessage({ type: "SKIP_WAITING" });
+      // The SW already calls self.skipWaiting() on install, but this
+      // is a belt-and-suspenders approach. The controllerchange listener
+      // below will trigger the reload once the new SW takes over.
     }
-
-    // Clear all caches
-    if ("caches" in window) {
-      const names = await caches.keys();
-      await Promise.all(names.map((name) => caches.delete(name)));
-    }
-
-    // Unregister the old SW and reload
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(registrations.map((r) => r.unregister()));
-
-    window.location.reload();
-  }, [waitingWorker]);
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    const autoUpdate = (worker: ServiceWorker) => {
-      console.log("[SW] New version detected, auto-updating...");
-      setWaitingWorker(worker);
-      setUpdateAvailable(true);
-      // Small delay to let any in-flight requests finish
-      setTimeout(() => applyUpdate(worker), 1500);
+    let reloading = false;
+
+    // Reload once when a new SW takes control — only once per page load
+    const onControllerChange = () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
     };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
     const checkRegistration = async () => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) return;
 
-      // If there's already a waiting worker, auto-update
+      // If there's already a waiting worker, apply it
       if (reg.waiting) {
-        autoUpdate(reg.waiting);
+        setUpdateAvailable(true);
+        // Small delay to let any in-flight requests finish
+        setTimeout(() => {
+          reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+        }, 1500);
       }
 
       // Listen for new SW installs
@@ -55,7 +52,11 @@ export function useSwUpdate() {
         if (!newWorker) return;
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            autoUpdate(newWorker);
+            console.log("[SW] New version detected, activating…");
+            setUpdateAvailable(true);
+            setTimeout(() => {
+              newWorker.postMessage({ type: "SKIP_WAITING" });
+            }, 1500);
           }
         });
       });
@@ -69,8 +70,11 @@ export function useSwUpdate() {
       reg?.update();
     }, 60_000);
 
-    return () => clearInterval(interval);
-  }, [applyUpdate]);
+    return () => {
+      clearInterval(interval);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
+  }, []);
 
   return { updateAvailable, applyUpdate };
 }
