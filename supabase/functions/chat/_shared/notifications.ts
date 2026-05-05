@@ -19,6 +19,7 @@ export function sendPushNotification(params: {
       title: "Alan respondió",
       body: content.slice(0, 100).replace(/[#*_`]/g, "") + (content.length > 100 ? "…" : ""),
       url: `/?c=${conversationId}`,
+      trigger_source: "chat",
     }),
   }).catch((err: unknown) => console.error("Push notification error:", err));
 }
