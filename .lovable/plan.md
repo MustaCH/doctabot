@@ -1,49 +1,42 @@
+Detecté la causa principal: Alan está usando nombres de estado antiguos (`inactive`, `active`, `prospect`, `closed`) en el prompt, pero la base real del CRM solo acepta la escala de temperatura: `hot`, `warm`, `cold`. Por eso cuando Alan manda `status='inactive'`, la herramienta lo descarta como inválido y cae al valor por defecto `hot`.
 
-## Problemas identificados
+Plan de implementación:
 
-1. **Búsqueda no incluye el título**: Alan busca por `locality` y `zone`, pero muchas propiedades tienen la ubicación específica solo en el `title` (ej: "Las Tipas Manantiales"). Resultado: no encuentra nada aunque existan.
+1. Alinear el prompt de Alan con los estados reales del CRM
+   - Reemplazar la sección de estados antiguos por:
+     - `hot`: caliente
+     - `warm`: tibio
+     - `cold`: frío
+   - Indicar explícitamente que si el usuario dice “frío”, “inactivo”, “sin actividad”, “baja prioridad” o similares, Alan debe enviar `status='cold'`, no `inactive`.
 
-2. **No distingue propiedades de RE/MAX Docta**: De 3492 propiedades en la base, solo 393 son de la oficina "REMAX Docta". Cuando el agente pregunta "cuántas propiedades tenemos", Alan devuelve el total general en vez de las de Docta.
+2. Hacer la herramienta más tolerante a sinónimos
+   - Agregar una normalización centralizada de estados antes de crear o actualizar clientes.
+   - Mapear automáticamente:
+     - `inactive`, `frio`, `frío`, `cold`, `sin actividad`, `inactivo` → `cold`
+     - `active`, `warm`, `tibio`, `seguimiento` → `warm`
+     - `prospect`, `hot`, `caliente`, `interesado` → `hot`
+   - Aplicar esta normalización tanto en `create_client` como en `update_client`.
 
----
+3. Evitar falsos “creado como caliente”
+   - Cambiar la lógica actual que ante un estado inválido crea el cliente como `hot` silenciosamente.
+   - Si Alan manda un estado reconocible pero antiguo como `inactive`, quedará como `cold`.
+   - Si manda un estado totalmente desconocido, recién ahí se usará el default `hot`, pero el prompt debería evitarlo.
 
-## Solución
+4. Revisar carga/importación de contactos
+   - Mantener coherencia con la escala `hot/warm/cold` en los puntos de carga masiva.
+   - Donde hoy la importación visual fija `status: 'hot'`, no lo tocaría salvo que quieras que el importador permita elegir una calificación para toda la tanda. El bug reportado por Alan se explica por la herramienta conversacional, no por el importador visual.
 
-### 1. Agregar parámetro `title` a `search_properties`
+5. Desplegar y verificar
+   - Desplegar nuevamente la función `chat`.
+   - Probar casos como:
+     - “Creá a Mauri Quiñones como frío” → debe quedar `cold`.
+     - “Cargalo como inactivo” → debe quedar `cold`.
+     - “Cambiá a Pacho a tibio” → debe quedar `warm`.
+     - “Cambiá a X a caliente” → debe quedar `hot`.
 
-**Archivo**: `supabase/functions/chat/_shared/tools/definitions.ts`
+Archivos a modificar:
+- `supabase/functions/chat/_shared/prompt.ts`
+- `supabase/functions/chat/_shared/tools/validators.ts`
+- `supabase/functions/chat/_shared/tools/executor.ts`
 
-- Agregar un parámetro `title` con descripción: "Buscar por palabras clave en el título de la propiedad (ej: Las Tipas, Country Cañuelas)"
-- Agregar un parámetro `office` con descripción: "Filtrar por oficina: 'REMAX Docta' para solo propiedades propias, o vacío para todas"
-
-**Archivo**: `supabase/functions/chat/_shared/tools/executor.ts`
-
-- En el case `search_properties`, agregar filtro `ilike("title", ...)` cuando se pase `title`
-- Agregar filtro `ilike("office", ...)` cuando se pase `office`
-- Cuando no se encuentren resultados por `locality`, hacer un fallback automático buscando por `title` con el mismo texto (para cubrir casos como "Las Tipas" que no está en locality pero sí en title)
-
-### 2. Actualizar el prompt de Alan
-
-**Archivo**: `supabase/functions/chat/_shared/prompt.ts`
-
-- Instruir a Alan que la base tiene propiedades de varias oficinas RE/MAX, pero que las de "REMAX Docta" son las propias
-- Cuando el agente pregunte por "nuestras propiedades" o "cuántas tenemos", debe filtrar por `office: "REMAX Docta"`
-- Cuando busque por nombre de barrio/zona y no encuentre resultados por locality, debe reintentar usando el parámetro `title`
-
-### 3. Redeploy
-
-Redesplegar la edge function `chat`.
-
----
-
-## Detalle técnico
-
-En `executor.ts`, la lógica de fallback por título sería:
-
-```text
-1. Buscar con los filtros normales (locality, zone, etc.)
-2. Si locality fue provisto y resultados = 0, re-intentar reemplazando el filtro locality por un ilike en title
-3. Devolver los resultados del fallback indicando que se buscó por título
-```
-
-Esto cubre el caso donde el agente escribe "Las Tipas" — Alan lo manda como `locality`, no encuentra nada, y automáticamente reintenta buscando en `title`.
+No hace falta migración de base de datos: la tabla ya usa correctamente `hot`, `warm`, `cold`; el problema está en la interpretación y validación de Alan.

@@ -4,6 +4,19 @@ export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 export const VALID_CLIENT_STATUSES = ["hot", "warm", "cold"];
 export const VALID_CLIENT_TYPES = ["buyer", "seller", "both"];
 export const VALID_BUDGET_CURRENCIES = ["USD", "ARS"];
+
+/** Normalize client status synonyms to the canonical hot/warm/cold scale */
+export function normalizeClientStatus(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase();
+  const HOT_SYNONYMS = ["hot", "caliente", "interesado", "prospect", "prospecto"];
+  const WARM_SYNONYMS = ["warm", "tibio", "active", "activo", "seguimiento", "en seguimiento"];
+  const COLD_SYNONYMS = ["cold", "frio", "frío", "inactive", "inactivo", "sin actividad", "cerrado", "closed", "baja"];
+  if (HOT_SYNONYMS.includes(s)) return "hot";
+  if (WARM_SYNONYMS.includes(s)) return "warm";
+  if (COLD_SYNONYMS.includes(s)) return "cold";
+  return null;
+}
 export const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
 
 /** Sanitize ILIKE patterns – escape wildcards and limit length */
