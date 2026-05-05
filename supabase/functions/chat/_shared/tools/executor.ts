@@ -5,6 +5,7 @@ import {
   VALID_CLIENT_TYPES,
   VALID_BUDGET_CURRENCIES,
   VALID_CONVERSATION_TYPES,
+  normalizeClientStatus,
   sanitizePattern,
   safePositiveNumber,
   safePositiveInt,
