@@ -160,7 +160,7 @@ export async function executeTool(
       const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
-      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : "hot";
+      const status = normalizeClientStatus(args.status) ?? "hot";
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
@@ -187,7 +187,8 @@ export async function executeTool(
       if (typeof args.phone === "string") updates.phone = args.phone.trim().slice(0, 50);
       if (typeof args.email === "string") updates.email = args.email.trim().slice(0, 200);
       if (typeof args.notes === "string") updates.notes = args.notes.trim().slice(0, 2000);
-      if (VALID_CLIENT_STATUSES.includes(args.status)) updates.status = args.status;
+      const normalizedStatus = normalizeClientStatus(args.status);
+      if (normalizedStatus) updates.status = normalizedStatus;
       if (VALID_CLIENT_TYPES.includes(args.client_type)) updates.client_type = args.client_type;
       if (typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday)) updates.birthday = args.birthday;
       if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);

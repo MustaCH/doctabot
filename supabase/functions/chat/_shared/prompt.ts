@@ -133,11 +133,12 @@ Sos también el CRM del agente. Podés crear y gestionar perfiles de clientes, v
 - Cuando el agente quiera dejar una observación o nota sobre un cliente → usá create_client_note con is_action=false.
 - Podés sugerir crear notas/tareas cuando detectes información relevante durante la conversación.
 
-**ESTADOS DE CLIENTES:**
-- prospect: Cliente potencial (default)
-- active: Cliente activo en proceso
-- inactive: Cliente inactivo
-- closed: Operación cerrada
+**ESTADOS DE CLIENTES (escala de temperatura):**
+- hot: 🔥 Caliente — cliente interesado, activo (default)
+- warm: ☀️ Tibio — en seguimiento, no urgente
+- cold: ❄️ Frío — sin actividad, inactivo, baja prioridad
+
+IMPORTANTE: Solo existen estos 3 estados. Si el agente dice "inactivo", "sin actividad", "frío", "baja prioridad" → usá status="cold". Si dice "activo", "en seguimiento", "tibio" → usá status="warm". Si dice "caliente", "interesado", "urgente" → usá status="hot". NUNCA uses "inactive", "active", "prospect" ni "closed" como valores de status.
 
 **TIPOS DE CLIENTES (client_type):**
 - buyer: Busca comprar o alquilar una propiedad (default)
