@@ -1,42 +1,41 @@
-Detecté la causa principal: Alan está usando nombres de estado antiguos (`inactive`, `active`, `prospect`, `closed`) en el prompt, pero la base real del CRM solo acepta la escala de temperatura: `hot`, `warm`, `cold`. Por eso cuando Alan manda `status='inactive'`, la herramienta lo descarta como inválido y cae al valor por defecto `hot`.
+## Problem
 
-Plan de implementación:
+Push notifications are never received despite 224 successful deliveries (HTTP 201 from Apple/FCM). The issue is the `useSwUpdate` hook: it **unregisters ALL service workers** on every app update, destroying the push subscription in the process. Apple/FCM still accept pushes to the old endpoint (201), but no SW exists to handle the `push` event, so the notification never shows.
 
-1. Alinear el prompt de Alan con los estados reales del CRM
-   - Reemplazar la sección de estados antiguos por:
-     - `hot`: caliente
-     - `warm`: tibio
-     - `cold`: frío
-   - Indicar explícitamente que si el usuario dice “frío”, “inactivo”, “sin actividad”, “baja prioridad” o similares, Alan debe enviar `status='cold'`, no `inactive`.
+## Plan
 
-2. Hacer la herramienta más tolerante a sinónimos
-   - Agregar una normalización centralizada de estados antes de crear o actualizar clientes.
-   - Mapear automáticamente:
-     - `inactive`, `frio`, `frío`, `cold`, `sin actividad`, `inactivo` → `cold`
-     - `active`, `warm`, `tibio`, `seguimiento` → `warm`
-     - `prospect`, `hot`, `caliente`, `interesado` → `hot`
-   - Aplicar esta normalización tanto en `create_client` como en `update_client`.
+### 1. Fix `useSwUpdate` — stop destroying the SW
 
-3. Evitar falsos “creado como caliente”
-   - Cambiar la lógica actual que ante un estado inválido crea el cliente como `hot` silenciosamente.
-   - Si Alan manda un estado reconocible pero antiguo como `inactive`, quedará como `cold`.
-   - Si manda un estado totalmente desconocido, recién ahí se usará el default `hot`, pero el prompt debería evitarlo.
+Replace the destructive `applyUpdate` (unregister all SWs + clear caches + reload) with a proper SW lifecycle approach:
+- Send `SKIP_WAITING` to the waiting worker (which the SW already handles via `self.skipWaiting()`)
+- Listen for `controllerchange` to reload only when the new SW takes over
+- **Never unregister** the service worker — that kills push subscriptions
 
-4. Revisar carga/importación de contactos
-   - Mantener coherencia con la escala `hot/warm/cold` en los puntos de carga masiva.
-   - Donde hoy la importación visual fija `status: 'hot'`, no lo tocaría salvo que quieras que el importador permita elegir una calificación para toda la tanda. El bug reportado por Alan se explica por la herramienta conversacional, no por el importador visual.
+File: `src/hooks/use-sw-update.ts`
 
-5. Desplegar y verificar
-   - Desplegar nuevamente la función `chat`.
-   - Probar casos como:
-     - “Creá a Mauri Quiñones como frío” → debe quedar `cold`.
-     - “Cargalo como inactivo” → debe quedar `cold`.
-     - “Cambiá a Pacho a tibio” → debe quedar `warm`.
-     - “Cambiá a X a caliente” → debe quedar `hot`.
+### 2. Clean up stale push subscriptions
 
-Archivos a modificar:
-- `supabase/functions/chat/_shared/prompt.ts`
-- `supabase/functions/chat/_shared/tools/validators.ts`
-- `supabase/functions/chat/_shared/tools/executor.ts`
+Add cleanup logic: when re-subscribing, delete the previous endpoint from the database so stale endpoints don't accumulate.
 
-No hace falta migración de base de datos: la tabla ya usa correctamente `hot`, `warm`, `cold`; el problema está en la interpretación y validación de Alan.
+The old subscription for user `e4269c23` from April 20th (no device_label, no is_standalone) is stale and should be cleaned up.
+
+File: `src/hooks/use-push-notifications.ts`
+
+### 3. Add a `trigger_source` to chat push calls
+
+Tag push notifications sent from the chat function with `trigger_source: "chat"` so delivery logs are traceable.
+
+File: `supabase/functions/chat/_shared/notifications.ts`
+
+### 4. Clean stale subscription from DB
+
+Remove the orphaned subscription for user `e4269c23` (the one from April 20th with no device_label).
+
+### Technical details
+
+The SW (`src/sw.ts`) already calls `self.skipWaiting()` on install and `self.clients.claim()` on activate, which means updates activate immediately without needing external intervention. The `useSwUpdate` hook's aggressive unregister/reload cycle was fighting against this built-in behavior.
+
+Files to modify:
+- `src/hooks/use-sw-update.ts` — Non-destructive update flow
+- `src/hooks/use-push-notifications.ts` — Clean old subscriptions on re-subscribe
+- `supabase/functions/chat/_shared/notifications.ts` — Add trigger_source
