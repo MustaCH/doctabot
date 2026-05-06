@@ -899,6 +899,7 @@ export type Database = {
     }
     Functions: {
       admin_engagement_report: { Args: never; Returns: Json }
+      admin_time_stats: { Args: never; Returns: Json }
       admin_user_reports: { Args: never; Returns: Json }
       cleanup_old_logs: { Args: never; Returns: undefined }
       has_role: {
