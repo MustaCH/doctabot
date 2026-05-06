@@ -219,7 +219,7 @@ serve(async (req) => {
 
         const scrapeData = await scrapeRes.json();
         const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
-        opProperties.push(...properties);
+        opProperties.push(...properties.map((p: any) => ({ ...p, _opId: opId })));
       }
 
       await writeLog(supabase, batchId, `✅ ${opLabel}: ${opProperties.length} propiedades scrapeadas`, "info", { properties_count: opProperties.length });
