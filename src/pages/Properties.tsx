@@ -264,7 +264,7 @@ const Properties = () => {
             photo={p.photo ?? undefined}
             title={p.title ?? undefined}
             office={p.office ?? undefined}
-            price={formatPrice(p.price, p.currency)}
+            price={formatPrice(p)}
             location={formatLocation(p.address, p.locality, p.zone)}
             surface={formatSurface(p.m2_total, p.m2_cover)}
             url={p.url ?? undefined}
