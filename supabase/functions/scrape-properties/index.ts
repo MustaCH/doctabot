@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const SCRAPE_BASE_URL = "http://qiuautomations-scrapingcba-7uwjyy-33ffaf-31-97-164-164.traefik.me/api/scrape";
 
-// GeoJSON zones for Córdoba Capital
+// GeoJSON zones for Córdoba Capital (fallback when zone_data is not provided by scraper)
 const CORDOBA_ZONES = [
   { name: "Ruta 20", polygon: [[-64.20594530297676,-31.41855213142289],[-64.23666395394986,-31.41176762764692],[-64.24261544284653,-31.4316917296247],[-64.23947211786738,-31.45121383061365],[-64.23478021827735,-31.45091128014509],[-64.23238264910181,-31.44907669569495],[-64.23160661718263,-31.44276402415655],[-64.21404057744546,-31.44288206897711],[-64.21020162184459,-31.4302133115201],[-64.20594530297676,-31.41855213142289]] },
   { name: "Nueva Córdoba", polygon: [[-64.18863847306291,-31.41873096920493],[-64.19477256928857,-31.43304034799817],[-64.18359724895386,-31.43499937773949],[-64.17440728215153,-31.42415369728308],[-64.18863847306291,-31.41873096920493]] },
@@ -41,47 +41,81 @@ function getZone(lng: number | null, lat: number | null): string | null {
   return null;
 }
 
-function parseNumber(val: any): number | null {
+function safeNumber(val: any): number | null {
   if (val == null) return null;
-  if (typeof val === "number") return val;
+  if (typeof val === "number") return isNaN(val) ? null : val;
   const s = String(val).replace(/[^\d.,\-]/g, "").replace(",", ".");
   const n = parseFloat(s);
   return isNaN(n) ? null : n;
 }
 
-function parseInteger(val: any): number | null {
+function safeInt(val: any): number | null {
   if (val == null) return null;
+  if (typeof val === "number") return isNaN(val) ? null : Math.round(val);
   const s = String(val).replace(/[^\d]/g, "");
   const n = parseInt(s, 10);
   return isNaN(n) ? null : n;
 }
 
 function buildRecord(prop: any) {
-  const propLat = prop.latitude ?? prop.lat ?? null;
-  const propLng = prop.longitude ?? prop.lng ?? null;
-  const externalId = String(prop.external_id ?? prop.id ?? prop.url ?? "");
+  const propLat = safeNumber(prop.latitude ?? prop.lat ?? null);
+  const propLng = safeNumber(prop.longitude ?? prop.lng ?? null);
+
+  // Stable external_id: prefer entityId > id (numeric) > url
+  const externalId = String(prop.entityId ?? prop.external_id ?? prop.id ?? prop.url ?? "");
+
+  // Zone: use structured zone from scraper if available, fallback to GeoJSON
+  const zoneObj = prop.zone && typeof prop.zone === "object" ? prop.zone : null;
+  const geoZone = getZone(propLng, propLat);
+
+  // Derive zone label for the legacy `zone` column
+  const zoneLabel = zoneObj
+    ? (zoneObj.neighborhood || zoneObj.city || zoneObj.county || geoZone || null)
+    : geoZone;
+
   return {
     external_id: externalId || null,
+    remax_id: safeInt(typeof prop.id === "number" ? prop.id : null),
+    entity_id: typeof prop.entityId === "string" ? prop.entityId : null,
     title: prop.title ?? null,
     operation: prop.operation ?? null,
-    price: parseNumber(prop.price),
+    operation_id: safeInt(prop.operationId),
+    price: safeNumber(prop.price),
     currency: prop.currency ?? null,
+    price_exposure: prop.priceExposure ?? true,
+    expenses_price: safeNumber(prop.expensesPrice),
+    expenses_currency: prop.expensesCurrency ?? null,
     address: prop.address ?? null,
     locality: prop.locality ?? null,
-    lat: propLat ? Number(propLat) : null,
-    lng: propLng ? Number(propLng) : null,
+    lat: propLat,
+    lng: propLng,
     brokers: prop.brokers ?? null,
     contact_person: prop.contactPerson ?? prop.contact_person ?? null,
+    contact_phone: prop.contactPhone ?? null,
+    contact_email: prop.contactEmail ?? null,
     office: prop.office ?? null,
-    dimensions_land_m2: parseNumber(prop.dimensionsLand ?? prop.dimensions_land_m2),
-    m2_total: parseNumber(prop.m2Total ?? prop.m2_total),
-    m2_cover: parseNumber(prop.m2Cover ?? prop.m2_cover),
-    ambientes: parseInteger(prop.ambientes),
-    banos: parseInteger(prop.baños ?? prop.banos),
+    office_id: prop.officeId ?? null,
+    associate_id: prop.associateId ?? null,
+    dimensions_land_m2: safeNumber(prop.dimensionLand ?? prop.dimensionsLand ?? prop.dimensions_land_m2),
+    m2_total: safeNumber(prop.dimensionTotalBuilt ?? prop.m2Total ?? prop.m2_total),
+    m2_cover: safeNumber(prop.dimensionCovered ?? prop.m2Cover ?? prop.m2_cover),
+    ambientes: safeInt(prop.ambientes),
+    habitaciones: safeInt(prop.habitaciones),
+    banos: safeInt(prop.baños ?? prop.banos),
     property_type: prop.propertyType ?? prop.property_type ?? null,
+    property_type_id: safeInt(prop.propertyTypeId),
+    listing_status: prop.listingStatus ?? "active",
+    is_entrepreneurship: prop.isEntrepreneurship ?? false,
+    entrepreneurship: prop.isEntrepreneurship && prop.entrepreneurship ? prop.entrepreneurship : null,
     url: prop.url ?? null,
-    photo: Array.isArray(prop.photos) ? prop.photos[0] : (prop.photo ?? null),
-    zone: getZone(propLng ? Number(propLng) : null, propLat ? Number(propLat) : null),
+    photo: Array.isArray(prop.photos) && prop.photos.length > 0 ? prop.photos[0] : (prop.photo ?? null),
+    photos: Array.isArray(prop.photos) ? prop.photos : null,
+    zone: zoneLabel,
+    zone_data: zoneObj,
+    zone_neighborhood: zoneObj?.neighborhood ?? null,
+    zone_city: zoneObj?.city ?? null,
+    zone_county: zoneObj?.county ?? null,
+    zone_private_community: zoneObj?.privateCommunity ?? null,
   };
 }
 
@@ -104,6 +138,9 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
+// Operation labels for logging
+const OP_LABELS: Record<number, string> = { 1: "Venta", 2: "Alquiler", 3: "Alquiler temporario" };
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -116,12 +153,14 @@ serve(async (req) => {
     let endPage: number | null = null;
     let batchTimestamp: string | null = null;
     let isLastBatch = false;
+    let operationId: number | null = null; // null = scrape all operations
 
     try {
       const body = await req.json();
       if (body.startPage) startPage = Number(body.startPage);
       if (body.endPage) endPage = Number(body.endPage);
       if (body.batchTimestamp) batchTimestamp = body.batchTimestamp;
+      if (body.operationId) operationId = Number(body.operationId);
     } catch { /* no body, use defaults */ }
 
     if (!batchTimestamp) {
@@ -130,75 +169,71 @@ serve(async (req) => {
 
     const batchId = batchTimestamp!;
 
-    // Only log "started" on the very first invocation (startPage === 1)
-    if (startPage === 1) {
-      await writeLog(supabase, batchId, "🚀 Scraping iniciado", "info");
+    // Determine which operations to scrape
+    const operations = operationId ? [operationId] : [1, 2, 3];
+
+    if (startPage === 1 && !operationId) {
+      await writeLog(supabase, batchId, `🚀 Scraping iniciado (operaciones: ${operations.map(o => OP_LABELS[o]).join(", ")})`, "info");
+    } else if (startPage === 1) {
+      await writeLog(supabase, batchId, `🚀 Scraping iniciado — ${OP_LABELS[operationId!] ?? operationId}`, "info");
     }
-
-    let maxPages = 1;
-    if (!endPage) {
-      await writeLog(supabase, batchId, "📄 Consultando cantidad de páginas...", "info");
-      const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages`);
-      if (!maxPagesRes.ok) {
-        await writeLog(supabase, batchId, `❌ Error al consultar páginas: ${maxPagesRes.status}`, "error");
-        throw new Error(`checkMaxPages failed: ${maxPagesRes.status}`);
-      }
-      const maxPagesData = await maxPagesRes.json();
-      maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
-      await writeLog(supabase, batchId, `📄 Total de páginas: ${maxPages}`, "info", { total_pages: maxPages });
-
-      endPage = Math.min(startPage + 9, maxPages);
-
-      if (endPage < maxPages) {
-        const nextStart = endPage + 1;
-        const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-        await writeLog(supabase, batchId, `⏭️ Programando siguiente lote: páginas ${nextStart}-${Math.min(nextStart + 9, maxPages)}`, "info", { current_page: nextStart, total_pages: maxPages });
-        fetch(`${supabaseUrl}/functions/v1/scrape-properties`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${anonKey}`,
-          },
-          body: JSON.stringify({ startPage: nextStart, batchTimestamp }),
-        }).catch(e => console.error("Failed to schedule next batch:", e));
-      } else {
-        isLastBatch = true;
-      }
-    } else {
-      isLastBatch = true;
-    }
-
-    await writeLog(supabase, batchId, `🏠 Scrapeando páginas ${startPage}-${endPage}...`, "info", { current_page: startPage, total_pages: maxPages > 1 ? maxPages : undefined });
 
     let allProperties: any[] = [];
-    const BATCH_SIZE = 5;
+    let totalUpserted = 0;
+    let totalErrors = 0;
 
-    for (let start = startPage; start <= endPage; start += BATCH_SIZE) {
-      const end = Math.min(start + BATCH_SIZE - 1, endPage);
-      await writeLog(supabase, batchId, `🔍 Descargando páginas ${start}-${end}...`, "info", { current_page: end, total_pages: maxPages > 1 ? maxPages : undefined });
+    for (const opId of operations) {
+      const opLabel = OP_LABELS[opId] ?? `Op${opId}`;
+      await writeLog(supabase, batchId, `📋 Procesando ${opLabel} (operationId=${opId})...`, "info");
 
-      const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${start}&endPage=${end}`);
-      if (!scrapeRes.ok) {
-        await writeLog(supabase, batchId, `⚠️ Error en páginas ${start}-${end}: HTTP ${scrapeRes.status}`, "error", { current_page: end });
-        continue;
+      // Get max pages for this operation
+      let maxPages = 1;
+      let opStartPage = startPage;
+      let opEndPage = endPage;
+
+      if (!opEndPage) {
+        const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${opId}`);
+        if (!maxPagesRes.ok) {
+          await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: ${maxPagesRes.status}`, "error");
+          continue;
+        }
+        const maxPagesData = await maxPagesRes.json();
+        maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
+        await writeLog(supabase, batchId, `📄 ${opLabel}: ${maxPages} páginas`, "info", { total_pages: maxPages });
+        opEndPage = maxPages;
       }
 
-      const scrapeData = await scrapeRes.json();
-      const properties = Array.isArray(scrapeData) ? scrapeData : scrapeData.properties ?? scrapeData.data ?? [];
-      allProperties = allProperties.concat(properties);
-      await writeLog(supabase, batchId, `✅ Páginas ${start}-${end}: ${properties.length} propiedades encontradas (acumulado: ${allProperties.length})`, "info", { current_page: end, total_pages: maxPages > 1 ? maxPages : undefined, properties_count: allProperties.length });
+      // Scrape pages for this operation
+      const BATCH_SIZE = 5;
+      const opProperties: any[] = [];
+
+      for (let start = opStartPage; start <= opEndPage!; start += BATCH_SIZE) {
+        const end = Math.min(start + BATCH_SIZE - 1, opEndPage!);
+        await writeLog(supabase, batchId, `🔍 ${opLabel}: páginas ${start}-${end}...`, "info", { current_page: end, total_pages: maxPages });
+
+        const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${start}&endPage=${end}&operationId=${opId}`);
+        if (!scrapeRes.ok) {
+          await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${start}-${end}: HTTP ${scrapeRes.status}`, "error", { current_page: end });
+          continue;
+        }
+
+        const scrapeData = await scrapeRes.json();
+        const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
+        opProperties.push(...properties);
+      }
+
+      await writeLog(supabase, batchId, `✅ ${opLabel}: ${opProperties.length} propiedades scrapeadas`, "info", { properties_count: opProperties.length });
+      allProperties = allProperties.concat(opProperties);
     }
 
-    await writeLog(supabase, batchId, `📦 Total scrapeadas en este lote: ${allProperties.length}`, "info", { current_page: endPage, total_pages: maxPages > 1 ? maxPages : undefined, properties_count: allProperties.length });
+    await writeLog(supabase, batchId, `📦 Total scrapeadas: ${allProperties.length}`, "info", { properties_count: allProperties.length });
 
+    // Build records and upsert
     const records = allProperties
       .map(prop => ({ ...buildRecord(prop), last_seen_at: batchTimestamp }))
       .filter(r => r.external_id);
 
-    let upserted = 0;
-    let errors = 0;
     const UPSERT_BATCH = 50;
-
     for (let i = 0; i < records.length; i += UPSERT_BATCH) {
       const batch = records.slice(i, i + UPSERT_BATCH);
       const { error } = await supabase
@@ -207,16 +242,18 @@ serve(async (req) => {
 
       if (error) {
         console.error(`Batch upsert error at ${i}:`, error.message);
-        errors += batch.length;
+        totalErrors += batch.length;
       } else {
-        upserted += batch.length;
+        totalUpserted += batch.length;
       }
     }
 
-    await writeLog(supabase, batchId, `💾 Guardadas: ${upserted} propiedades (${errors} errores)`, "info", { properties_count: upserted });
+    await writeLog(supabase, batchId, `💾 Guardadas: ${totalUpserted} propiedades (${totalErrors} errores)`, "info", { properties_count: totalUpserted });
 
+    // Cleanup stale properties (only when scraping all operations without pagination)
     let deleted = 0;
-    if (isLastBatch && upserted > 0) {
+    isLastBatch = !operationId && !endPage;
+    if (isLastBatch && totalUpserted > 0) {
       await writeLog(supabase, batchId, `🧹 Limpiando propiedades obsoletas...`, "info");
       const { data: staleData, error: deleteError } = await supabase
         .from("properties")
@@ -240,7 +277,7 @@ serve(async (req) => {
             body: JSON.stringify({
               type: "stale_properties_deleted",
               deleted_count: deleted,
-              upserted_count: upserted,
+              upserted_count: totalUpserted,
               batch_timestamp: batchTimestamp,
               timestamp: new Date().toISOString(),
             }),
@@ -248,9 +285,7 @@ serve(async (req) => {
         }
       }
 
-      await writeLog(supabase, batchId, `🏁 Scraping finalizado — ${upserted} actualizadas, ${deleted} eliminadas, ${errors} errores`, "success", { properties_count: upserted });
-    } else if (!isLastBatch) {
-      await writeLog(supabase, batchId, `⏭️ Lote parcial completado (páginas ${startPage}-${endPage}). Siguiente lote en proceso...`, "info", { current_page: endPage, total_pages: maxPages });
+      await writeLog(supabase, batchId, `🏁 Scraping finalizado — ${totalUpserted} actualizadas, ${deleted} eliminadas, ${totalErrors} errores`, "success", { properties_count: totalUpserted });
     }
 
     // Clean up old logs (keep last 5 batches)
@@ -269,10 +304,10 @@ serve(async (req) => {
 
     const result = {
       success: true,
-      pages: `${startPage}-${endPage}`,
+      operations: operations.map(o => OP_LABELS[o]),
       total_scraped: allProperties.length,
-      upserted,
-      errors,
+      upserted: totalUpserted,
+      errors: totalErrors,
       deleted,
       is_last_batch: isLastBatch,
       batch_timestamp: batchTimestamp,
