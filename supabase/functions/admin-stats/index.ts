@@ -98,34 +98,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---------- TIME STATS (last 30 days) ----------
+    // ---------- TIME STATS (last 30 days, SQL-based) ----------
     if (action === "time-stats") {
-      const since = new Date();
-      since.setDate(since.getDate() - 30);
-      const sinceISO = since.toISOString();
-
-      const [usersRes, msgsRes, convsRes, propsRes] = await Promise.all([
-        supabaseAdmin.from("profiles").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("messages").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("conversations").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("properties").select("created_at").gte("created_at", sinceISO),
-      ]);
-
-      const bucket = (rows: { created_at: string }[] | null) => {
-        const map: Record<string, number> = {};
-        (rows ?? []).forEach((r) => {
-          const d = r.created_at.slice(0, 10);
-          map[d] = (map[d] ?? 0) + 1;
-        });
-        return map;
-      };
-
-      return json({
-        users: bucket(usersRes.data),
-        messages: bucket(msgsRes.data),
-        conversations: bucket(convsRes.data),
-        properties: bucket(propsRes.data),
-      });
+      const { data, error } = await supabaseAdmin.rpc("admin_time_stats");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
     }
 
     // ---------- USERS ----------
