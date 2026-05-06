@@ -552,83 +552,146 @@ export type Database = {
         Row: {
           address: string | null
           ambientes: number | null
+          associate_id: string | null
           banos: number | null
           brokers: string | null
+          contact_email: string | null
           contact_person: string | null
+          contact_phone: string | null
           created_at: string
           currency: string | null
           dimensions_land_m2: number | null
+          entity_id: string | null
+          entrepreneurship: Json | null
+          expenses_currency: string | null
+          expenses_price: number | null
           external_id: string | null
+          habitaciones: number | null
           id: string
+          is_entrepreneurship: boolean | null
           last_seen_at: string | null
           lat: number | null
+          listing_status: string | null
           lng: number | null
           locality: string | null
           m2_cover: number | null
           m2_total: number | null
           office: string | null
+          office_id: string | null
           operation: string | null
+          operation_id: number | null
           photo: string | null
+          photos: string[] | null
           price: number | null
+          price_exposure: boolean | null
           property_type: string | null
+          property_type_id: number | null
+          remax_id: number | null
           title: string | null
           updated_at: string
           url: string | null
           zone: string | null
+          zone_city: string | null
+          zone_county: string | null
+          zone_data: Json | null
+          zone_neighborhood: string | null
+          zone_private_community: string | null
         }
         Insert: {
           address?: string | null
           ambientes?: number | null
+          associate_id?: string | null
           banos?: number | null
           brokers?: string | null
+          contact_email?: string | null
           contact_person?: string | null
+          contact_phone?: string | null
           created_at?: string
           currency?: string | null
           dimensions_land_m2?: number | null
+          entity_id?: string | null
+          entrepreneurship?: Json | null
+          expenses_currency?: string | null
+          expenses_price?: number | null
           external_id?: string | null
+          habitaciones?: number | null
           id?: string
+          is_entrepreneurship?: boolean | null
           last_seen_at?: string | null
           lat?: number | null
+          listing_status?: string | null
           lng?: number | null
           locality?: string | null
           m2_cover?: number | null
           m2_total?: number | null
           office?: string | null
+          office_id?: string | null
           operation?: string | null
+          operation_id?: number | null
           photo?: string | null
+          photos?: string[] | null
           price?: number | null
+          price_exposure?: boolean | null
           property_type?: string | null
+          property_type_id?: number | null
+          remax_id?: number | null
           title?: string | null
           updated_at?: string
           url?: string | null
           zone?: string | null
+          zone_city?: string | null
+          zone_county?: string | null
+          zone_data?: Json | null
+          zone_neighborhood?: string | null
+          zone_private_community?: string | null
         }
         Update: {
           address?: string | null
           ambientes?: number | null
+          associate_id?: string | null
           banos?: number | null
           brokers?: string | null
+          contact_email?: string | null
           contact_person?: string | null
+          contact_phone?: string | null
           created_at?: string
           currency?: string | null
           dimensions_land_m2?: number | null
+          entity_id?: string | null
+          entrepreneurship?: Json | null
+          expenses_currency?: string | null
+          expenses_price?: number | null
           external_id?: string | null
+          habitaciones?: number | null
           id?: string
+          is_entrepreneurship?: boolean | null
           last_seen_at?: string | null
           lat?: number | null
+          listing_status?: string | null
           lng?: number | null
           locality?: string | null
           m2_cover?: number | null
           m2_total?: number | null
           office?: string | null
+          office_id?: string | null
           operation?: string | null
+          operation_id?: number | null
           photo?: string | null
+          photos?: string[] | null
           price?: number | null
+          price_exposure?: boolean | null
           property_type?: string | null
+          property_type_id?: number | null
+          remax_id?: number | null
           title?: string | null
           updated_at?: string
           url?: string | null
           zone?: string | null
+          zone_city?: string | null
+          zone_county?: string | null
+          zone_data?: Json | null
+          zone_neighborhood?: string | null
+          zone_private_community?: string | null
         }
         Relationships: []
       }
@@ -844,37 +907,84 @@ export type Database = {
         Returns: boolean
       }
       is_conversation_owner: { Args: { conv_id: string }; Returns: boolean }
-      search_properties_filtered: {
-        Args: {
-          op_filter?: string
-          page_offset?: number
-          page_size?: number
-          price_max?: number
-          price_min?: number
-          search_term?: string
-          type_filter?: string
-        }
-        Returns: {
-          address: string
-          ambientes: number
-          banos: number
-          created_at: string
-          currency: string
-          id: string
-          locality: string
-          m2_cover: number
-          m2_total: number
-          office: string
-          operation: string
-          photo: string
-          price: number
-          property_type: string
-          title: string
-          total_count: number
-          url: string
-          zone: string
-        }[]
-      }
+      search_properties_filtered:
+        | {
+            Args: {
+              city_filter?: string
+              neighborhood_filter?: string
+              op_filter?: string
+              page_offset?: number
+              page_size?: number
+              price_max?: number
+              price_min?: number
+              search_term?: string
+              type_filter?: string
+            }
+            Returns: {
+              address: string
+              ambientes: number
+              banos: number
+              contact_email: string
+              contact_phone: string
+              created_at: string
+              currency: string
+              entrepreneurship: Json
+              expenses_currency: string
+              expenses_price: number
+              habitaciones: number
+              id: string
+              is_entrepreneurship: boolean
+              locality: string
+              m2_cover: number
+              m2_total: number
+              office: string
+              operation: string
+              operation_id: number
+              photo: string
+              photos: string[]
+              price: number
+              price_exposure: boolean
+              property_type: string
+              title: string
+              total_count: number
+              url: string
+              zone: string
+              zone_city: string
+              zone_neighborhood: string
+              zone_private_community: string
+            }[]
+          }
+        | {
+            Args: {
+              op_filter?: string
+              page_offset?: number
+              page_size?: number
+              price_max?: number
+              price_min?: number
+              search_term?: string
+              type_filter?: string
+            }
+            Returns: {
+              address: string
+              ambientes: number
+              banos: number
+              created_at: string
+              currency: string
+              id: string
+              locality: string
+              m2_cover: number
+              m2_total: number
+              office: string
+              operation: string
+              photo: string
+              price: number
+              property_type: string
+              title: string
+              total_count: number
+              url: string
+              zone: string
+            }[]
+          }
       validate_invitation_code: {
         Args: { input_code: string }
         Returns: boolean
