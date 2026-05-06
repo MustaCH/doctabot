@@ -282,6 +282,8 @@ const Properties = () => {
             url={p.url ?? undefined}
             extras={buildExtras(p)}
             agentCode={agentCode}
+            contactPhone={p.contact_phone ?? undefined}
+            contactEmail={p.contact_email ?? undefined}
           />
           {/* Action buttons row */}
           <div className="flex gap-2 px-3.5 pb-3 -mt-1">
