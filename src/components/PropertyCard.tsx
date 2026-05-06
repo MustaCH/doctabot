@@ -325,6 +325,32 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             )}
           </div>
         )}
+        {(contactPhone || contactEmail) && (
+          <div className="flex gap-2 pt-1">
+            {contactPhone && (
+              <a href={`https://wa.me/${contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex-1">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  WhatsApp
+                </Button>
+              </a>
+            )}
+            {contactPhone && (
+              <a href={`tel:${contactPhone}`}>
+                <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0">
+                  <Phone className="h-3.5 w-3.5" />
+                </Button>
+              </a>
+            )}
+            {contactEmail && (
+              <a href={`mailto:${contactEmail}`}>
+                <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0">
+                  <Mail className="h-3.5 w-3.5" />
+                </Button>
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
