@@ -78,8 +78,8 @@ function buildRecord(prop: any) {
     remax_id: safeInt(typeof prop.id === "number" ? prop.id : null),
     entity_id: typeof prop.entityId === "string" ? prop.entityId : null,
     title: prop.title ?? null,
-    operation: prop.operation ?? null,
-    operation_id: safeInt(prop.operationId),
+    operation: prop._opId ? (OP_LABELS[prop._opId] ?? prop.operation ?? null) : (prop.operation ?? null),
+    operation_id: safeInt(prop._opId ?? prop.operationId),
     price: safeNumber(prop.price),
     currency: prop.currency ?? null,
     price_exposure: prop.priceExposure ?? true,
@@ -138,7 +138,7 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
-// Operation labels for logging
+// Operation labels for logging (also used in buildRecord)
 const OP_LABELS: Record<number, string> = { 1: "Venta", 2: "Alquiler", 3: "Alquiler temporario" };
 
 serve(async (req) => {
@@ -219,7 +219,7 @@ serve(async (req) => {
 
         const scrapeData = await scrapeRes.json();
         const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
-        opProperties.push(...properties);
+        opProperties.push(...properties.map((p: any) => ({ ...p, _opId: opId })));
       }
 
       await writeLog(supabase, batchId, `✅ ${opLabel}: ${opProperties.length} propiedades scrapeadas`, "info", { properties_count: opProperties.length });
