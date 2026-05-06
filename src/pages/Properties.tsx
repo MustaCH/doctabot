@@ -277,7 +277,7 @@ const Properties = () => {
             title={p.title ?? undefined}
             office={p.office ?? undefined}
             price={formatPrice(p)}
-            location={formatLocation(p.address, p.locality, p.zone)}
+            location={formatLocation(p)}
             surface={formatSurface(p.m2_total, p.m2_cover)}
             url={p.url ?? undefined}
             extras={buildExtras(p)}
