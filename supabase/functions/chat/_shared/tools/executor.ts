@@ -36,6 +36,8 @@ export async function executeTool(
     case "search_properties": {
       const zone = sanitizePattern(args.zone);
       const locality = sanitizePattern(args.locality);
+      const neighborhood = sanitizePattern(args.neighborhood);
+      const city = sanitizePattern(args.city);
       const titleSearch = sanitizePattern(args.title);
       const operation = sanitizePattern(args.operation);
       const property_type = sanitizePattern(args.property_type);
@@ -45,12 +47,16 @@ export async function executeTool(
       const max_price = safePositiveNumber(args.max_price);
       const min_ambientes = safePositiveInt(args.min_ambientes);
       const max_ambientes = safePositiveInt(args.max_ambientes);
+      const min_habitaciones = safePositiveInt(args.min_habitaciones);
+      const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
 
       const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean }) => {
         if (zone) q = q.ilike("zone", `%${zone}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
         if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
+        if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
+        if (city) q = q.ilike("zone_city", `%${city}%`);
         if (titleSearch) q = q.ilike("title", `%${titleSearch}%`);
         if (operation) q = q.ilike("operation", `%${operation}%`);
         if (property_type) q = q.ilike("property_type", `%${property_type}%`);
@@ -59,6 +65,8 @@ export async function executeTool(
         if (currency) q = q.ilike("currency", `%${currency}%`);
         if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
         if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
+        if (min_habitaciones !== null) q = q.gte("habitaciones", min_habitaciones);
+        if (max_habitaciones !== null) q = q.lte("habitaciones", max_habitaciones);
         if (office) q = q.ilike("office", `%${office}%`);
         return q;
       };
@@ -87,6 +95,28 @@ export async function executeTool(
           totalCount = fbCountRes.count ?? 0;
           data = fbDataRes.data;
           error = fbDataRes.error;
+        }
+      }
+
+      // Fallback: if neighborhood was provided but got 0 results, retry in title
+      if (!error && (!data || data.length === 0) && neighborhood && !titleSearch && !locality) {
+        const fbBase2 = applyFilters(
+          supabase.from("properties").select("*", { count: "exact", head: true }),
+          { useLocalityAsTitle: true }
+        );
+        const fbData2 = applyFilters(
+          supabase.from("properties").select("*"),
+          { useLocalityAsTitle: true }
+        ).limit(limit);
+        // For this fallback, search neighborhood term in title
+        const [fbCountRes2, fbDataRes2] = await Promise.all([
+          fbBase2.ilike("title", `%${neighborhood}%`),
+          fbData2.ilike("title", `%${neighborhood}%`),
+        ]);
+        if (!fbDataRes2.error && fbDataRes2.data && fbDataRes2.data.length > 0) {
+          totalCount = fbCountRes2.count ?? 0;
+          data = fbDataRes2.data;
+          error = fbDataRes2.error;
         }
       }
 
