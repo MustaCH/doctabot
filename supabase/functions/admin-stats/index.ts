@@ -391,7 +391,6 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 500);
       return json(data);
     }
-    }
 
     // ---------- SCRAPING LOGS ----------
     if (action === "scraping-logs-live") {
