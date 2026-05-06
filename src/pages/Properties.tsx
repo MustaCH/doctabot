@@ -31,6 +31,19 @@ interface PropertyRow {
   ambientes: number | null;
   banos: number | null;
   property_type: string | null;
+  habitaciones: number | null;
+  price_exposure: boolean | null;
+  expenses_price: number | null;
+  expenses_currency: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  zone_neighborhood: string | null;
+  zone_city: string | null;
+  zone_private_community: string | null;
+  is_entrepreneurship: boolean | null;
+  entrepreneurship: any | null;
+  operation_id: number | null;
+  photos: string[] | null;
 }
 
 interface FavoriteProperty extends PropertyRow {
