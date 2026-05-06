@@ -198,10 +198,21 @@ const Properties = () => {
     }
   };
 
-  const formatPrice = (price: number | null, currency: string | null) => {
-    if (!price) return undefined;
-    const sym = currency === "USD" ? "USD" : "$";
-    return `${sym} ${price.toLocaleString("es-AR")}`;
+  const formatPrice = (p: PropertyRow) => {
+    if (p.price_exposure === false) return "Precio a consultar";
+    if (p.is_entrepreneurship && p.entrepreneurship) {
+      const e = p.entrepreneurship;
+      if (e.minPrice || e.maxPrice) {
+        const currency = e.currency ?? "USD";
+        const parts = [];
+        if (e.minPrice) parts.push(`Desde ${currency} ${Number(e.minPrice).toLocaleString("es-AR")}`);
+        if (e.maxPrice) parts.push(`Hasta ${currency} ${Number(e.maxPrice).toLocaleString("es-AR")}`);
+        return parts.join(" · ");
+      }
+    }
+    if (!p.price) return undefined;
+    const sym = p.currency === "USD" ? "USD" : "$";
+    return `${sym} ${p.price.toLocaleString("es-AR")}`;
   };
 
   const formatLocation = (address: string | null, locality: string | null, zone: string | null) => {
