@@ -408,76 +408,12 @@ Deno.serve(async (req) => {
       return json(data);
     }
 
-    // ---------- ENGAGEMENT REPORT ----------
+    // ---------- ENGAGEMENT REPORT (SQL-based) ----------
     if (action === "engagement-report") {
-      const since = new Date();
-      since.setDate(since.getDate() - 30);
-      const sinceISO = since.toISOString();
-      const superAdminIds = await getSuperAdminIds();
-
-      const [msgsRes, convsResRaw] = await Promise.all([
-        supabaseAdmin.from("messages").select("id, conversation_id, role, created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("conversations").select("id, user_id, created_at").gte("created_at", sinceISO),
-      ]);
-
-      // Filter out super_admin conversations
-      const convsRes = { data: (convsResRaw.data ?? []).filter((c: any) => !superAdminIds.includes(c.user_id)) };
-
-      // Messages per day + unique active users per day (exclude super_admin)
-      const convUserMap: Record<string, string> = {};
-      const validConvIds = new Set<string>();
-      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; validConvIds.add(c.id); });
-
-      // Filter messages to only non-admin conversations
-      const filteredMsgs = (msgsRes.data ?? []).filter((m: any) => validConvIds.has(m.conversation_id));
-
-      const dailyMessages: Record<string, number> = {};
-      const dailyUsers: Record<string, Set<string>> = {};
-
-      filteredMsgs.forEach((m: any) => {
-        const d = m.created_at.slice(0, 10);
-        dailyMessages[d] = (dailyMessages[d] ?? 0) + 1;
-        const uid = convUserMap[m.conversation_id];
-        if (uid) {
-          if (!dailyUsers[d]) dailyUsers[d] = new Set();
-          dailyUsers[d].add(uid);
-        }
-      });
-
-      // Build 30-day array
-      const days: { date: string; messages: number; activeUsers: number }[] = [];
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        days.push({
-          date: key.slice(5),
-          messages: dailyMessages[key] ?? 0,
-          activeUsers: dailyUsers[key]?.size ?? 0,
-        });
-      }
-
-      // Avg conversation length (user messages per conversation)
-      const convMsgCount: Record<string, number> = {};
-      filteredMsgs.filter((m: any) => m.role === "user").forEach((m: any) => {
-        convMsgCount[m.conversation_id] = (convMsgCount[m.conversation_id] ?? 0) + 1;
-      });
-      const convLengths = Object.values(convMsgCount);
-      const avgConvLength = convLengths.length > 0
-        ? Math.round((convLengths.reduce((a, b) => a + b, 0) / convLengths.length) * 10) / 10
-        : 0;
-
-      // Unique active users in period
-      const allActiveUsers = new Set<string>();
-      Object.values(dailyUsers).forEach(s => s.forEach(u => allActiveUsers.add(u)));
-
-      return json({
-        daily: days,
-        avgConvLength,
-        totalActiveUsers: allActiveUsers.size,
-        totalMessages: filteredMsgs.length,
-        totalConversations: convsRes.data?.length ?? 0,
-      });
+      const { data, error } = await supabaseAdmin.rpc("admin_engagement_report");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
+    }
     }
 
     // ---------- SCRAPING LOGS ----------
