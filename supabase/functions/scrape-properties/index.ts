@@ -138,7 +138,7 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
-// Operation labels for logging
+// Operation labels for logging (also used in buildRecord)
 const OP_LABELS: Record<number, string> = { 1: "Venta", 2: "Alquiler", 3: "Alquiler temporario" };
 
 serve(async (req) => {
