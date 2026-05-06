@@ -191,7 +191,7 @@ export function parseMultiplePropertyCards(md: string): ContentSegment[] | null 
   return segments.length > 0 ? segments : null;
 }
 
-const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, whatsappPhone }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, contactPhone, contactEmail, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
