@@ -31,6 +31,19 @@ interface PropertyRow {
   ambientes: number | null;
   banos: number | null;
   property_type: string | null;
+  habitaciones: number | null;
+  price_exposure: boolean | null;
+  expenses_price: number | null;
+  expenses_currency: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  zone_neighborhood: string | null;
+  zone_city: string | null;
+  zone_private_community: string | null;
+  is_entrepreneurship: boolean | null;
+  entrepreneurship: any | null;
+  operation_id: number | null;
+  photos: string[] | null;
 }
 
 interface FavoriteProperty extends PropertyRow {
@@ -93,7 +106,7 @@ const Properties = () => {
 
       if (error) throw error;
 
-      const rows = (data ?? []) as (PropertyRow & { total_count: number })[];
+      const rows = (data ?? []) as unknown as (PropertyRow & { total_count: number })[];
       const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0;
 
       // Remove total_count from each row before setting state
@@ -185,15 +198,29 @@ const Properties = () => {
     }
   };
 
-  const formatPrice = (price: number | null, currency: string | null) => {
-    if (!price) return undefined;
-    const sym = currency === "USD" ? "USD" : "$";
-    return `${sym} ${price.toLocaleString("es-AR")}`;
+  const formatPrice = (p: PropertyRow) => {
+    if (p.price_exposure === false) return "Precio a consultar";
+    if (p.is_entrepreneurship && p.entrepreneurship) {
+      const e = p.entrepreneurship;
+      if (e.minPrice || e.maxPrice) {
+        const currency = e.currency ?? "USD";
+        const parts = [];
+        if (e.minPrice) parts.push(`Desde ${currency} ${Number(e.minPrice).toLocaleString("es-AR")}`);
+        if (e.maxPrice) parts.push(`Hasta ${currency} ${Number(e.maxPrice).toLocaleString("es-AR")}`);
+        return parts.join(" · ");
+      }
+    }
+    if (!p.price) return undefined;
+    const sym = p.currency === "USD" ? "USD" : "$";
+    return `${sym} ${p.price.toLocaleString("es-AR")}`;
   };
 
-  const formatLocation = (address: string | null, locality: string | null, zone: string | null) => {
-    const parts = [address, locality, zone].filter(Boolean);
-    return parts.length > 0 ? parts.join(", ") : undefined;
+  const formatLocation = (p: PropertyRow) => {
+    const zoneBadge = p.zone_private_community || p.zone_neighborhood || p.zone_city;
+    const parts = [p.address, p.locality, zoneBadge || p.zone].filter(Boolean);
+    // Deduplicate
+    const unique = [...new Set(parts.map(s => s!.toLowerCase()))];
+    return unique.length > 0 ? parts.filter((_, i) => i === 0 || !parts.slice(0, i).some(prev => prev!.toLowerCase() === parts[i]!.toLowerCase())).join(", ") : undefined;
   };
 
   const formatSurface = (m2Total: number | null, m2Cover: number | null) => {
@@ -204,10 +231,19 @@ const Properties = () => {
 
   const buildExtras = (p: PropertyRow): string[] => {
     const extras: string[] = [];
+    if (p.is_entrepreneurship) extras.push("🏗️ Emprendimiento");
+    if (p.zone_private_community) extras.push(`🏡 ${p.zone_private_community}`);
     if (p.operation) extras.push(`🏷️ ${p.operation}`);
     if (p.property_type) extras.push(`🏗️ ${p.property_type}`);
-    if (p.ambientes) extras.push(`🛋️ ${p.ambientes} amb.`);
-    if (p.banos) extras.push(`🚿 ${p.banos} baños`);
+    const parts: string[] = [];
+    if (p.habitaciones) parts.push(`${p.habitaciones} hab`);
+    if (p.ambientes) parts.push(`${p.ambientes} amb`);
+    if (p.banos) parts.push(`${p.banos} baños`);
+    if (parts.length > 0) extras.push(`🛋️ ${parts.join(" · ")}`);
+    if (p.expenses_price && p.expenses_price > 0) {
+      const expCurr = p.expenses_currency === "USD" ? "USD" : "$";
+      extras.push(`💸 Expensas: ${expCurr} ${p.expenses_price.toLocaleString("es-AR")}`);
+    }
     return extras;
   };
 
@@ -240,12 +276,14 @@ const Properties = () => {
             photo={p.photo ?? undefined}
             title={p.title ?? undefined}
             office={p.office ?? undefined}
-            price={formatPrice(p.price, p.currency)}
-            location={formatLocation(p.address, p.locality, p.zone)}
+            price={formatPrice(p)}
+            location={formatLocation(p)}
             surface={formatSurface(p.m2_total, p.m2_cover)}
             url={p.url ?? undefined}
             extras={buildExtras(p)}
             agentCode={agentCode}
+            contactPhone={p.contact_phone ?? undefined}
+            contactEmail={p.contact_email ?? undefined}
           />
           {/* Action buttons row */}
           <div className="flex gap-2 px-3.5 pb-3 -mt-1">

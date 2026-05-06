@@ -1,4 +1,4 @@
-import { ExternalLink, Copy, Check, BadgeCheck, Home, Heart, Share2 } from "lucide-react";
+import { ExternalLink, Copy, Check, BadgeCheck, Home, Heart, Share2, Phone, Mail, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,8 @@ interface PropertyCardProps {
   url?: string;
   extras?: string[];
   agentCode?: string | null;
+  contactPhone?: string;
+  contactEmail?: string;
   /** If provided, shows a WhatsApp share button targeting this phone number. Empty string = disabled button. */
   whatsappPhone?: string;
 }
@@ -189,7 +191,7 @@ export function parseMultiplePropertyCards(md: string): ContentSegment[] | null 
   return segments.length > 0 ? segments : null;
 }
 
-const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, whatsappPhone }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, contactPhone, contactEmail, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
@@ -320,6 +322,32 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
               >
                 <Share2 className="h-3.5 w-3.5" />
               </Button>
+            )}
+          </div>
+        )}
+        {(contactPhone || contactEmail) && (
+          <div className="flex gap-2 pt-1">
+            {contactPhone && (
+              <a href={`https://wa.me/${contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex-1">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  WhatsApp
+                </Button>
+              </a>
+            )}
+            {contactPhone && (
+              <a href={`tel:${contactPhone}`}>
+                <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0">
+                  <Phone className="h-3.5 w-3.5" />
+                </Button>
+              </a>
+            )}
+            {contactEmail && (
+              <a href={`mailto:${contactEmail}`}>
+                <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0">
+                  <Mail className="h-3.5 w-3.5" />
+                </Button>
+              </a>
             )}
           </div>
         )}
