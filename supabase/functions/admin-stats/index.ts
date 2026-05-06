@@ -401,89 +401,11 @@ Deno.serve(async (req) => {
       return json({ data: enriched, total: count ?? 0 });
     }
 
-    // ---------- USER REPORTS ----------
+    // ---------- USER REPORTS (SQL-based) ----------
     if (action === "user-reports") {
-      // Get all profiles, exclude super_admins
-      const superAdminIds = await getSuperAdminIds();
-      const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id, full_name");
-      const allProfiles = (profiles ?? []).filter((p: any) => !superAdminIds.includes(p.user_id));
-      const userIds = allProfiles.map((p: any) => p.user_id);
-      const nameMap: Record<string, string> = {};
-      allProfiles.forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
-
-      // Get all messages, conversations, clients, favorites grouped by user
-      const [msgsRes, convsRes, clientsRes, favsRes] = await Promise.all([
-        supabaseAdmin.from("messages").select("id, conversation_id, created_at"),
-        supabaseAdmin.from("conversations").select("id, user_id, created_at"),
-        supabaseAdmin.from("clients").select("id, user_id, status, created_at"),
-        supabaseAdmin.from("favorites").select("id, user_id, created_at"),
-      ]);
-
-      // Map conversations to users
-      const convUserMap: Record<string, string> = {};
-      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; });
-
-      // Build per-user stats
-      const userStats: Record<string, { messages: number; conversations: number; clients: number; favorites: number; lastActivity: string | null; clientsByStatus: Record<string, number> }> = {};
-      userIds.forEach((uid: string) => {
-        userStats[uid] = { messages: 0, conversations: 0, clients: 0, favorites: 0, lastActivity: null, clientsByStatus: {} };
-      });
-
-      // Count conversations per user
-      (convsRes.data ?? []).forEach((c: any) => {
-        if (userStats[c.user_id]) {
-          userStats[c.user_id].conversations++;
-          if (!userStats[c.user_id].lastActivity || c.created_at > userStats[c.user_id].lastActivity!) {
-            userStats[c.user_id].lastActivity = c.created_at;
-          }
-        }
-      });
-
-      // Count messages per user (via conversation)
-      (msgsRes.data ?? []).forEach((m: any) => {
-        const uid = convUserMap[m.conversation_id];
-        if (uid && userStats[uid]) {
-          userStats[uid].messages++;
-          if (!userStats[uid].lastActivity || m.created_at > userStats[uid].lastActivity!) {
-            userStats[uid].lastActivity = m.created_at;
-          }
-        }
-      });
-
-      // Count clients per user
-      (clientsRes.data ?? []).forEach((c: any) => {
-        if (userStats[c.user_id]) {
-          userStats[c.user_id].clients++;
-          const s = c.status || "unknown";
-          userStats[c.user_id].clientsByStatus[s] = (userStats[c.user_id].clientsByStatus[s] ?? 0) + 1;
-        }
-      });
-
-      // Count favorites per user
-      (favsRes.data ?? []).forEach((f: any) => {
-        if (userStats[f.user_id]) userStats[f.user_id].favorites++;
-      });
-
-      const result = userIds.map((uid: string) => ({
-        user_id: uid,
-        full_name: nameMap[uid] ?? "Desconocido",
-        ...userStats[uid],
-        avgMessagesPerConv: userStats[uid].conversations > 0
-          ? Math.round((userStats[uid].messages / userStats[uid].conversations) * 10) / 10
-          : 0,
-      }));
-
-      // Sort by messages desc
-      result.sort((a: any, b: any) => b.messages - a.messages);
-
-      // Client distribution totals
-      const clientDistribution: Record<string, number> = {};
-      (clientsRes.data ?? []).forEach((c: any) => {
-        const s = c.status || "unknown";
-        clientDistribution[s] = (clientDistribution[s] ?? 0) + 1;
-      });
-
-      return json({ users: result, clientDistribution });
+      const { data, error } = await supabaseAdmin.rpc("admin_user_reports");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
     }
 
     // ---------- ENGAGEMENT REPORT ----------
