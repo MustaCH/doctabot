@@ -98,34 +98,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---------- TIME STATS (last 30 days) ----------
+    // ---------- TIME STATS (last 30 days, SQL-based) ----------
     if (action === "time-stats") {
-      const since = new Date();
-      since.setDate(since.getDate() - 30);
-      const sinceISO = since.toISOString();
-
-      const [usersRes, msgsRes, convsRes, propsRes] = await Promise.all([
-        supabaseAdmin.from("profiles").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("messages").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("conversations").select("created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("properties").select("created_at").gte("created_at", sinceISO),
-      ]);
-
-      const bucket = (rows: { created_at: string }[] | null) => {
-        const map: Record<string, number> = {};
-        (rows ?? []).forEach((r) => {
-          const d = r.created_at.slice(0, 10);
-          map[d] = (map[d] ?? 0) + 1;
-        });
-        return map;
-      };
-
-      return json({
-        users: bucket(usersRes.data),
-        messages: bucket(msgsRes.data),
-        conversations: bucket(convsRes.data),
-        properties: bucket(propsRes.data),
-      });
+      const { data, error } = await supabaseAdmin.rpc("admin_time_stats");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
     }
 
     // ---------- USERS ----------
@@ -401,161 +378,18 @@ Deno.serve(async (req) => {
       return json({ data: enriched, total: count ?? 0 });
     }
 
-    // ---------- USER REPORTS ----------
+    // ---------- USER REPORTS (SQL-based) ----------
     if (action === "user-reports") {
-      // Get all profiles, exclude super_admins
-      const superAdminIds = await getSuperAdminIds();
-      const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id, full_name");
-      const allProfiles = (profiles ?? []).filter((p: any) => !superAdminIds.includes(p.user_id));
-      const userIds = allProfiles.map((p: any) => p.user_id);
-      const nameMap: Record<string, string> = {};
-      allProfiles.forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
-
-      // Get all messages, conversations, clients, favorites grouped by user
-      const [msgsRes, convsRes, clientsRes, favsRes] = await Promise.all([
-        supabaseAdmin.from("messages").select("id, conversation_id, created_at"),
-        supabaseAdmin.from("conversations").select("id, user_id, created_at"),
-        supabaseAdmin.from("clients").select("id, user_id, status, created_at"),
-        supabaseAdmin.from("favorites").select("id, user_id, created_at"),
-      ]);
-
-      // Map conversations to users
-      const convUserMap: Record<string, string> = {};
-      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; });
-
-      // Build per-user stats
-      const userStats: Record<string, { messages: number; conversations: number; clients: number; favorites: number; lastActivity: string | null; clientsByStatus: Record<string, number> }> = {};
-      userIds.forEach((uid: string) => {
-        userStats[uid] = { messages: 0, conversations: 0, clients: 0, favorites: 0, lastActivity: null, clientsByStatus: {} };
-      });
-
-      // Count conversations per user
-      (convsRes.data ?? []).forEach((c: any) => {
-        if (userStats[c.user_id]) {
-          userStats[c.user_id].conversations++;
-          if (!userStats[c.user_id].lastActivity || c.created_at > userStats[c.user_id].lastActivity!) {
-            userStats[c.user_id].lastActivity = c.created_at;
-          }
-        }
-      });
-
-      // Count messages per user (via conversation)
-      (msgsRes.data ?? []).forEach((m: any) => {
-        const uid = convUserMap[m.conversation_id];
-        if (uid && userStats[uid]) {
-          userStats[uid].messages++;
-          if (!userStats[uid].lastActivity || m.created_at > userStats[uid].lastActivity!) {
-            userStats[uid].lastActivity = m.created_at;
-          }
-        }
-      });
-
-      // Count clients per user
-      (clientsRes.data ?? []).forEach((c: any) => {
-        if (userStats[c.user_id]) {
-          userStats[c.user_id].clients++;
-          const s = c.status || "unknown";
-          userStats[c.user_id].clientsByStatus[s] = (userStats[c.user_id].clientsByStatus[s] ?? 0) + 1;
-        }
-      });
-
-      // Count favorites per user
-      (favsRes.data ?? []).forEach((f: any) => {
-        if (userStats[f.user_id]) userStats[f.user_id].favorites++;
-      });
-
-      const result = userIds.map((uid: string) => ({
-        user_id: uid,
-        full_name: nameMap[uid] ?? "Desconocido",
-        ...userStats[uid],
-        avgMessagesPerConv: userStats[uid].conversations > 0
-          ? Math.round((userStats[uid].messages / userStats[uid].conversations) * 10) / 10
-          : 0,
-      }));
-
-      // Sort by messages desc
-      result.sort((a: any, b: any) => b.messages - a.messages);
-
-      // Client distribution totals
-      const clientDistribution: Record<string, number> = {};
-      (clientsRes.data ?? []).forEach((c: any) => {
-        const s = c.status || "unknown";
-        clientDistribution[s] = (clientDistribution[s] ?? 0) + 1;
-      });
-
-      return json({ users: result, clientDistribution });
+      const { data, error } = await supabaseAdmin.rpc("admin_user_reports");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
     }
 
-    // ---------- ENGAGEMENT REPORT ----------
+    // ---------- ENGAGEMENT REPORT (SQL-based) ----------
     if (action === "engagement-report") {
-      const since = new Date();
-      since.setDate(since.getDate() - 30);
-      const sinceISO = since.toISOString();
-      const superAdminIds = await getSuperAdminIds();
-
-      const [msgsRes, convsResRaw] = await Promise.all([
-        supabaseAdmin.from("messages").select("id, conversation_id, role, created_at").gte("created_at", sinceISO),
-        supabaseAdmin.from("conversations").select("id, user_id, created_at").gte("created_at", sinceISO),
-      ]);
-
-      // Filter out super_admin conversations
-      const convsRes = { data: (convsResRaw.data ?? []).filter((c: any) => !superAdminIds.includes(c.user_id)) };
-
-      // Messages per day + unique active users per day (exclude super_admin)
-      const convUserMap: Record<string, string> = {};
-      const validConvIds = new Set<string>();
-      (convsRes.data ?? []).forEach((c: any) => { convUserMap[c.id] = c.user_id; validConvIds.add(c.id); });
-
-      // Filter messages to only non-admin conversations
-      const filteredMsgs = (msgsRes.data ?? []).filter((m: any) => validConvIds.has(m.conversation_id));
-
-      const dailyMessages: Record<string, number> = {};
-      const dailyUsers: Record<string, Set<string>> = {};
-
-      filteredMsgs.forEach((m: any) => {
-        const d = m.created_at.slice(0, 10);
-        dailyMessages[d] = (dailyMessages[d] ?? 0) + 1;
-        const uid = convUserMap[m.conversation_id];
-        if (uid) {
-          if (!dailyUsers[d]) dailyUsers[d] = new Set();
-          dailyUsers[d].add(uid);
-        }
-      });
-
-      // Build 30-day array
-      const days: { date: string; messages: number; activeUsers: number }[] = [];
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        days.push({
-          date: key.slice(5),
-          messages: dailyMessages[key] ?? 0,
-          activeUsers: dailyUsers[key]?.size ?? 0,
-        });
-      }
-
-      // Avg conversation length (user messages per conversation)
-      const convMsgCount: Record<string, number> = {};
-      filteredMsgs.filter((m: any) => m.role === "user").forEach((m: any) => {
-        convMsgCount[m.conversation_id] = (convMsgCount[m.conversation_id] ?? 0) + 1;
-      });
-      const convLengths = Object.values(convMsgCount);
-      const avgConvLength = convLengths.length > 0
-        ? Math.round((convLengths.reduce((a, b) => a + b, 0) / convLengths.length) * 10) / 10
-        : 0;
-
-      // Unique active users in period
-      const allActiveUsers = new Set<string>();
-      Object.values(dailyUsers).forEach(s => s.forEach(u => allActiveUsers.add(u)));
-
-      return json({
-        daily: days,
-        avgConvLength,
-        totalActiveUsers: allActiveUsers.size,
-        totalMessages: filteredMsgs.length,
-        totalConversations: convsRes.data?.length ?? 0,
-      });
+      const { data, error } = await supabaseAdmin.rpc("admin_engagement_report");
+      if (error) return json({ error: error.message }, 500);
+      return json(data);
     }
 
     // ---------- SCRAPING LOGS ----------
