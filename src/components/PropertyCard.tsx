@@ -14,6 +14,8 @@ interface PropertyCardProps {
   url?: string;
   extras?: string[];
   agentCode?: string | null;
+  contactPhone?: string;
+  contactEmail?: string;
   /** If provided, shows a WhatsApp share button targeting this phone number. Empty string = disabled button. */
   whatsappPhone?: string;
 }
