@@ -215,9 +215,12 @@ const Properties = () => {
     return `${sym} ${p.price.toLocaleString("es-AR")}`;
   };
 
-  const formatLocation = (address: string | null, locality: string | null, zone: string | null) => {
-    const parts = [address, locality, zone].filter(Boolean);
-    return parts.length > 0 ? parts.join(", ") : undefined;
+  const formatLocation = (p: PropertyRow) => {
+    const zoneBadge = p.zone_private_community || p.zone_neighborhood || p.zone_city;
+    const parts = [p.address, p.locality, zoneBadge || p.zone].filter(Boolean);
+    // Deduplicate
+    const unique = [...new Set(parts.map(s => s!.toLowerCase()))];
+    return unique.length > 0 ? parts.filter((_, i) => i === 0 || !parts.slice(0, i).some(prev => prev!.toLowerCase() === parts[i]!.toLowerCase())).join(", ") : undefined;
   };
 
   const formatSurface = (m2Total: number | null, m2Cover: number | null) => {
