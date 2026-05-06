@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SCRAPE_BASE_URL = "http://qiuautomations-scrapingcba-7uwjyy-33ffaf-31-97-164-164.traefik.me/api/scrape";
+const SCRAPE_BASE_URL = "https://server.ignaciopoletti.dev/api/scrape";
 
 // GeoJSON zones for Córdoba Capital (fallback when zone_data is not provided by scraper)
 const CORDOBA_ZONES = [
