@@ -106,7 +106,7 @@ const Properties = () => {
 
       if (error) throw error;
 
-      const rows = (data ?? []) as (PropertyRow & { total_count: number })[];
+      const rows = (data ?? []) as unknown as (PropertyRow & { total_count: number })[];
       const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0;
 
       // Remove total_count from each row before setting state
