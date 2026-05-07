@@ -273,26 +273,24 @@ serve(async (req) => {
         startPage: endPage + 1,
         maxPages,
         batchTimestamp,
-        isOrchestrator,
       });
     } else {
       // This operation is done
       await writeLog(supabase, batchId, `✅ ${opLabel}: completado`, "info");
 
-      // If this was part of the orchestrator flow, check if all operations are done
-      if (isOrchestrator) {
-        // Check if all 3 operations have their "completado" log
-        const { data: completedLogs } = await supabase
-          .from("scraping_logs")
-          .select("message")
-          .eq("batch_id", batchId)
-          .like("message", "%completado%");
-
-        const completedOps = (completedLogs ?? []).length;
-        if (completedOps >= ALL_OPS.length) {
-          // All operations done — run cleanup
-          await runCleanup(supabase, batchId, batchTimestamp!);
-        }
+      // Chain to next operation, or run cleanup if all done
+      const currentOpIndex = ALL_OPS.indexOf(operationId);
+      const nextOpIndex = currentOpIndex + 1;
+      if (nextOpIndex < ALL_OPS.length) {
+        // Start next operation
+        selfInvoke(supabaseUrl, anonKey, {
+          operationId: ALL_OPS[nextOpIndex],
+          startPage: 1,
+          batchTimestamp,
+        });
+      } else {
+        // All operations done — run cleanup
+        await runCleanup(supabase, batchId, batchTimestamp!);
       }
     }
 
