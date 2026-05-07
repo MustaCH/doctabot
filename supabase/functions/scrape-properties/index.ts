@@ -137,6 +137,21 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
+/** Fetch with retry for flaky DNS */
+async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url);
+      return res;
+    } catch (err) {
+      console.error(`Fetch attempt ${attempt}/${retries} failed for ${url}: ${err}`);
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 /** Fire-and-forget: invoke self with the next chunk */
 function selfInvoke(supabaseUrl: string, anonKey: string, body: Record<string, any>) {
   const url = `${supabaseUrl}/functions/v1/scrape-properties`;
