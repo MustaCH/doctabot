@@ -181,23 +181,21 @@ serve(async (req) => {
     const batchId = batchTimestamp!;
 
     // ─── ORCHESTRATOR MODE ───
-    // When called with no operationId (e.g. from cron), fan out one call per operation
+    // When called with no operationId (e.g. from cron), start first operation sequentially
     if (!operationId) {
       await writeLog(supabase, batchId, `🚀 Scraping iniciado (operaciones: ${ALL_OPS.map(o => OP_LABELS[o]).join(", ")})`, "info");
 
-      for (const opId of ALL_OPS) {
-        selfInvoke(supabaseUrl, anonKey, {
-          operationId: opId,
-          startPage: 1,
-          batchTimestamp,
-          isOrchestrator: true,
-        });
-      }
+      // Start only the first operation; each operation chains to the next when done
+      selfInvoke(supabaseUrl, anonKey, {
+        operationId: ALL_OPS[0],
+        startPage: 1,
+        batchTimestamp,
+      });
 
       return new Response(JSON.stringify({
         success: true,
         mode: "orchestrator",
-        message: `Dispatched ${ALL_OPS.length} operations`,
+        message: `Dispatched operation ${OP_LABELS[ALL_OPS[0]]} (sequential chain)`,
         batch_timestamp: batchTimestamp,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
