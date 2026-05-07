@@ -222,7 +222,7 @@ serve(async (req) => {
 
     // Resolve maxPages if not known yet (first chunk)
     if (!maxPages) {
-      const mpRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${operationId}`);
+      const mpRes = await fetchWithRetry(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${operationId}`);
       if (!mpRes.ok) {
         await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: ${mpRes.status}`, "error");
         return new Response(JSON.stringify({ error: `checkMaxPages failed: ${mpRes.status}` }), {
