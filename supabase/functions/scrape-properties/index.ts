@@ -245,7 +245,7 @@ serve(async (req) => {
     const FETCH_BATCH = 5;
     for (let p = startPage; p <= endPage; p += FETCH_BATCH) {
       const pEnd = Math.min(p + FETCH_BATCH - 1, endPage);
-      const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${p}&endPage=${pEnd}&operationId=${operationId}`);
+      const scrapeRes = await fetchWithRetry(`${SCRAPE_BASE_URL}?startPage=${p}&endPage=${pEnd}&operationId=${operationId}`);
       if (!scrapeRes.ok) {
         await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${p}-${pEnd}: HTTP ${scrapeRes.status}`, "error");
         continue;
