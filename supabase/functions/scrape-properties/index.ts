@@ -172,7 +172,7 @@ serve(async (req) => {
       if (body.startPage) startPage = Number(body.startPage);
       if (body.maxPages) maxPages = Number(body.maxPages);
       if (body.batchTimestamp) batchTimestamp = body.batchTimestamp;
-      if (body.isOrchestrator) isOrchestrator = true;
+      // isOrchestrator removed - sequential chain handles everything
     } catch { /* no body */ }
 
     if (!batchTimestamp) {
