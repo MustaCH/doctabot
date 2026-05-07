@@ -164,7 +164,7 @@ serve(async (req) => {
     let startPage = 1;
     let maxPages: number | null = null;
     let batchTimestamp: string | null = null;
-    let isOrchestrator = false; // true = initial call that fans out per-operation
+    // operationId=null means orchestrator mode
 
     try {
       const body = await req.json();
