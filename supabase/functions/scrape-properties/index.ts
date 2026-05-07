@@ -8,6 +8,9 @@ const corsHeaders = {
 
 const SCRAPE_BASE_URL = "http://qiuautomations-scrapingcba-7uwjyy-33ffaf-31-97-164-164.traefik.me/api/scrape";
 
+// Max pages to scrape per invocation to stay well under 150s timeout
+const PAGES_PER_INVOCATION = 20;
+
 // GeoJSON zones for Córdoba Capital (fallback when zone_data is not provided by scraper)
 const CORDOBA_ZONES = [
   { name: "Ruta 20", polygon: [[-64.20594530297676,-31.41855213142289],[-64.23666395394986,-31.41176762764692],[-64.24261544284653,-31.4316917296247],[-64.23947211786738,-31.45121383061365],[-64.23478021827735,-31.45091128014509],[-64.23238264910181,-31.44907669569495],[-64.23160661718263,-31.44276402415655],[-64.21404057744546,-31.44288206897711],[-64.21020162184459,-31.4302133115201],[-64.20594530297676,-31.41855213142289]] },
@@ -57,18 +60,15 @@ function safeInt(val: any): number | null {
   return isNaN(n) ? null : n;
 }
 
+const OP_LABELS: Record<number, string> = { 1: "Venta", 2: "Alquiler", 3: "Alquiler temporario" };
+const ALL_OPS = [1, 2, 3];
+
 function buildRecord(prop: any) {
   const propLat = safeNumber(prop.latitude ?? prop.lat ?? null);
   const propLng = safeNumber(prop.longitude ?? prop.lng ?? null);
-
-  // Stable external_id: prefer entityId > id (numeric) > url
   const externalId = String(prop.entityId ?? prop.external_id ?? prop.id ?? prop.url ?? "");
-
-  // Zone: use structured zone from scraper if available, fallback to GeoJSON
   const zoneObj = prop.zone && typeof prop.zone === "object" ? prop.zone : null;
   const geoZone = getZone(propLng, propLat);
-
-  // Derive zone label for the legacy `zone` column
   const zoneLabel = zoneObj
     ? (zoneObj.neighborhood || zoneObj.city || zoneObj.county || geoZone || null)
     : geoZone;
@@ -119,7 +119,6 @@ function buildRecord(prop: any) {
   };
 }
 
-// Helper to write a log entry to scraping_logs table
 async function writeLog(
   supabase: any,
   batchId: string,
@@ -138,8 +137,18 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
-// Operation labels for logging (also used in buildRecord)
-const OP_LABELS: Record<number, string> = { 1: "Venta", 2: "Alquiler", 3: "Alquiler temporario" };
+/** Fire-and-forget: invoke self with the next chunk */
+function selfInvoke(supabaseUrl: string, anonKey: string, body: Record<string, any>) {
+  const url = `${supabaseUrl}/functions/v1/scrape-properties`;
+  fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": anonKey,
+    },
+    body: JSON.stringify(body),
+  }).catch(err => console.error("Self-invoke error:", err));
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -147,176 +156,161 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Parse params
+    let operationId: number | null = null;
     let startPage = 1;
-    let endPage: number | null = null;
+    let maxPages: number | null = null;
     let batchTimestamp: string | null = null;
-    let isLastBatch = false;
-    let operationId: number | null = null; // null = scrape all operations
+    let isOrchestrator = false; // true = initial call that fans out per-operation
 
     try {
       const body = await req.json();
-      if (body.startPage) startPage = Number(body.startPage);
-      if (body.endPage) endPage = Number(body.endPage);
-      if (body.batchTimestamp) batchTimestamp = body.batchTimestamp;
       if (body.operationId) operationId = Number(body.operationId);
-    } catch { /* no body, use defaults */ }
+      if (body.startPage) startPage = Number(body.startPage);
+      if (body.maxPages) maxPages = Number(body.maxPages);
+      if (body.batchTimestamp) batchTimestamp = body.batchTimestamp;
+      if (body.isOrchestrator) isOrchestrator = true;
+    } catch { /* no body */ }
 
     if (!batchTimestamp) {
       batchTimestamp = new Date().toISOString();
     }
-
     const batchId = batchTimestamp!;
 
-    // Determine which operations to scrape
-    const operations = operationId ? [operationId] : [1, 2, 3];
+    // ─── ORCHESTRATOR MODE ───
+    // When called with no operationId (e.g. from cron), fan out one call per operation
+    if (!operationId) {
+      await writeLog(supabase, batchId, `🚀 Scraping iniciado (operaciones: ${ALL_OPS.map(o => OP_LABELS[o]).join(", ")})`, "info");
 
-    if (startPage === 1 && !operationId) {
-      await writeLog(supabase, batchId, `🚀 Scraping iniciado (operaciones: ${operations.map(o => OP_LABELS[o]).join(", ")})`, "info");
-    } else if (startPage === 1) {
-      await writeLog(supabase, batchId, `🚀 Scraping iniciado — ${OP_LABELS[operationId!] ?? operationId}`, "info");
-    }
-
-    let allProperties: any[] = [];
-    let totalUpserted = 0;
-    let totalErrors = 0;
-
-    for (const opId of operations) {
-      const opLabel = OP_LABELS[opId] ?? `Op${opId}`;
-      await writeLog(supabase, batchId, `📋 Procesando ${opLabel} (operationId=${opId})...`, "info");
-
-      // Get max pages for this operation
-      let maxPages = 1;
-      let opStartPage = startPage;
-      let opEndPage = endPage;
-
-      if (!opEndPage) {
-        const maxPagesRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${opId}`);
-        if (!maxPagesRes.ok) {
-          await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: ${maxPagesRes.status}`, "error");
-          continue;
-        }
-        const maxPagesData = await maxPagesRes.json();
-        maxPages = maxPagesData.maxPages ?? maxPagesData.totalPages ?? 1;
-        await writeLog(supabase, batchId, `📄 ${opLabel}: ${maxPages} páginas`, "info", { total_pages: maxPages });
-        opEndPage = maxPages;
+      for (const opId of ALL_OPS) {
+        selfInvoke(supabaseUrl, anonKey, {
+          operationId: opId,
+          startPage: 1,
+          batchTimestamp,
+          isOrchestrator: true,
+        });
       }
 
-      // Scrape pages for this operation
-      const BATCH_SIZE = 5;
-      const opProperties: any[] = [];
-
-      for (let start = opStartPage; start <= opEndPage!; start += BATCH_SIZE) {
-        const end = Math.min(start + BATCH_SIZE - 1, opEndPage!);
-        await writeLog(supabase, batchId, `🔍 ${opLabel}: páginas ${start}-${end}...`, "info", { current_page: end, total_pages: maxPages });
-
-        const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${start}&endPage=${end}&operationId=${opId}`);
-        if (!scrapeRes.ok) {
-          await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${start}-${end}: HTTP ${scrapeRes.status}`, "error", { current_page: end });
-          continue;
-        }
-
-        const scrapeData = await scrapeRes.json();
-        const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
-        opProperties.push(...properties.map((p: any) => ({ ...p, _opId: opId })));
-      }
-
-      await writeLog(supabase, batchId, `✅ ${opLabel}: ${opProperties.length} propiedades scrapeadas`, "info", { properties_count: opProperties.length });
-      allProperties = allProperties.concat(opProperties);
+      return new Response(JSON.stringify({
+        success: true,
+        mode: "orchestrator",
+        message: `Dispatched ${ALL_OPS.length} operations`,
+        batch_timestamp: batchTimestamp,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    await writeLog(supabase, batchId, `📦 Total scrapeadas: ${allProperties.length}`, "info", { properties_count: allProperties.length });
+    // ─── WORKER MODE: scrape one operation, one chunk of pages ───
+    const opLabel = OP_LABELS[operationId] ?? `Op${operationId}`;
 
-    // Build records and upsert
+    // Resolve maxPages if not known yet (first chunk)
+    if (!maxPages) {
+      const mpRes = await fetch(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${operationId}`);
+      if (!mpRes.ok) {
+        await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: ${mpRes.status}`, "error");
+        return new Response(JSON.stringify({ error: `checkMaxPages failed: ${mpRes.status}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const mpData = await mpRes.json();
+      maxPages = mpData.maxPages ?? mpData.totalPages ?? 1;
+      await writeLog(supabase, batchId, `📄 ${opLabel}: ${maxPages} páginas totales`, "info", { total_pages: maxPages });
+    }
+
+    const endPage = Math.min(startPage + PAGES_PER_INVOCATION - 1, maxPages);
+    await writeLog(supabase, batchId, `🔍 ${opLabel}: páginas ${startPage}-${endPage} de ${maxPages}...`, "info", {
+      current_page: endPage,
+      total_pages: maxPages,
+    });
+
+    // Scrape pages in sub-batches of 5
+    const allProperties: any[] = [];
+    const FETCH_BATCH = 5;
+    for (let p = startPage; p <= endPage; p += FETCH_BATCH) {
+      const pEnd = Math.min(p + FETCH_BATCH - 1, endPage);
+      const scrapeRes = await fetch(`${SCRAPE_BASE_URL}?startPage=${p}&endPage=${pEnd}&operationId=${operationId}`);
+      if (!scrapeRes.ok) {
+        await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${p}-${pEnd}: HTTP ${scrapeRes.status}`, "error");
+        continue;
+      }
+      const scrapeData = await scrapeRes.json();
+      const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
+      allProperties.push(...properties.map((pr: any) => ({ ...pr, _opId: operationId })));
+    }
+
+    // Upsert
     const records = allProperties
       .map(prop => ({ ...buildRecord(prop), last_seen_at: batchTimestamp }))
       .filter(r => r.external_id);
 
+    let upserted = 0;
+    let errors = 0;
     const UPSERT_BATCH = 50;
     for (let i = 0; i < records.length; i += UPSERT_BATCH) {
       const batch = records.slice(i, i + UPSERT_BATCH);
-      const { error } = await supabase
-        .from("properties")
-        .upsert(batch, { onConflict: "external_id" });
-
+      const { error } = await supabase.from("properties").upsert(batch, { onConflict: "external_id" });
       if (error) {
-        console.error(`Batch upsert error at ${i}:`, error.message);
-        totalErrors += batch.length;
+        console.error(`Upsert error at ${i}:`, error.message);
+        errors += batch.length;
       } else {
-        totalUpserted += batch.length;
+        upserted += batch.length;
       }
     }
 
-    await writeLog(supabase, batchId, `💾 Guardadas: ${totalUpserted} propiedades (${totalErrors} errores)`, "info", { properties_count: totalUpserted });
+    await writeLog(supabase, batchId, `💾 ${opLabel} pág ${startPage}-${endPage}: ${upserted} guardadas (${errors} errores)`, "info", {
+      current_page: endPage,
+      total_pages: maxPages,
+      properties_count: upserted,
+    });
 
-    // Cleanup stale properties (only when scraping all operations without pagination)
-    let deleted = 0;
-    isLastBatch = !operationId && !endPage;
-    if (isLastBatch && totalUpserted > 0) {
-      await writeLog(supabase, batchId, `🧹 Limpiando propiedades obsoletas...`, "info");
-      const { data: staleData, error: deleteError } = await supabase
-        .from("properties")
-        .delete()
-        .lt("last_seen_at", batchTimestamp)
-        .select("id");
+    // ─── CHAIN: if more pages remain, self-invoke next chunk ───
+    const hasMorePages = endPage < maxPages;
+    if (hasMorePages) {
+      selfInvoke(supabaseUrl, anonKey, {
+        operationId,
+        startPage: endPage + 1,
+        maxPages,
+        batchTimestamp,
+        isOrchestrator,
+      });
+    } else {
+      // This operation is done
+      await writeLog(supabase, batchId, `✅ ${opLabel}: completado`, "info");
 
-      if (deleteError) {
-        await writeLog(supabase, batchId, `❌ Error en limpieza: ${deleteError.message}`, "error");
-      } else {
-        deleted = staleData?.length ?? 0;
-        await writeLog(supabase, batchId, `🗑️ ${deleted} propiedades obsoletas eliminadas`, deleted > 0 ? "warning" : "info");
-      }
+      // If this was part of the orchestrator flow, check if all operations are done
+      if (isOrchestrator) {
+        // Check if all 3 operations have their "completado" log
+        const { data: completedLogs } = await supabase
+          .from("scraping_logs")
+          .select("message")
+          .eq("batch_id", batchId)
+          .like("message", "%completado%");
 
-      if (deleted > 0) {
-        const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
-        if (N8N_WEBHOOK_URL) {
-          fetch(N8N_WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "stale_properties_deleted",
-              deleted_count: deleted,
-              upserted_count: totalUpserted,
-              batch_timestamp: batchTimestamp,
-              timestamp: new Date().toISOString(),
-            }),
-          }).catch(err => console.error("n8n webhook error:", err));
+        const completedOps = (completedLogs ?? []).length;
+        if (completedOps >= ALL_OPS.length) {
+          // All operations done — run cleanup
+          await runCleanup(supabase, batchId, batchTimestamp!);
         }
       }
-
-      await writeLog(supabase, batchId, `🏁 Scraping finalizado — ${totalUpserted} actualizadas, ${deleted} eliminadas, ${totalErrors} errores`, "success", { properties_count: totalUpserted });
     }
 
-    // Clean up old logs (keep last 5 batches)
-    const { data: recentBatches } = await supabase
-      .from("scraping_logs")
-      .select("batch_id")
-      .order("created_at", { ascending: false });
-    
-    if (recentBatches) {
-      const uniqueBatches = [...new Set(recentBatches.map((r: any) => r.batch_id))];
-      if (uniqueBatches.length > 5) {
-        const oldBatches = uniqueBatches.slice(5);
-        await supabase.from("scraping_logs").delete().in("batch_id", oldBatches);
-      }
-    }
-
-    const result = {
+    return new Response(JSON.stringify({
       success: true,
-      operations: operations.map(o => OP_LABELS[o]),
-      total_scraped: allProperties.length,
-      upserted: totalUpserted,
-      errors: totalErrors,
-      deleted,
-      is_last_batch: isLastBatch,
+      mode: "worker",
+      operation: opLabel,
+      pages: `${startPage}-${endPage}/${maxPages}`,
+      upserted,
+      errors,
+      has_more: hasMorePages,
       batch_timestamp: batchTimestamp,
-      timestamp: new Date().toISOString(),
-    };
-
-    return new Response(JSON.stringify(result), {
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (e) {
     console.error("❌ Scrape error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
@@ -325,3 +319,64 @@ serve(async (req) => {
     });
   }
 });
+
+/** Run after all operations complete: delete stale props, clean old logs, notify n8n */
+async function runCleanup(supabase: any, batchId: string, batchTimestamp: string) {
+  await writeLog(supabase, batchId, `🧹 Limpiando propiedades obsoletas...`, "info");
+
+  const { data: staleData, error: deleteError } = await supabase
+    .from("properties")
+    .delete()
+    .lt("last_seen_at", batchTimestamp)
+    .select("id");
+
+  let deleted = 0;
+  if (deleteError) {
+    await writeLog(supabase, batchId, `❌ Error en limpieza: ${deleteError.message}`, "error");
+  } else {
+    deleted = staleData?.length ?? 0;
+    await writeLog(supabase, batchId, `🗑️ ${deleted} propiedades obsoletas eliminadas`, deleted > 0 ? "warning" : "info");
+  }
+
+  if (deleted > 0) {
+    const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "stale_properties_deleted",
+          deleted_count: deleted,
+          batch_timestamp: batchTimestamp,
+          timestamp: new Date().toISOString(),
+        }),
+      }).catch(err => console.error("n8n webhook error:", err));
+    }
+  }
+
+  // Count total upserted from logs
+  const { data: upsertLogs } = await supabase
+    .from("scraping_logs")
+    .select("properties_count")
+    .eq("batch_id", batchId)
+    .like("message", "%guardadas%");
+  const totalUpserted = (upsertLogs ?? []).reduce((sum: number, l: any) => sum + (l.properties_count ?? 0), 0);
+
+  await writeLog(supabase, batchId, `🏁 Scraping finalizado — ${totalUpserted} actualizadas, ${deleted} eliminadas`, "success", {
+    properties_count: totalUpserted,
+  });
+
+  // Clean up old logs (keep last 5 batches)
+  const { data: recentBatches } = await supabase
+    .from("scraping_logs")
+    .select("batch_id")
+    .order("created_at", { ascending: false });
+
+  if (recentBatches) {
+    const uniqueBatches = [...new Set(recentBatches.map((r: any) => r.batch_id))];
+    if (uniqueBatches.length > 5) {
+      const oldBatches = uniqueBatches.slice(5);
+      await supabase.from("scraping_logs").delete().in("batch_id", oldBatches);
+    }
+  }
+}
