@@ -14,6 +14,7 @@ import {
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
   BarChart3, Flame, Thermometer, Snowflake, FileDown, Send,
+  History, ChevronDown, ChevronUp, Clock,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
