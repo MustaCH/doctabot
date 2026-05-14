@@ -14,6 +14,7 @@ import {
   RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
   Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
   BarChart3, Flame, Thermometer, Snowflake, FileDown, Send,
+  History, ChevronDown, ChevronUp, Clock,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -243,6 +244,7 @@ function AdminDashboard({ pin }: { pin: string }) {
             )}
             <ActivityCharts pin={pin} />
             <ScrapingStatus pin={pin} />
+            <ScrapingHistory pin={pin} />
             <PushTestPanel pin={pin} />
             <PushDeliveryPanel pin={pin} />
             <MorningMatchesPanel />
@@ -499,6 +501,179 @@ function ScrapingStatus({ pin }: { pin: string }) {
 
       {scrapeResult && <p className="text-xs font-medium">{scrapeResult}</p>}
       <p className="text-xs text-muted-foreground">El scraping se ejecuta diariamente. Las propiedades no vistas en el último lote se eliminan automáticamente.</p>
+    </div>
+  );
+}
+
+/* ==================== SCRAPING HISTORY ==================== */
+interface ScrapingBatch {
+  batch_id: string;
+  started_at: string;
+  finished_at: string;
+  finished: boolean;
+  total_upserted: number;
+  deleted: number;
+  errors: number;
+  warnings: number;
+  log_count: number;
+  duration_seconds: number;
+  operations: Record<string, { total_pages: number | null; pages_done: number; upserted: number }>;
+}
+
+function ScrapingHistory({ pin }: { pin: string }) {
+  const [batches, setBatches] = useState<ScrapingBatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [batchLogs, setBatchLogs] = useState<Record<string, ScrapingLog[]>>({});
+
+  const load = useCallback(() => {
+    setLoading(true);
+    adminFetch(pin, "scraping-history", { limit: 20 })
+      .then((data) => setBatches(data.batches ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [pin]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = async (batchId: string) => {
+    if (expanded === batchId) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(batchId);
+    if (!batchLogs[batchId]) {
+      try {
+        const res = await adminFetch(pin, "scraping-logs-live", { batchId });
+        setBatchLogs(prev => ({ ...prev, [batchId]: res.data ?? [] }));
+      } catch { /* ignore */ }
+    }
+  };
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+  const fmtDuration = (s: number) => {
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}m ${sec}s`;
+  };
+
+  const logLevelColor = (level: string) => {
+    switch (level) {
+      case "error": return "text-destructive";
+      case "warning": return "text-yellow-500";
+      case "success": return "text-green-500";
+      default: return "text-muted-foreground";
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Historial de Scraping</h2>
+          <Badge variant="outline" className="text-[10px]">{batches.length} lotes</Badge>
+        </div>
+        <Button size="sm" variant="ghost" onClick={load} disabled={loading} className="text-xs">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+
+      {loading && batches.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
+          <Loader2 className="h-4 w-4 animate-spin mr-2" /> Cargando historial...
+        </div>
+      ) : batches.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-4 text-center">No hay lotes registrados aún.</p>
+      ) : (
+        <div className="space-y-2">
+          {batches.map((b) => {
+            const isOpen = expanded === b.batch_id;
+            const statusBadge = b.errors > 0
+              ? { label: "Con errores", cls: "bg-destructive/10 text-destructive border-destructive/30" }
+              : b.finished
+                ? { label: "Completado", cls: "bg-green-500/10 text-green-600 border-green-500/30" }
+                : { label: "Incompleto", cls: "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" };
+            return (
+              <div key={b.batch_id} className="rounded-lg border border-border bg-background/40">
+                <button
+                  onClick={() => toggle(b.batch_id)}
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-accent/30 transition-colors rounded-lg"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{fmt(b.started_at)}</span>
+                        <Badge variant="outline" className={`text-[10px] ${statusBadge.cls}`}>{statusBadge.label}</Badge>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Clock className="h-3 w-3" /> {fmtDuration(b.duration_seconds)}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
+                        <span>✅ {b.total_upserted.toLocaleString("es-AR")} props</span>
+                        {b.deleted > 0 && <span>🗑️ {b.deleted} obsoletas</span>}
+                        {b.errors > 0 && <span className="text-destructive">⚠️ {b.errors} errores</span>}
+                        {b.warnings > 0 && <span className="text-yellow-600">{b.warnings} avisos</span>}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-border p-3 space-y-3">
+                    {/* Per-operation breakdown */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {Object.entries(b.operations).map(([op, info]) => {
+                        const pct = info.total_pages
+                          ? Math.min(100, Math.round((info.pages_done / info.total_pages) * 100))
+                          : 0;
+                        return (
+                          <div key={op} className="rounded-md border border-border bg-card p-2 text-xs">
+                            <div className="font-medium mb-1">{op}</div>
+                            <div className="text-muted-foreground text-[11px]">
+                              Páginas: {info.pages_done}{info.total_pages ? ` / ${info.total_pages}` : ""}
+                            </div>
+                            <div className="text-muted-foreground text-[11px]">
+                              Guardadas: {info.upserted.toLocaleString("es-AR")}
+                            </div>
+                            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary mt-1.5">
+                              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {Object.keys(b.operations).length === 0 && (
+                        <p className="text-[11px] text-muted-foreground col-span-full">Sin datos por operación.</p>
+                      )}
+                    </div>
+
+                    {/* Logs */}
+                    <div className="rounded-md border border-border bg-background/60 p-2 max-h-56 overflow-y-auto font-mono text-[11px] space-y-0.5">
+                      {(batchLogs[b.batch_id] ?? []).map((log) => (
+                        <div key={log.id} className={`flex gap-2 ${logLevelColor(log.level)}`}>
+                          <span className="text-muted-foreground/60 shrink-0">
+                            {new Date(log.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                          <span className="break-words">{log.message}</span>
+                        </div>
+                      ))}
+                      {!batchLogs[b.batch_id] && (
+                        <div className="text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Cargando logs...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

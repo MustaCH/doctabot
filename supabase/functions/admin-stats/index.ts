@@ -420,6 +420,96 @@ Deno.serve(async (req) => {
       return json({ data: data ?? [] });
     }
 
+    // ---------- SCRAPING HISTORY (aggregated batches) ----------
+    if (action === "scraping-history") {
+      const limit = Math.min(Number(body.limit ?? 20), 50);
+
+      // Fetch recent batch_ids
+      const { data: recentBatches } = await supabaseAdmin
+        .from("scraping_logs")
+        .select("batch_id, created_at")
+        .order("created_at", { ascending: false })
+        .limit(2000);
+
+      const seen = new Set<string>();
+      const batchOrder: string[] = [];
+      for (const r of recentBatches ?? []) {
+        if (!seen.has(r.batch_id)) {
+          seen.add(r.batch_id);
+          batchOrder.push(r.batch_id);
+          if (batchOrder.length >= limit) break;
+        }
+      }
+
+      if (batchOrder.length === 0) return json({ batches: [] });
+
+      const { data: allLogs } = await supabaseAdmin
+        .from("scraping_logs")
+        .select("batch_id, message, level, current_page, total_pages, properties_count, created_at")
+        .in("batch_id", batchOrder)
+        .order("created_at", { ascending: true });
+
+      const OPS = ["Venta", "Alquiler temporario", "Alquiler"];
+      const byBatch: Record<string, any> = {};
+
+      for (const log of allLogs ?? []) {
+        if (!byBatch[log.batch_id]) {
+          byBatch[log.batch_id] = {
+            batch_id: log.batch_id,
+            started_at: log.created_at,
+            finished_at: log.created_at,
+            finished: false,
+            total_upserted: 0,
+            deleted: 0,
+            errors: 0,
+            warnings: 0,
+            log_count: 0,
+            operations: {} as Record<string, { total_pages: number | null; pages_done: number; upserted: number }>,
+          };
+        }
+        const b = byBatch[log.batch_id];
+        b.finished_at = log.created_at;
+        b.log_count += 1;
+        if (log.level === "error") b.errors += 1;
+        if (log.level === "warning") b.warnings += 1;
+        if (log.level === "success" || log.message.includes("🏁")) b.finished = true;
+
+        // detect operation context from message prefix
+        const msg = log.message;
+        let op: string | null = null;
+        for (const o of OPS) {
+          if (msg.includes(o + ":") || msg.includes(o + " pág") || msg.includes(o + " error") || msg.includes("✅ " + o)) {
+            op = o; break;
+          }
+        }
+
+        if (op) {
+          if (!b.operations[op]) b.operations[op] = { total_pages: null, pages_done: 0, upserted: 0 };
+          if (log.total_pages != null) b.operations[op].total_pages = log.total_pages;
+          if (log.current_page != null && log.current_page > b.operations[op].pages_done) {
+            b.operations[op].pages_done = log.current_page;
+          }
+          if (msg.includes("guardadas") && log.properties_count != null) {
+            b.operations[op].upserted += log.properties_count;
+            b.total_upserted += log.properties_count;
+          }
+        }
+
+        // deleted obsoletas
+        const delMatch = msg.match(/🗑️\s+(\d+)\s+propiedades obsoletas/);
+        if (delMatch) b.deleted = Number(delMatch[1]);
+      }
+
+      const batches = batchOrder.map(id => {
+        const b = byBatch[id];
+        if (!b) return null;
+        const durationMs = new Date(b.finished_at).getTime() - new Date(b.started_at).getTime();
+        return { ...b, duration_seconds: Math.round(durationMs / 1000) };
+      }).filter(Boolean);
+
+      return json({ batches });
+    }
+
     // ---------- LIST USERS WITH PUSH SUBSCRIPTIONS ----------
     if (action === "push-subscribers") {
       const { data: subs } = await supabaseAdmin
