@@ -352,9 +352,16 @@ function ScrapingStatus({ pin }: { pin: string }) {
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
 
-  // Poll logs while scraping is active
+  // Compute live state from logs
+  const lastLogAt = logs.length > 0 ? new Date(logs[logs.length - 1].created_at).getTime() : 0;
+  const isFinished = logs.some(l => l.message.includes("🏁") || l.level === "success");
+  const isStale = lastLogAt > 0 && Date.now() - lastLogAt > 3 * 60 * 1000;
+  const isLive = !!activeBatchId && !isFinished && !isStale && (scraping || logs.length > 0);
+
+  // Poll logs while batch is live (independent of `scraping` flag — chained workers run in background)
   useEffect(() => {
-    if (!scraping || !activeBatchId) return;
+    if (!activeBatchId) return;
+    if (isFinished || isStale) return;
     const interval = setInterval(async () => {
       try {
         const res = await adminFetch(pin, "scraping-logs-live", { batchId: activeBatchId });
@@ -362,7 +369,12 @@ function ScrapingStatus({ pin }: { pin: string }) {
       } catch { /* ignore */ }
     }, 2000);
     return () => clearInterval(interval);
-  }, [scraping, activeBatchId, pin]);
+  }, [activeBatchId, isFinished, isStale, pin]);
+
+  // Reload status counters when batch finishes
+  useEffect(() => {
+    if (isFinished) loadStatus();
+  }, [isFinished, loadStatus]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -374,20 +386,11 @@ function ScrapingStatus({ pin }: { pin: string }) {
     setScrapeResult(null);
     setLogs([]);
     setShowLogs(true);
-    const batchId = new Date().toISOString();
-    setActiveBatchId(batchId);
     try {
       const res = await adminFetch(pin, "trigger-scraping");
-      const parts = [`✅ ${res.upserted ?? 0} actualizadas`];
-      if (res.deleted > 0) parts.push(`🗑️ ${res.deleted} obsoletas eliminadas`);
-      if (res.errors > 0) parts.push(`⚠️ ${res.errors} errores`);
-      if (!res.is_last_batch) parts.push(`⏭️ Lote parcial (siguiente en proceso)`);
-      setScrapeResult(parts.join(" · "));
-      // Final fetch of logs
-      const logsRes = await adminFetch(pin, "scraping-logs-live", { batchId: res.batch_timestamp ?? activeBatchId });
-      setLogs(logsRes.data ?? []);
-      setActiveBatchId(res.batch_timestamp ?? activeBatchId);
-      loadStatus();
+      const newBatchId = res.batch_timestamp ?? new Date().toISOString();
+      setActiveBatchId(newBatchId);
+      setScrapeResult(`🚀 Lote iniciado — encadenando operaciones en segundo plano...`);
     } catch {
       setScrapeResult("❌ Error al ejecutar el scraping");
     }
@@ -404,12 +407,27 @@ function ScrapingStatus({ pin }: { pin: string }) {
     }).catch(() => {});
   }, [pin]);
 
-  // Calculate progress from logs
-  const latestPageLog = [...logs].reverse().find(l => l.current_page != null && l.total_pages != null);
-  const progress = latestPageLog && latestPageLog.total_pages
-    ? Math.round((latestPageLog.current_page! / latestPageLog.total_pages) * 100)
-    : 0;
-  const isFinished = logs.some(l => l.message.includes("🏁") || l.level === "success");
+  // Per-operation progress aggregation
+  const OPS = ["Venta", "Alquiler temporario", "Alquiler"];
+  const opsProgress: Record<string, { total: number | null; done: number; upserted: number; finished: boolean }> = {};
+  for (const log of logs) {
+    let op: string | null = null;
+    for (const o of OPS) {
+      if (log.message.includes(o + ":") || log.message.includes(o + " pág") || log.message.includes(o + " error") || log.message.includes("✅ " + o)) {
+        op = o; break;
+      }
+    }
+    if (!op) continue;
+    if (!opsProgress[op]) opsProgress[op] = { total: null, done: 0, upserted: 0, finished: false };
+    if (log.total_pages != null) opsProgress[op].total = log.total_pages;
+    if (log.current_page != null && log.current_page > opsProgress[op].done) opsProgress[op].done = log.current_page;
+    if (log.message.includes("guardadas") && log.properties_count != null) opsProgress[op].upserted += log.properties_count;
+    if (log.message.includes("✅ " + op)) opsProgress[op].finished = true;
+  }
+
+  const totalDone = Object.values(opsProgress).reduce((s, o) => s + o.done, 0);
+  const totalPagesAll = Object.values(opsProgress).reduce((s, o) => s + (o.total ?? 0), 0);
+  const overallProgress = totalPagesAll > 0 ? Math.round((totalDone / totalPagesAll) * 100) : 0;
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -429,39 +447,73 @@ function ScrapingStatus({ pin }: { pin: string }) {
         <div className="flex items-center gap-2">
           <Database className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Estado del Scraping</h2>
+          {isLive && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/30">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+              </span>
+              EN VIVO
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => setShowLogs(!showLogs)} className="text-xs">
             <Eye className="h-3.5 w-3.5 mr-1" />
             {showLogs ? "Ocultar logs" : "Ver logs"}
           </Button>
-          <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping}>
-            {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
-            {scraping ? "Ejecutando..." : "Ejecutar ahora"}
+          <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping || isLive}>
+            {(scraping || isLive) ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            {isLive ? "Ejecutando..." : scraping ? "Iniciando..." : "Ejecutar ahora"}
           </Button>
         </div>
       </div>
 
-      {/* Progress bar */}
-      {(scraping || (logs.length > 0 && showLogs)) && (
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>
-              {isFinished
-                ? "✅ Completado"
-                : scraping
-                  ? `Procesando... ${latestPageLog ? `Página ${latestPageLog.current_page}/${latestPageLog.total_pages}` : ""}`
-                  : "Último scraping"
-              }
-            </span>
-            <span>{isFinished ? "100" : progress}%</span>
+      {/* Overall progress + per-operation */}
+      {(isLive || (logs.length > 0 && showLogs)) && (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>
+                {isFinished ? "✅ Completado" : isLive ? "Procesando lote..." : isStale ? "⏸️ Sin actividad reciente" : "Último scraping"}
+              </span>
+              <span>{isFinished ? "100" : overallProgress}% · {totalDone}/{totalPagesAll || "?"} páginas</span>
+            </div>
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${isFinished ? "bg-green-500" : "bg-primary"}`}
+                style={{ width: `${isFinished ? 100 : overallProgress}%` }}
+              />
+            </div>
           </div>
-          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${isFinished ? "bg-green-500" : "bg-primary"}`}
-              style={{ width: `${isFinished ? 100 : progress}%` }}
-            />
-          </div>
+
+          {/* Per-operation breakdown */}
+          {Object.keys(opsProgress).length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {OPS.filter(op => opsProgress[op]).map(op => {
+                const info = opsProgress[op];
+                const pct = info.total ? Math.min(100, Math.round((info.done / info.total) * 100)) : 0;
+                const done = info.finished || pct === 100;
+                return (
+                  <div key={op} className="rounded-md border border-border bg-background/40 p-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium flex items-center gap-1.5">
+                        {done ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+                        {op}
+                      </span>
+                      <span className="text-muted-foreground text-[10px]">{pct}%</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {info.done}{info.total ? `/${info.total}` : ""} págs · {info.upserted.toLocaleString("es-AR")} guardadas
+                    </div>
+                    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary mt-1">
+                      <div className={`h-full rounded-full transition-all duration-500 ${done ? "bg-green-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
