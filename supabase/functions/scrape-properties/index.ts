@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SCRAPE_BASE_URL = "http://qiuautomations-scrapingcba-7uwjyy-33ffaf-31-97-164-164.traefik.me/api/scrape";
+const SCRAPE_BASE_URL = "http://remaxdocta-scrapingdocta-zos1k5-a90019-31-97-164-164.sslip.io/api/scrape";
 
 // Max pages to scrape per invocation to stay well under 150s timeout
 const PAGES_PER_INVOCATION = 20;
