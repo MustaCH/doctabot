@@ -238,18 +238,47 @@ serve(async (req) => {
     // ─── WORKER MODE: scrape one operation, one chunk of pages ───
     const opLabel = OP_LABELS[operationId] ?? `Op${operationId}`;
 
+    // Helper: chain to next operation or finalize (used when an operation must be aborted)
+    const chainToNextOrFinalize = async (reason: string) => {
+      await writeLog(supabase, batchId, `⏭️ ${opLabel}: saltando al siguiente paso (${reason})`, "warning");
+      const currentOpIndex = ALL_OPS.indexOf(operationId!);
+      const nextOpIndex = currentOpIndex + 1;
+      if (nextOpIndex < ALL_OPS.length) {
+        selfInvoke(supabaseUrl, anonKey, {
+          operationId: ALL_OPS[nextOpIndex],
+          startPage: 1,
+          batchTimestamp,
+        });
+      } else {
+        await runCleanup(supabase, batchId, batchTimestamp!);
+      }
+    };
+
     // Resolve maxPages if not known yet (first chunk)
     if (!maxPages) {
-      const mpRes = await fetchWithRetry(`${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${operationId}`);
-      if (!mpRes.ok) {
-        await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: ${mpRes.status}`, "error");
-        return new Response(JSON.stringify({ error: `checkMaxPages failed: ${mpRes.status}` }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      try {
+        const mpRes = await fetchWithRetry(
+          `${SCRAPE_BASE_URL}?mode=checkMaxPages&operationId=${operationId}`,
+          3, 2000, supabase, batchId, `${opLabel} checkMaxPages`,
+        );
+        if (!mpRes.ok) {
+          await writeLog(supabase, batchId, `⚠️ Error consultando páginas para ${opLabel}: HTTP ${mpRes.status}`, "error");
+          await chainToNextOrFinalize(`checkMaxPages HTTP ${mpRes.status}`);
+          return new Response(JSON.stringify({ success: false, skipped: true, operation: opLabel, reason: `checkMaxPages HTTP ${mpRes.status}` }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const mpData = await mpRes.json();
+        maxPages = mpData.maxPages ?? mpData.totalPages ?? 1;
+        await writeLog(supabase, batchId, `📄 ${opLabel}: ${maxPages} páginas totales`, "info", { total_pages: maxPages });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await writeLog(supabase, batchId, `❌ ${opLabel}: no se pudo resolver maxPages: ${msg}`, "error");
+        await chainToNextOrFinalize(`error de red en checkMaxPages: ${msg}`);
+        return new Response(JSON.stringify({ success: false, skipped: true, operation: opLabel, reason: msg }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const mpData = await mpRes.json();
-      maxPages = mpData.maxPages ?? mpData.totalPages ?? 1;
-      await writeLog(supabase, batchId, `📄 ${opLabel}: ${maxPages} páginas totales`, "info", { total_pages: maxPages });
     }
 
     const endPage = Math.min(startPage + PAGES_PER_INVOCATION - 1, maxPages);
@@ -258,19 +287,28 @@ serve(async (req) => {
       total_pages: maxPages,
     });
 
-    // Scrape pages in sub-batches of 5
+    // Scrape pages in sub-batches of 5 — never throw, always continue to next sub-batch
     const allProperties: any[] = [];
     const FETCH_BATCH = 5;
     for (let p = startPage; p <= endPage; p += FETCH_BATCH) {
       const pEnd = Math.min(p + FETCH_BATCH - 1, endPage);
-      const scrapeRes = await fetchWithRetry(`${SCRAPE_BASE_URL}?startPage=${p}&endPage=${pEnd}&operationId=${operationId}`);
-      if (!scrapeRes.ok) {
-        await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${p}-${pEnd}: HTTP ${scrapeRes.status}`, "error");
+      try {
+        const scrapeRes = await fetchWithRetry(
+          `${SCRAPE_BASE_URL}?startPage=${p}&endPage=${pEnd}&operationId=${operationId}`,
+          3, 2000, supabase, batchId, `${opLabel} pág ${p}-${pEnd}`,
+        );
+        if (!scrapeRes.ok) {
+          await writeLog(supabase, batchId, `⚠️ ${opLabel} error páginas ${p}-${pEnd}: HTTP ${scrapeRes.status}`, "error");
+          continue;
+        }
+        const scrapeData = await scrapeRes.json();
+        const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
+        allProperties.push(...properties.map((pr: any) => ({ ...pr, _opId: operationId })));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await writeLog(supabase, batchId, `❌ ${opLabel} fallo de red páginas ${p}-${pEnd}: ${msg} (se continúa)`, "error");
         continue;
       }
-      const scrapeData = await scrapeRes.json();
-      const properties = Array.isArray(scrapeData) ? scrapeData : (scrapeData.data ?? scrapeData.properties ?? []);
-      allProperties.push(...properties.map((pr: any) => ({ ...pr, _opId: operationId })));
     }
 
     // Upsert
