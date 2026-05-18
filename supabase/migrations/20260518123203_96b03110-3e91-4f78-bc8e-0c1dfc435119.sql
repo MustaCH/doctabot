@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.search_properties_filtered(text, text, text, numeric, numeric, integer, integer);
