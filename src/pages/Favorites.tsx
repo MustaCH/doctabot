@@ -22,7 +22,7 @@ interface FavoriteProperty {
   m2_cover: number | null;
   url: string | null;
   operation: string | null;
-  ambientes: number | null;
+  habitaciones: number | null;
   banos: number | null;
   property_type: string | null;
 }
@@ -44,7 +44,7 @@ const Favorites = () => {
           properties (
             photo, title, office, price, currency,
             address, locality, zone, m2_total, m2_cover,
-            url, operation, ambientes, banos, property_type
+            url, operation, habitaciones, banos, property_type
           )
         `)
         .eq("user_id", user.id)
@@ -102,7 +102,7 @@ const Favorites = () => {
     const extras: string[] = [];
     if (f.operation) extras.push(`🏷️ ${f.operation}`);
     if (f.property_type) extras.push(`🏗️ ${f.property_type}`);
-    if (f.ambientes) extras.push(`🛋️ ${f.ambientes} amb.`);
+    if (f.habitaciones) extras.push(`🛋️ ${f.habitaciones} hab.`);
     if (f.banos) extras.push(`🚿 ${f.banos} baños`);
     return extras;
   };

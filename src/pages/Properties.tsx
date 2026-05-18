@@ -237,7 +237,6 @@ const Properties = () => {
     if (p.property_type) extras.push(`🏗️ ${p.property_type}`);
     const parts: string[] = [];
     if (p.habitaciones) parts.push(`${p.habitaciones} hab`);
-    if (p.ambientes) parts.push(`${p.ambientes} amb`);
     if (p.banos) parts.push(`${p.banos} baños`);
     if (parts.length > 0) extras.push(`🛋️ ${parts.join(" · ")}`);
     if (p.expenses_price && p.expenses_price > 0) {

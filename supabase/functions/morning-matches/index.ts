@@ -140,7 +140,7 @@ interface PropertyRow {
   operation: string | null;
   address: string | null;
   m2_total: number | null;
-  ambientes: number | null;
+  habitaciones: number | null;
   url: string | null;
 }
 
@@ -421,7 +421,7 @@ function formatPropertyLine(p: PropertyRow): string {
   if (p.address) lines.push(`📍 ${p.address}`);
   const surfaceParts: string[] = [];
   if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
-  if (p.ambientes) surfaceParts.push(`${p.ambientes} amb.`);
+  if (p.habitaciones) surfaceParts.push(`${p.habitaciones} hab.`);
   if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
   if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
   return lines.join("\n");
@@ -443,7 +443,7 @@ serve(async (req) => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: newProperties, error: propErr } = await admin
       .from("properties")
-      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, ambientes, url")
+      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, habitaciones, url")
       .or(`created_at.gte.${since},last_seen_at.gte.${since}`)
       .limit(500);
 
