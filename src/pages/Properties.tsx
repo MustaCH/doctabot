@@ -62,6 +62,7 @@ const Properties = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [operationFilter, setOperationFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [roomsFilter, setRoomsFilter] = useState<string>("all");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [page, setPage] = useState(0);
@@ -100,6 +101,8 @@ const Properties = () => {
         type_filter: typeFilter === "all" ? "" : typeFilter,
         price_min: priceMin ? Number(priceMin) : null,
         price_max: priceMax ? Number(priceMax) : null,
+        rooms_min: roomsFilter === "all" ? null : Number(roomsFilter),
+        rooms_max: roomsFilter === "all" || roomsFilter === "5" ? null : Number(roomsFilter),
         page_size: PAGE_SIZE,
         page_offset: offset,
       });
@@ -121,7 +124,7 @@ const Properties = () => {
     } finally {
       setLoadingProps(false);
     }
-  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
+  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax, roomsFilter]);
 
   // Debounce price inputs
   const [debouncedPriceMin, setDebouncedPriceMin] = useState("");
@@ -142,7 +145,7 @@ const Properties = () => {
     if (activeTab === "search") {
       loadProperties(0);
     }
-  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
+  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax, roomsFilter]);
 
   // --- Load favorites ---
   const loadFavorites = useCallback(async () => {
@@ -246,11 +249,12 @@ const Properties = () => {
     return extras;
   };
 
-  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all" || priceMin !== "" || priceMax !== "";
+  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all" || roomsFilter !== "all" || priceMin !== "" || priceMax !== "";
 
   const clearFilters = () => {
     setOperationFilter("all");
     setTypeFilter("all");
+    setRoomsFilter("all");
     setPriceMin("");
     setPriceMax("");
     setDebouncedPriceMin("");
@@ -435,6 +439,22 @@ const Properties = () => {
                       <SelectItem value="cochera">Cochera</SelectItem>
                       <SelectItem value="campo">Campo</SelectItem>
                       <SelectItem value="galpon">Galpón</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground shrink-0">🛏️ Habitaciones:</span>
+                  <Select value={roomsFilter} onValueChange={setRoomsFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Cualquiera" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Cualquier cantidad</SelectItem>
+                      <SelectItem value="1">1 habitación</SelectItem>
+                      <SelectItem value="2">2 habitaciones</SelectItem>
+                      <SelectItem value="3">3 habitaciones</SelectItem>
+                      <SelectItem value="4">4 habitaciones</SelectItem>
+                      <SelectItem value="5">5 o más</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
