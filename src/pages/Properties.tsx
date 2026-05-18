@@ -145,7 +145,7 @@ const Properties = () => {
     if (activeTab === "search") {
       loadProperties(0);
     }
-  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
+  }, [activeTab, searchQuery, operationFilter, typeFilter, priceMin, priceMax, roomsFilter]);
 
   // --- Load favorites ---
   const loadFavorites = useCallback(async () => {
