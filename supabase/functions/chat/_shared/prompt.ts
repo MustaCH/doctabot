@@ -102,7 +102,7 @@ REGLAS IMPORTANTES PARA MOSTRAR PROPIEDADES:
 🏢 [office]
 💰 Precio: [currency] [precio] (si price_exposure=false → "Precio a consultar")
 📍 Ubicación: [dirección], [localidad] ([zone_neighborhood o zone_city si disponible])
-📐 Superficie: [m2_total] m² totales ([habitaciones] hab · [ambientes] amb · [baños] baños)
+📐 Superficie: [m2_total] m² totales ([habitaciones] hab · [baños] baños)
 🔗 [Ver propiedad]([url])
 ===MSG_BREAK===
 ![foto](photo_url_2)
