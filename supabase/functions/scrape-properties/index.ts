@@ -137,19 +137,37 @@ async function writeLog(
   console.log(`[${level.toUpperCase()}] ${message}`);
 }
 
-/** Fetch with retry for flaky DNS */
-async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
+/** Fetch with retry for flaky DNS. Logs failures to scraping_logs. */
+async function fetchWithRetry(
+  url: string,
+  retries = 3,
+  delayMs = 2000,
+  supabase?: any,
+  batchId?: string,
+  context?: string,
+): Promise<Response> {
+  let lastErr: any = null;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url);
       return res;
     } catch (err) {
-      console.error(`Fetch attempt ${attempt}/${retries} failed for ${url}: ${err}`);
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Fetch attempt ${attempt}/${retries} failed for ${url}: ${msg}`);
+      if (supabase && batchId) {
+        await writeLog(
+          supabase,
+          batchId,
+          `🌐 Error de conexión (intento ${attempt}/${retries})${context ? ` [${context}]` : ""}: ${msg}`,
+          attempt === retries ? "error" : "warning",
+        );
+      }
       if (attempt === retries) throw err;
       await new Promise(r => setTimeout(r, delayMs * attempt));
     }
   }
-  throw new Error("unreachable");
+  throw lastErr ?? new Error("unreachable");
 }
 
 /** Fire-and-forget: invoke self with the next chunk */
