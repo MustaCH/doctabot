@@ -140,7 +140,7 @@ interface PropertyRow {
   operation: string | null;
   address: string | null;
   m2_total: number | null;
-  ambientes: number | null;
+  habitaciones: number | null;
   url: string | null;
 }
 
