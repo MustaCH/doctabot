@@ -79,7 +79,7 @@ serve(async (req) => {
     ];
 
     // Gemini OpenAI-compatible endpoint (no Lovable Gateway). Single primary model.
-    const PRIMARY_MODEL = "gemini-2.5-flash";
+    const PRIMARY_MODEL = "gemini-2.5-pro";
     const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
 
