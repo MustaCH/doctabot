@@ -44,7 +44,7 @@ const Favorites = () => {
           properties (
             photo, title, office, price, currency,
             address, locality, zone, m2_total, m2_cover,
-            url, operation, ambientes, banos, property_type
+            url, operation, habitaciones, banos, property_type
           )
         `)
         .eq("user_id", user.id)
