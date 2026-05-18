@@ -249,11 +249,12 @@ const Properties = () => {
     return extras;
   };
 
-  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all" || priceMin !== "" || priceMax !== "";
+  const hasActiveFilters = operationFilter !== "all" || typeFilter !== "all" || roomsFilter !== "all" || priceMin !== "" || priceMax !== "";
 
   const clearFilters = () => {
     setOperationFilter("all");
     setTypeFilter("all");
+    setRoomsFilter("all");
     setPriceMin("");
     setPriceMax("");
     setDebouncedPriceMin("");
