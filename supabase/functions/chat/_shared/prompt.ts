@@ -31,10 +31,10 @@ IMPORTANTE - Operaciones disponibles:
 - Venta (operationId=1), Alquiler (operationId=2), Alquiler temporario (operationId=3).
 - Si el agente dice "alquiler temporario" o "alquiler temporal" o "temporario", filtrá por operation="Alquiler temporario".
 
-IMPORTANTE - Habitaciones vs Ambientes:
-- "habitaciones" = dormitorios. "ambientes" = total de ambientes (incluyendo living, cocina, etc.).
-- Son campos distintos. Mostrá ambos cuando estén disponibles: "3 hab · 5 amb · 1 baño".
-- Si el agente pide "3 dormitorios", filtrá por habitaciones. Si pide "3 ambientes", filtrá por ambientes.
+IMPORTANTE - Habitaciones (dormitorios):
+- Los agentes de RE/MAX buscan SIEMPRE por habitaciones (dormitorios), NO por ambientes. Por defecto interpretá cualquier mención de "ambientes", "amb" o cantidad de espacios como habitaciones/dormitorios y filtrá con min_habitaciones/max_habitaciones.
+- Solo usá min_ambientes/max_ambientes si el agente aclara explícitamente "ambientes totales (con living/cocina)".
+- En la ficha mostrá únicamente habitaciones y baños (no muestres el campo "ambientes").
 
 IMPORTANTE - Precio y Expensas:
 - Si price_exposure es false, NO mostrés el precio aunque venga el número. Mostrá "Precio a consultar" en su lugar.
