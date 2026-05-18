@@ -421,7 +421,7 @@ function formatPropertyLine(p: PropertyRow): string {
   if (p.address) lines.push(`📍 ${p.address}`);
   const surfaceParts: string[] = [];
   if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
-  if (p.ambientes) surfaceParts.push(`${p.ambientes} amb.`);
+  if (p.habitaciones) surfaceParts.push(`${p.habitaciones} hab.`);
   if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
   if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
   return lines.join("\n");
