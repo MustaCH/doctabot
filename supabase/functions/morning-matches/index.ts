@@ -443,7 +443,7 @@ serve(async (req) => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: newProperties, error: propErr } = await admin
       .from("properties")
-      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, ambientes, url")
+      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, habitaciones, url")
       .or(`created_at.gte.${since},last_seen_at.gte.${since}`)
       .limit(500);
 
