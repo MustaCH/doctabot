@@ -1,38 +1,43 @@
 ## Diagnóstico
 
-El buscador de `/properties` falla porque la RPC `search_properties_filtered` tiene **dos overloads** en la base de datos:
+Alan ejecutó `search_properties({ locality: "Nueva Córdoba", property_type: "Departamento" })` y la búsqueda devolvió 0 resultados, pero **hay 90 propiedades reales en Nueva Córdoba** en la base.
 
-1. Versión vieja (7 parámetros: sin `neighborhood_filter` / `city_filter`)
-2. Versión nueva (9 parámetros: con esos filtros)
+La causa es un **mismatch de tildes**:
 
-Cuando el frontend la invoca con los 7 parámetros viejos, PostgREST no puede elegir cuál ejecutar y devuelve:
+- Alan envía `"Nueva Córdoba"` (con tilde, como lo escribe el usuario).
+- En la base, los valores están guardados **sin tilde**:
+  - `zone = "nueva cordoba"`
+  - `locality = "Nueva Cordoba, Cordoba, Capital, Córdoba"`
+  - `zone_neighborhood = "nueva cordoba"`
+- El executor en `supabase/functions/chat/_shared/tools/executor.ts` (case `search_properties`, líneas 36–137) arma los filtros con `q.ilike("locality", "%Nueva Córdoba%")` directo sobre la tabla `properties`, **sin pasar por `unaccent`**. `ILIKE` es case-insensitive pero **NO** accent-insensitive, así que `"%Nueva Córdoba%"` no matchea `"Nueva Cordoba"`.
 
-```
-PGRST203 — Could not choose the best candidate function between: ...
-```
+La RPC `search_properties_filtered` ya usa `unaccent` (memoria "Accent-insensitive Search"), pero el tool de Alan no la usa — consulta `properties` directamente, así que se pierde esa normalización.
 
-Ese error explota en el `catch` de `loadProperties` (src/pages/Properties.tsx:119) y dispara el toast "Error al buscar propiedades". Lo verifiqué llamando directamente al endpoint REST.
+Síntoma adicional: cualquier búsqueda con tildes (Córdoba, Argüello, Güemes, etc.) sufre el mismo problema y devuelve falsos negativos.
 
 ## Solución
 
-Eliminar la versión vieja (la de 7 parámetros) vía migración SQL, dejando solo la nueva — que ya soporta todos los filtros y mantiene compatibilidad con el llamado actual del frontend porque `neighborhood_filter` y `city_filter` tienen default `''`.
+Normalizar las strings de filtro **antes** de armar los `ILIKE`, removiendo diacríticos en el lado del cliente. Esto funciona porque los datos en BD ya están almacenados sin tildes para `zone`, `locality`, `zone_neighborhood`, `zone_city`. Es un cambio mínimo, sin tocar el schema ni la RPC.
 
-### Migración
+### Cambios
 
-```sql
-DROP FUNCTION IF EXISTS public.search_properties_filtered(
-  text, text, text, numeric, numeric, integer, integer
-);
-```
+**Archivo: `supabase/functions/chat/_shared/tools/executor.ts`**
 
-Esto deja activa solamente la firma de 9 argumentos (con defaults para los dos nuevos filtros), así el llamado actual desde `Properties.tsx` y cualquier llamado que pase los 9 parámetros sigue funcionando sin tocar código.
+1. Agregar un helper `stripAccents(s: string)` que use `s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")`.
+2. En el case `search_properties`, después del `sanitizePattern`, aplicar `stripAccents` a los campos de texto que vienen del usuario y se usan en `ILIKE` contra columnas geográficas/título: `zone`, `locality`, `neighborhood`, `city`, `titleSearch`, `office`. (No tocar `operation`, `property_type`, `currency`, que ya están en formas canónicas sin acentos en BD.)
+3. Dejar los fallbacks existentes (search en `title` cuando no hay match) intactos — ahora también funcionarán mejor porque la query estará normalizada.
+
+### Por qué no usar la RPC `search_properties_filtered`
+
+La RPC no expone los filtros de `ambientes`, `habitaciones`, `office`, `currency` que Alan sí necesita. Migrar a la RPC implicaría agregar parámetros y otra firma — más invasivo y propenso a otro conflicto de overload como el que acabamos de arreglar en el buscador del Explorer.
 
 ## Verificación
 
-Tras aplicar la migración:
-- Probar la RPC con `curl` (debe devolver filas, no PGRST203).
-- Recargar `/properties` y confirmar que el listado aparece sin el toast de error.
+Después del fix:
+1. Probar con `supabase--curl_edge_functions` invocando `chat` con un mensaje "Buscar departamentos en Nueva Córdoba" y revisar logs.
+2. O más directo: pedirle a Alan en la app la misma consulta y confirmar que devuelve resultados.
+3. Probar también una zona con tilde menos común (ej. "Güemes") para validar el patrón.
 
 ## Nota
 
-No hace falta tocar `src/pages/Properties.tsx` — el problema es 100% del schema. Si más adelante querés exponer los filtros de barrio/ciudad en la UI, basta con agregar los dos parámetros al `rpc()`.
+Si en el futuro aparecen propiedades scrapeadas con tildes guardadas en BD (ej. `"Nueva Córdoba"` con tilde), este enfoque dejaría de cubrir 100% de los casos y habría que migrar a una RPC con `unaccent` en ambos lados. Por ahora todos los datos relevados están sin tilde, así que el strip del lado del input es suficiente.
