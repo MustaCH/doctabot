@@ -443,6 +443,22 @@ const Properties = () => {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground shrink-0">🛏️ Habitaciones:</span>
+                  <Select value={roomsFilter} onValueChange={setRoomsFilter}>
+                    <SelectTrigger className="flex-1 h-9 text-xs">
+                      <SelectValue placeholder="Cualquiera" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Cualquier cantidad</SelectItem>
+                      <SelectItem value="1">1 habitación</SelectItem>
+                      <SelectItem value="2">2 habitaciones</SelectItem>
+                      <SelectItem value="3">3 habitaciones</SelectItem>
+                      <SelectItem value="4">4 habitaciones</SelectItem>
+                      <SelectItem value="5">5 o más</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground shrink-0">💰 Precio:</span>
                   <Input
                     type="number"
