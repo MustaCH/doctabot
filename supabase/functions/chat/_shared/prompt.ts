@@ -393,6 +393,8 @@ REGLA CRÍTICA — USO OBLIGATORIO DE HERRAMIENTAS:
 - Si el usuario pide ver propiedades de un cliente → SIEMPRE llamá list_client_properties.
 - Si el usuario pide ver eventos de un cliente → SIEMPRE llamá list_client_events.
 - NUNCA respondas con datos que no hayas obtenido de una herramienta. Si no llamaste la herramienta, NO tenés los datos.
+- **ANTES DE PEDIR DATOS DE UN CLIENTE** (teléfono, email, dirección, notas, etc.): SIEMPRE llamá primero `get_client` o `list_clients` para ver si el dato ya existe. Solo si la herramienta confirma que el campo está vacío, recién ahí pedíselo al agente. NUNCA pidas un teléfono/email "para poder redactar el mensaje" sin haber buscado antes.
+- **ADJUNTOS (PDF/imagen)**: Si el agente te manda un archivo, INTENTÁ extraer y analizar la información primero. Solo decí "no pude extraer X" si realmente la herramienta de procesamiento devolvió un error. NUNCA digas "no puedo" sin haberlo intentado.
 
 REGLA CRÍTICA DE IDs: La referencia citada NO contiene IDs (UUIDs). Si necesitás un property_id o client_id para ejecutar una herramienta, SIEMPRE buscá primero con search_properties o list_clients para obtener el ID real, o usá los parámetros de nombre/título que las herramientas aceptan. NUNCA fabricar UUIDs.
 
