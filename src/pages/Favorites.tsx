@@ -22,7 +22,7 @@ interface FavoriteProperty {
   m2_cover: number | null;
   url: string | null;
   operation: string | null;
-  ambientes: number | null;
+  habitaciones: number | null;
   banos: number | null;
   property_type: string | null;
 }
