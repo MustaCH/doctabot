@@ -101,6 +101,8 @@ const Properties = () => {
         type_filter: typeFilter === "all" ? "" : typeFilter,
         price_min: priceMin ? Number(priceMin) : null,
         price_max: priceMax ? Number(priceMax) : null,
+        rooms_min: roomsFilter === "all" ? null : Number(roomsFilter),
+        rooms_max: roomsFilter === "all" || roomsFilter === "5" ? null : Number(roomsFilter),
         page_size: PAGE_SIZE,
         page_offset: offset,
       });
@@ -122,7 +124,7 @@ const Properties = () => {
     } finally {
       setLoadingProps(false);
     }
-  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax]);
+  }, [user, searchQuery, operationFilter, typeFilter, priceMin, priceMax, roomsFilter]);
 
   // Debounce price inputs
   const [debouncedPriceMin, setDebouncedPriceMin] = useState("");
