@@ -102,7 +102,7 @@ const Favorites = () => {
     const extras: string[] = [];
     if (f.operation) extras.push(`🏷️ ${f.operation}`);
     if (f.property_type) extras.push(`🏗️ ${f.property_type}`);
-    if (f.ambientes) extras.push(`🛋️ ${f.ambientes} amb.`);
+    if (f.habitaciones) extras.push(`🛋️ ${f.habitaciones} hab.`);
     if (f.banos) extras.push(`🚿 ${f.banos} baños`);
     return extras;
   };
