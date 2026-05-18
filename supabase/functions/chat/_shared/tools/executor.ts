@@ -34,15 +34,17 @@ export async function executeTool(
   switch (name) {
     // ---- Properties ----
     case "search_properties": {
-      const zone = sanitizePattern(args.zone);
-      const locality = sanitizePattern(args.locality);
-      const neighborhood = sanitizePattern(args.neighborhood);
-      const city = sanitizePattern(args.city);
-      const titleSearch = sanitizePattern(args.title);
+      // Strip diacritics so ILIKE matches data stored sans-tilde (zone/locality/neighborhood/city are stored without accents in BD).
+      const stripAccents = (s: string | null) => s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "") : s;
+      const zone = stripAccents(sanitizePattern(args.zone));
+      const locality = stripAccents(sanitizePattern(args.locality));
+      const neighborhood = stripAccents(sanitizePattern(args.neighborhood));
+      const city = stripAccents(sanitizePattern(args.city));
+      const titleSearch = stripAccents(sanitizePattern(args.title));
       const operation = sanitizePattern(args.operation);
       const property_type = sanitizePattern(args.property_type);
       const currency = sanitizePattern(args.currency);
-      const office = sanitizePattern(args.office);
+      const office = stripAccents(sanitizePattern(args.office));
       const min_price = safePositiveNumber(args.min_price);
       const max_price = safePositiveNumber(args.max_price);
       const min_ambientes = safePositiveInt(args.min_ambientes);
