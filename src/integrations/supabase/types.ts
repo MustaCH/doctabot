@@ -910,101 +910,54 @@ export type Database = {
         Returns: boolean
       }
       is_conversation_owner: { Args: { conv_id: string }; Returns: boolean }
-      search_properties_filtered:
-        | {
-            Args: {
-              city_filter?: string
-              neighborhood_filter?: string
-              op_filter?: string
-              page_offset?: number
-              page_size?: number
-              price_max?: number
-              price_min?: number
-              search_term?: string
-              type_filter?: string
-            }
-            Returns: {
-              address: string
-              ambientes: number
-              banos: number
-              contact_email: string
-              contact_phone: string
-              created_at: string
-              currency: string
-              entrepreneurship: Json
-              expenses_currency: string
-              expenses_price: number
-              habitaciones: number
-              id: string
-              is_entrepreneurship: boolean
-              locality: string
-              m2_cover: number
-              m2_total: number
-              office: string
-              operation: string
-              operation_id: number
-              photo: string
-              photos: string[]
-              price: number
-              price_exposure: boolean
-              property_type: string
-              title: string
-              total_count: number
-              url: string
-              zone: string
-              zone_city: string
-              zone_neighborhood: string
-              zone_private_community: string
-            }[]
-          }
-        | {
-            Args: {
-              city_filter?: string
-              neighborhood_filter?: string
-              op_filter?: string
-              page_offset?: number
-              page_size?: number
-              price_max?: number
-              price_min?: number
-              rooms_max?: number
-              rooms_min?: number
-              search_term?: string
-              type_filter?: string
-            }
-            Returns: {
-              address: string
-              ambientes: number
-              banos: number
-              contact_email: string
-              contact_phone: string
-              created_at: string
-              currency: string
-              entrepreneurship: Json
-              expenses_currency: string
-              expenses_price: number
-              habitaciones: number
-              id: string
-              is_entrepreneurship: boolean
-              locality: string
-              m2_cover: number
-              m2_total: number
-              office: string
-              operation: string
-              operation_id: number
-              photo: string
-              photos: string[]
-              price: number
-              price_exposure: boolean
-              property_type: string
-              title: string
-              total_count: number
-              url: string
-              zone: string
-              zone_city: string
-              zone_neighborhood: string
-              zone_private_community: string
-            }[]
-          }
+      search_properties_filtered: {
+        Args: {
+          city_filter?: string
+          neighborhood_filter?: string
+          op_filter?: string
+          page_offset?: number
+          page_size?: number
+          price_max?: number
+          price_min?: number
+          rooms_max?: number
+          rooms_min?: number
+          search_term?: string
+          type_filter?: string
+        }
+        Returns: {
+          address: string
+          ambientes: number
+          banos: number
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          currency: string
+          entrepreneurship: Json
+          expenses_currency: string
+          expenses_price: number
+          habitaciones: number
+          id: string
+          is_entrepreneurship: boolean
+          locality: string
+          m2_cover: number
+          m2_total: number
+          office: string
+          operation: string
+          operation_id: number
+          photo: string
+          photos: string[]
+          price: number
+          price_exposure: boolean
+          property_type: string
+          title: string
+          total_count: number
+          url: string
+          zone: string
+          zone_city: string
+          zone_neighborhood: string
+          zone_private_community: string
+        }[]
+      }
       validate_invitation_code: {
         Args: { input_code: string }
         Returns: boolean
