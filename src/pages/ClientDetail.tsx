@@ -434,31 +434,11 @@ const ClientDetail = () => {
     <div className="flex h-[100dvh] flex-col bg-background">
       {/* Header */}
       <div className="border-b border-border bg-card px-4 py-3 safe-top">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between">
           <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => navigate("/clients")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-
-          {/* Avatar circle */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm">
-            {client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold truncate">{client.full_name}</p>
-            {client.is_client && (
-              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
-                  {statusLabel[client.status] ?? client.status}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {clientTypeLabel[client.client_type] ?? client.client_type}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Edit/Delete menu */}
+          <span className="text-xs text-muted-foreground">Contacto</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
@@ -475,6 +455,24 @@ const ClientDetail = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
+            {client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+          </div>
+          <p className="text-base font-bold text-center break-words max-w-full">{client.full_name}</p>
+          {client.is_client && (
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
+                {statusLabel[client.status] ?? client.status}
+              </span>
+              <span className="inline-flex items-center rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] font-medium h-5 text-muted-foreground">
+                {clientTypeLabel[client.client_type] ?? client.client_type}
+              </span>
+            </div>
+          )}
+        </div>
+
 
         <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
           <div>
