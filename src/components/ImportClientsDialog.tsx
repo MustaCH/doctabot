@@ -230,6 +230,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         ...c,
         user_id: userId,
         status: "hot",
+        is_client: true,
       }));
 
       const { error } = await supabase.from("clients").insert(batch);
