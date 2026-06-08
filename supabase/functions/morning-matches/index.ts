@@ -461,6 +461,7 @@ serve(async (req) => {
     const { data: userIds } = await admin
       .from("clients")
       .select("user_id")
+      .eq("is_client", true)
       .neq("client_type", "seller");
 
     const uniqueUserIds = [...new Set((userIds || []).map((r) => r.user_id))];
@@ -474,6 +475,7 @@ serve(async (req) => {
         .from("clients")
         .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
         .eq("user_id", userId)
+        .eq("is_client", true)
         .neq("client_type", "seller");
 
       if (!clients || clients.length === 0) continue;
@@ -623,6 +625,7 @@ serve(async (req) => {
         .from("clients")
         .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
         .eq("user_id", userId)
+        .eq("is_client", true)
         .eq("client_type", "seller");
 
       if (sellers && sellers.length > 0) {
@@ -631,6 +634,7 @@ serve(async (req) => {
           .from("clients")
           .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes, phone, email, status")
           .eq("user_id", userId)
+          .eq("is_client", true)
           .neq("client_type", "seller");
 
         if (buyers && buyers.length > 0) {
