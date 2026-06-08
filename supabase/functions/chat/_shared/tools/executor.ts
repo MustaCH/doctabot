@@ -206,7 +206,7 @@ export async function executeTool(
       const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
       const { data, error } = await supabase
         .from("clients")
-        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source })
+        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, is_client: true })
         .select("id, full_name, status, client_type")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
@@ -252,6 +252,7 @@ export async function executeTool(
         .from("clients")
         .select("id, full_name, phone, email, status, client_type, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
         .eq("user_id", userId)
+        .eq("is_client", true)
         .order("updated_at", { ascending: false })
         .limit(limit);
       if (search) query = query.ilike("full_name", `%${search}%`);
@@ -268,6 +269,7 @@ export async function executeTool(
         .select("*")
         .eq("id", args.client_id)
         .eq("user_id", userId)
+        .eq("is_client", true)
         .single();
       if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
       const [{ data: convs }, { data: clientProps }] = await Promise.all([
