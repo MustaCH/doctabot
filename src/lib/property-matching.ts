@@ -23,6 +23,7 @@ export interface ClientForMatch {
   property_type_interest: string | null;
   status: string;
   client_type: string;
+  is_client: boolean;
   notes: string | null;
   last_contact_at: string | null;
 }
@@ -328,6 +329,8 @@ export function computeMatchReasons(
   effectiveZone: string | null,
   effectiveTypeTokens: string[]
 ): string[] | null {
+  // Solo los contactos marcados como cliente entran al matching.
+  if (!client.is_client) return null;
   // Only match buyers or "both"
   if (client.client_type === "seller") return null;
 

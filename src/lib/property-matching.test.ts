@@ -27,6 +27,7 @@ function makeClient(overrides: Partial<ClientForMatch> = {}): ClientForMatch {
     property_type_interest: null,
     status: "warm",
     client_type: "buyer",
+    is_client: true,
     notes: null,
     last_contact_at: null,
     ...overrides,
@@ -314,5 +315,21 @@ describe("findPropertyMatches", () => {
     expect(typeReasons).toHaveLength(1);
     // zone + type + budget = exactly 3 reasons (no duplicated type).
     expect(result[0].matchReasons).toHaveLength(3);
+  });
+
+  it("nunca matchea un contacto que no es cliente (is_client=false)", () => {
+    const property = makeProperty({
+      zone: "Nueva Córdoba",
+      property_type: "departamento",
+      price: 95000,
+      currency: "USD",
+    });
+    const contacto = makeClient({
+      is_client: false,
+      preferred_zones: "Nueva Córdoba",
+      property_type_interest: "departamento",
+      budget_max: 100000,
+    });
+    expect(findPropertyMatches(property, [contacto])).toHaveLength(0);
   });
 });
