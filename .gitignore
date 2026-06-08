@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files. Lovable maneja el .env del repo (hoy solo claves públicas:
+# anon key + URL). Se ignora para no commitear secretos reales por accidente a futuro.
+.env
+.env.*
+!.env.example
+
+# Lockfiles: el repo se estandariza en Bun (bun.lock). npm queda fuera para no
+# tener dos gestores en paralelo. Una instalación local con npm no ensucia el repo.
+package-lock.json

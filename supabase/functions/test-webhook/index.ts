@@ -14,7 +14,10 @@ serve(async (req) => {
     const body = await req.json();
     const { pin } = body;
 
-    if (pin !== "7742") {
+    // PIN read from env (reuses the SUPER_ADMIN_PIN secret, same as admin-stats).
+    // No hardcoded value: if the secret is unset, access is denied.
+    const ADMIN_PIN = Deno.env.get("SUPER_ADMIN_PIN") ?? "";
+    if (!ADMIN_PIN || pin !== ADMIN_PIN) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
