@@ -215,7 +215,7 @@ const Profile = () => {
             onClick={() => navigate("/clients")}
           >
             <Users className="mr-2 h-4 w-4 text-primary" />
-            Clientes
+            Contactos
           </Button>
           <Button
             type="button"

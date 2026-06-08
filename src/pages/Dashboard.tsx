@@ -20,6 +20,7 @@ interface Client {
   email: string | null;
   last_contact_at: string | null;
   updated_at: string;
+  is_client: boolean | null;
 }
 
 interface ClientEvent {
@@ -92,7 +93,7 @@ const Dashboard = () => {
       supabase.from("clients").select("id", { count: "exact", head: true }),
       supabase.from("favorites").select("id", { count: "exact", head: true }),
       supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
-      supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at").eq("user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at, is_client").eq("user_id", user.id).order("updated_at", { ascending: false }),
       supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
       supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
     ]);
@@ -129,6 +130,7 @@ const Dashboard = () => {
     if (!data) return {};
     const groups: Record<string, Client[]> = {};
     for (const c of data.clients) {
+      if (!c.is_client) continue;
       if (!groups[c.status]) groups[c.status] = [];
       groups[c.status].push(c);
     }
@@ -170,7 +172,7 @@ const Dashboard = () => {
     if (!data) return [];
     const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
     return data.clients
-      .filter(c => c.status === "hot" || c.status === "warm")
+      .filter(c => c.is_client && (c.status === "hot" || c.status === "warm"))
       .filter(c => {
         const lastContact = c.last_contact_at ? new Date(c.last_contact_at) : new Date(c.updated_at);
         return lastContact < cutoff;
@@ -208,7 +210,7 @@ const Dashboard = () => {
 
   const metricCards = data ? [
     { label: "Propiedades", value: data.totalProperties, icon: Search, color: "text-primary" },
-    { label: "Clientes", value: data.totalClients, icon: Users, color: "text-emerald-600" },
+    { label: "Contactos", value: data.totalClients, icon: Users, color: "text-emerald-600" },
     { label: "Favoritos", value: data.totalFavorites, icon: Heart, color: "text-accent" },
     { label: "Conversaciones", value: data.totalConversations, icon: MessageSquare, color: "text-violet-500" },
   ] : [];
