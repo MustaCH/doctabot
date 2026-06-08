@@ -599,18 +599,20 @@ const ClientDetail = () => {
       </details>
 
       {/* Tabs */}
-      <Tabs defaultValue="properties" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <Tabs defaultValue={client.is_client ? "properties" : "notes"} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <div className="border-b border-border bg-card px-4">
           <TabsList className="w-full bg-transparent h-10">
-            <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
-              <Home className="h-3.5 w-3.5" />
-              Propiedades
-              {properties.length > 0 && (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
-                  {properties.length}
-                </span>
-              )}
-            </TabsTrigger>
+            {client.is_client && (
+              <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
+                <Home className="h-3.5 w-3.5" />
+                Propiedades
+                {properties.length > 0 && (
+                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                    {properties.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="notes" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
               <StickyNote className="h-3.5 w-3.5" />
               Notas
@@ -628,7 +630,7 @@ const ClientDetail = () => {
         </div>
 
         {/* Properties Tab */}
-        <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
           {properties.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/30" />
@@ -706,7 +708,7 @@ const ClientDetail = () => {
               })}
             </div>
           )}
-        </TabsContent>
+        </TabsContent>}
 
         {/* Notes Tab */}
         <TabsContent value="notes" className="m-0 flex flex-col overflow-hidden" style={{ flex: 1, minHeight: 0 }}>

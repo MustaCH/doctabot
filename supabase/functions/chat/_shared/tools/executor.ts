@@ -636,7 +636,7 @@ export async function executeTool(
       if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) {
         if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente." });
         const searchName = sanitizePattern(args.client_name);
-        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(5);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).eq("is_client", true).ilike("full_name", `%${searchName}%`).limit(5);
         if (!clients || clients.length === 0) return JSON.stringify({ error: `No encontré un cliente con el nombre "${args.client_name}".` });
         if (clients.length > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map(c => c.full_name).join(", ")}. ¿Cuál querés?`, clients });
         resolvedClientId = clients[0].id;
@@ -655,7 +655,7 @@ export async function executeTool(
       const status = validStatuses.includes(args.status) ? args.status : "sugerida";
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       // Verify client belongs to user
-      const { data: client } = await supabase.from("clients").select("id, full_name").eq("id", resolvedClientId).eq("user_id", userId).maybeSingle();
+      const { data: client } = await supabase.from("clients").select("id, full_name").eq("id", resolvedClientId).eq("user_id", userId).eq("is_client", true).maybeSingle();
       if (!client) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
       const { data, error } = await supabase
         .from("client_properties")

@@ -53,6 +53,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
         .from("clients")
         .select("id, full_name, client_type, status")
         .eq("user_id", user.id)
+        .eq("is_client", true)
         .order("full_name");
       setClients((data as Client[]) ?? []);
 
