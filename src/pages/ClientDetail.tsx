@@ -476,8 +476,11 @@ const ClientDetail = () => {
           </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-2 px-4 pb-2">
-          <span className="text-xs font-medium">Es cliente</span>
+        <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+          <div>
+            <p className="text-xs font-semibold">Es cliente</p>
+            <p className="text-[10px] text-muted-foreground">Activá para datos comerciales y matching</p>
+          </div>
           <Switch
             checked={!!client.is_client}
             onCheckedChange={async (v) => {
@@ -486,6 +489,7 @@ const ClientDetail = () => {
             }}
           />
         </div>
+
       </div>
 
       {/* Quick action bar */}
