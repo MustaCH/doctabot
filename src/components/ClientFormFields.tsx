@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 
 export interface ClientFormData {
   full_name: string;
@@ -19,6 +20,7 @@ export interface ClientFormData {
   budget_currency: string;
   property_type_interest: string;
   source: string;
+  is_client: boolean;
 }
 
 export const emptyClientForm: ClientFormData = {
@@ -37,6 +39,7 @@ export const emptyClientForm: ClientFormData = {
   budget_currency: "USD",
   property_type_interest: "",
   source: "",
+  is_client: false,
 };
 
 interface Props {
@@ -54,8 +57,8 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 export default function ClientFormFields({ form, onChange, showPlaceholders }: Props) {
-  const set = (key: keyof ClientFormData, value: string) => onChange({ ...form, [key]: value });
-  const showBuyerFields = form.client_type === "buyer" || form.client_type === "both";
+  const set = (key: keyof ClientFormData, value: string | boolean) => onChange({ ...form, [key]: value });
+  const showBuyerFields = form.is_client && (form.client_type === "buyer" || form.client_type === "both");
 
   return (
     <div className="space-y-4">
@@ -91,47 +94,60 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
       </div>
 
       <Separator />
-
-      {/* Type & Status */}
-      <SectionTitle>Tipo y estado</SectionTitle>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5">
         <div>
-          <Label>Tipo</Label>
-          <Select value={form.client_type} onValueChange={(v) => set("client_type", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="buyer">🔍 Comprador</SelectItem>
-              <SelectItem value="seller">🏠 Vendedor</SelectItem>
-              <SelectItem value="both">↔️ Ambos</SelectItem>
-            </SelectContent>
-          </Select>
+          <p className="text-sm font-semibold">Es cliente</p>
+          <p className="text-xs text-muted-foreground">Activá para registrar datos comerciales y matching</p>
         </div>
-        <div>
-          <Label>Estado</Label>
-          <Select value={form.status} onValueChange={(v) => set("status", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hot">🔥 Caliente</SelectItem>
-              <SelectItem value="warm">☀️ Tibio</SelectItem>
-              <SelectItem value="cold">❄️ Frío</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Fuente</Label>
-          <Select value={form.source || "__none__"} onValueChange={(v) => set("source", v === "__none__" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">—</SelectItem>
-              <SelectItem value="referido">Referido</SelectItem>
-              <SelectItem value="portal">Portal</SelectItem>
-              <SelectItem value="redes">Redes sociales</SelectItem>
-              <SelectItem value="cartel">Cartel</SelectItem>
-              <SelectItem value="otro">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Switch checked={form.is_client} onCheckedChange={(v) => set("is_client", v)} />
       </div>
+
+      {/* Source — always visible */}
+      <div>
+        <Label>Fuente</Label>
+        <Select value={form.source || "__none__"} onValueChange={(v) => set("source", v === "__none__" ? "" : v)}>
+          <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">—</SelectItem>
+            <SelectItem value="referido">Referido</SelectItem>
+            <SelectItem value="portal">Portal</SelectItem>
+            <SelectItem value="redes">Redes sociales</SelectItem>
+            <SelectItem value="cartel">Cartel</SelectItem>
+            <SelectItem value="otro">Otro</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Type & Status — only when is_client */}
+      {form.is_client && (
+        <>
+          <SectionTitle>Tipo y estado</SectionTitle>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Tipo</Label>
+              <Select value={form.client_type} onValueChange={(v) => set("client_type", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buyer">🔍 Comprador</SelectItem>
+                  <SelectItem value="seller">🏠 Vendedor</SelectItem>
+                  <SelectItem value="both">↔️ Ambos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Estado</Label>
+              <Select value={form.status} onValueChange={(v) => set("status", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hot">🔥 Caliente</SelectItem>
+                  <SelectItem value="warm">☀️ Tibio</SelectItem>
+                  <SelectItem value="cold">❄️ Frío</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Buyer preferences */}
       {showBuyerFields && (

@@ -40,6 +40,7 @@ interface Client {
   property_type_interest: string | null;
   source: string | null;
   last_contact_at: string | null;
+  is_client: boolean | null;
 }
 
 interface ClientProperty {
@@ -294,6 +295,7 @@ const ClientDetail = () => {
     budget_currency: c.budget_currency ?? "USD",
     property_type_interest: c.property_type_interest ?? "",
     source: c.source ?? "",
+    is_client: c.is_client ?? false,
   });
 
   const formToDb = (form: ClientFormData) => ({
