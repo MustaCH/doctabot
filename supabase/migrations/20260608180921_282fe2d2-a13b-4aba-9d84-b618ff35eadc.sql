@@ -1,0 +1,1 @@
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS is_client boolean NOT NULL DEFAULT true;
