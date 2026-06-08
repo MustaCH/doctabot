@@ -20,6 +20,8 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
+import { Switch } from "@/components/ui/switch";
+import ContactTags from "@/components/ContactTags";
 
 interface Client {
   id: string;
@@ -314,6 +316,7 @@ const ClientDetail = () => {
     budget_currency: form.budget_currency || "USD",
     property_type_interest: form.property_type_interest.trim() || null,
     source: form.source || null,
+    is_client: form.is_client,
   });
 
   const openEdit = () => {
@@ -443,14 +446,16 @@ const ClientDetail = () => {
 
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold truncate">{client.full_name}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
-                {statusLabel[client.status] ?? client.status}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {clientTypeLabel[client.client_type] ?? client.client_type}
-              </span>
-            </div>
+            {client.is_client && (
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
+                  {statusLabel[client.status] ?? client.status}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {clientTypeLabel[client.client_type] ?? client.client_type}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Edit/Delete menu */}
@@ -471,6 +476,16 @@ const ClientDetail = () => {
           </DropdownMenu>
         </div>
 
+        <div className="flex items-center gap-2 px-4 pb-2">
+          <span className="text-xs font-medium">Es cliente</span>
+          <Switch
+            checked={!!client.is_client}
+            onCheckedChange={async (v) => {
+              await supabase.from("clients").update({ is_client: v }).eq("id", client.id);
+              loadClient();
+            }}
+          />
+        </div>
       </div>
 
       {/* Quick action bar */}
@@ -545,7 +560,7 @@ const ClientDetail = () => {
           </div>
 
           {/* Search preferences */}
-          {(client.preferred_zones || budget || client.property_type_interest) && (
+          {client.is_client && (client.preferred_zones || budget || client.property_type_interest) && (
             <div className="rounded-lg bg-muted/50 p-2.5 space-y-1.5">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Búsqueda</p>
               <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -574,6 +589,12 @@ const ClientDetail = () => {
               <FileText className="inline h-3 w-3 mr-1 text-primary/60" />{client.notes}
             </p>
           )}
+
+          {/* Tags */}
+          <div className="pt-1">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Etiquetas</p>
+            <ContactTags clientId={client.id} />
+          </div>
         </div>
       </details>
 
