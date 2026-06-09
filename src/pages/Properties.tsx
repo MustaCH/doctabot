@@ -382,7 +382,7 @@ const Properties = () => {
         </div>
 
         {/* Search Tab */}
-        <TabsContent value="search" className="flex-1 overflow-y-auto m-0">
+        <TabsContent value="search" className="flex-1 overflow-y-auto m-0 safe-bottom">
           {/* Search bar + filters */}
           <div className="sticky top-0 z-20 space-y-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
             <div className="flex gap-2">
