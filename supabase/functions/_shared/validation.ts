@@ -8,6 +8,8 @@ export class ValidationError extends Error {
   }
 }
 
+// Duplicado a propósito de chat/_shared/tools/validators.ts para mantener
+// este _shared raíz desacoplado del _shared interno de chat.
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function requireString(
@@ -33,9 +35,10 @@ export function optionalString(
   field: string,
   opts: { maxLength?: number } = {},
 ): string | null {
-  if (value == null || value === "") return null;
+  if (value == null) return null;
   if (typeof value !== "string") throw new ValidationError(`${field} debe ser texto`);
   const v = value.trim();
+  if (v === "") return null;
   if (opts.maxLength != null && v.length > opts.maxLength) {
     throw new ValidationError(`${field} excede el largo máximo`);
   }
@@ -43,10 +46,11 @@ export function optionalString(
 }
 
 export function requireUuid(value: unknown, field: string): string {
-  if (typeof value !== "string" || !UUID_REGEX.test(value)) {
+  const v = typeof value === "string" ? value.trim() : "";
+  if (!UUID_REGEX.test(v)) {
     throw new ValidationError(`${field} inválido`);
   }
-  return value;
+  return v;
 }
 
 export function requireNonEmptyArray<T = unknown>(
