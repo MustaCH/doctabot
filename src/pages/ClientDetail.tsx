@@ -794,7 +794,7 @@ const ClientDetail = () => {
         </TabsContent>
 
         {/* Timeline Tab */}
-        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
           {/* Events section */}
           {events.length > 0 && (
             <div className="mb-4">
