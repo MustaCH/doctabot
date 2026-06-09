@@ -147,7 +147,6 @@ serve(async (req) => {
     return new Response(JSON.stringify({ synced: true, google_event_id: calEvent.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     if (e instanceof ValidationError) return errorResponse(e.message, 400);
-    console.error("sync-calendar-event error:", e);
-    return errorResponse("Error interno del servidor", 500);
+    return errorResponse(safeError(e, "sync-calendar-event"), 500);
   }
 });
