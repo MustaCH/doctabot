@@ -156,7 +156,7 @@ const Clients = () => {
       </div>
 
       {/* List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto safe-bottom">
         <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-2 p-4">

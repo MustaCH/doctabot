@@ -632,7 +632,7 @@ const ClientDetail = () => {
         </div>
 
         {/* Properties Tab */}
-        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
           {properties.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/30" />
@@ -714,7 +714,7 @@ const ClientDetail = () => {
 
         {/* Notes Tab */}
         <TabsContent value="notes" className="m-0 flex flex-col overflow-hidden" style={{ flex: 1, minHeight: 0 }}>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 safe-bottom">
             {notes.length === 0 && (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
                 <StickyNote className="h-12 w-12 text-muted-foreground/30" />
@@ -794,7 +794,7 @@ const ClientDetail = () => {
         </TabsContent>
 
         {/* Timeline Tab */}
-        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
           {/* Events section */}
           {events.length > 0 && (
             <div className="mb-4">

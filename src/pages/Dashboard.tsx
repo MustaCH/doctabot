@@ -228,7 +228,7 @@ const Dashboard = () => {
         <h1 className="text-base font-bold tracking-tight">Centro de Control</h1>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8 space-y-5 pt-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8 space-y-5 pt-4 safe-bottom">
         <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-4">

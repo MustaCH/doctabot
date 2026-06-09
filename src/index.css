@@ -132,13 +132,22 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Mobile safe area */
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
+}
 
+@layer utilities {
+  /* Mobile safe area — additive insets that respect existing padding */
   .safe-top {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+  .safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+  /* Margin-based variants for when base padding must be preserved */
+  .safe-top-m {
+    margin-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-bottom-m {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
