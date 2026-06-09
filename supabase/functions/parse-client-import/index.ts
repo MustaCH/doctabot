@@ -1,22 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, safeError } from "../_shared/http.ts";
+import { requireNonEmptyArray, optionalArray, ValidationError } from "../_shared/validation.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
-    const { headers, sampleRows } = await req.json();
-
-    if (!headers || !Array.isArray(headers) || headers.length === 0) {
-      return new Response(JSON.stringify({ error: "No headers provided" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const parsed = await req.json();
+    const headers = requireNonEmptyArray<string>(parsed.headers, "headers", { maxItems: 200 });
+    const sampleRows = optionalArray<string[]>(parsed.sampleRows, "sampleRows", { maxItems: 50 });
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
@@ -130,10 +124,7 @@ ${(sampleRows ?? []).map((r: string[], i: number) => `Fila ${i + 1}: ${JSON.stri
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("parse-client-import error:", err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (err instanceof ValidationError) return errorResponse(err.message, 400);
+    return errorResponse(safeError(err, "parse-client-import"), 500);
   }
 });

@@ -1,14 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, safeError } from "../_shared/http.ts";
+import { ValidationError } from "../_shared/validation.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -34,8 +32,12 @@ serve(async (req) => {
     }
 
     const formData = await req.formData();
-    const audioFile = formData.get("audio") as File;
-    if (!audioFile) throw new Error("No audio file provided");
+    const audioFile = formData.get("audio") as File | null;
+    if (!audioFile) throw new ValidationError("audio es requerido");
+    const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25 MB
+    if (audioFile.size > MAX_AUDIO_BYTES) {
+      throw new ValidationError("el audio supera el tamaño máximo (25 MB)");
+    }
 
     // Determine MIME type
     let mimeType = audioFile.type || "";
@@ -106,10 +108,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("transcribe error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (e instanceof ValidationError) return errorResponse(e.message, 400);
+    return errorResponse(safeError(e, "transcribe"), 500);
   }
 });

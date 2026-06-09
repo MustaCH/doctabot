@@ -1,11 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, safeError } from "../_shared/http.ts";
+import { requireString, requireUuid, ValidationError } from "../_shared/validation.ts";
 
 /** Get a valid Google Calendar access token, refreshing if expired */
 async function getValidCalendarToken(
@@ -43,7 +40,8 @@ async function getValidCalendarToken(
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -90,10 +88,12 @@ serve(async (req) => {
     }
 
     // --- POST: create in Google Calendar ---
-    const { event_id, title, event_date, recurrence, notes } = await req.json();
-    if (!event_id || !title || !event_date) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const payload = await req.json();
+    const event_id = requireUuid(payload.event_id, "event_id");
+    const title = requireString(payload.title, "title", { maxLength: 300 });
+    const event_date = requireString(payload.event_date, "event_date", { maxLength: 32 });
+    const recurrence = payload.recurrence;
+    const notes = payload.notes;
 
     const accessToken = await getValidCalendarToken(supabase, user.id, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
     if (!accessToken) {
@@ -146,7 +146,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ synced: true, google_event_id: calEvent.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("sync-calendar-event error:", e);
-    return new Response(JSON.stringify({ error: "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (e instanceof ValidationError) return errorResponse(e.message, 400);
+    return errorResponse(safeError(e, "sync-calendar-event"), 500);
   }
 });

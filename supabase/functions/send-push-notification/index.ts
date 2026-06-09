@@ -1,11 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, safeError } from "../_shared/http.ts";
+import { requireString, requireUuid, optionalString, ValidationError } from "../_shared/validation.ts";
 
 // ---- Web Push helpers (RFC 8030 / VAPID) ----
 
@@ -219,9 +216,8 @@ async function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Pr
 // ---- Main handler ----
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
     const body = await req.json();
@@ -234,13 +230,10 @@ serve(async (req) => {
       });
     }
 
-    const { user_id, title, body: pushBody, url } = body;
-    if (!user_id || !title) {
-      return new Response(JSON.stringify({ error: "user_id and title required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const user_id = requireUuid(body.user_id, "user_id");
+    const title = requireString(body.title, "title", { maxLength: 200 });
+    const pushBody = optionalString(body.body, "body", { maxLength: 500 }) ?? "";
+    const url = optionalString(body.url, "url", { maxLength: 500 }) ?? "/";
 
     const triggerSource = typeof body.trigger_source === "string"
       ? body.trigger_source.slice(0, 64)
@@ -372,10 +365,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("send-push-notification error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (err instanceof ValidationError) return errorResponse(err.message, 400);
+    return errorResponse(safeError(err, "send-push-notification"), 500);
   }
 });
