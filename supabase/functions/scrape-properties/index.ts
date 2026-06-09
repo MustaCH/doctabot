@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { errorResponse, safeError } from "../_shared/http.ts";
 
 const SCRAPE_BASE_URL = "http://remaxdocta-scrapingdocta-zos1k5-a90019-31-97-164-164.sslip.io/api/scrape";
 
@@ -184,7 +181,8 @@ function selfInvoke(supabaseUrl: string, anonKey: string, body: Record<string, a
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -379,11 +377,7 @@ serve(async (req) => {
     });
 
   } catch (e) {
-    console.error("❌ Scrape error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(safeError(e, "scrape-properties"), 500);
   }
 });
 
