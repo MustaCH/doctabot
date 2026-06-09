@@ -632,7 +632,7 @@ const ClientDetail = () => {
         </div>
 
         {/* Properties Tab */}
-        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto" style={{ flex: 1, minHeight: 0 }}>
+        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
           {properties.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Home className="h-12 w-12 text-muted-foreground/30" />
