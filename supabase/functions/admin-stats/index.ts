@@ -1,19 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, handleOptions } from "../_shared/cors.ts";
+import { safeError } from "../_shared/http.ts";
 
 // PIN is read from env (SUPER_ADMIN_PIN secret). Fallback kept ONLY for backwards
 // compatibility during the rollout — remove after confirming secret is set in production.
 const ADMIN_PIN = Deno.env.get("SUPER_ADMIN_PIN") ?? "";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const pre = handleOptions(req);
+  if (pre) return pre;
 
   try {
     const body = await req.json();
@@ -101,7 +96,7 @@ Deno.serve(async (req) => {
     // ---------- TIME STATS (last 30 days, SQL-based) ----------
     if (action === "time-stats") {
       const { data, error } = await supabaseAdmin.rpc("admin_time_stats");
-      if (error) return json({ error: error.message }, 500);
+      if (error) { console.error("[admin-stats]", error); return json({ error: "Error al obtener datos" }, 500); }
       return json(data);
     }
 
@@ -381,14 +376,14 @@ Deno.serve(async (req) => {
     // ---------- USER REPORTS (SQL-based) ----------
     if (action === "user-reports") {
       const { data, error } = await supabaseAdmin.rpc("admin_user_reports");
-      if (error) return json({ error: error.message }, 500);
+      if (error) { console.error("[admin-stats]", error); return json({ error: "Error al obtener datos" }, 500); }
       return json(data);
     }
 
     // ---------- ENGAGEMENT REPORT (SQL-based) ----------
     if (action === "engagement-report") {
       const { data, error } = await supabaseAdmin.rpc("admin_engagement_report");
-      if (error) return json({ error: error.message }, 500);
+      if (error) { console.error("[admin-stats]", error); return json({ error: "Error al obtener datos" }, 500); }
       return json(data);
     }
 
@@ -579,7 +574,7 @@ Deno.serve(async (req) => {
         .select("status, created_at")
         .gte("created_at", sinceISO);
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) { console.error("[admin-stats]", error); return json({ error: "Error al obtener datos" }, 500); }
 
       let sent = 0;
       let failed = 0;
@@ -636,7 +631,7 @@ Deno.serve(async (req) => {
 
     return json({ error: "Unknown action" }, 400);
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Internal error" }), {
+    return new Response(JSON.stringify({ error: safeError(err, "admin-stats") }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
