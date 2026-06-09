@@ -522,7 +522,7 @@ const Properties = () => {
         </TabsContent>
 
         {/* Favorites Tab */}
-        <TabsContent value="favorites" className="flex-1 overflow-y-auto m-0">
+        <TabsContent value="favorites" className="flex-1 overflow-y-auto m-0 safe-bottom">
           <div className="p-4">
             {loadingFavs ? (
               <LoadingSkeleton />
