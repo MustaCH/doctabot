@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+*.log
+npm-debug.log*
+supabase/.temp
+docs
+.vscode
+.DS_Store
+bun.lock
+bun.lockb

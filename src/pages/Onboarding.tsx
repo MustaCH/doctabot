@@ -43,7 +43,7 @@ const installInstructions: Record<Exclude<Device, null>, { title: string; steps:
   },
 };
 
-const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
+const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 const Onboarding = () => {
   const { user, hasProfile, refreshProfile, signOut } = useAuth();

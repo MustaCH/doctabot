@@ -12,7 +12,7 @@ import { useSwUpdate } from "@/hooks/use-sw-update";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Switch } from "@/components/ui/switch";
 
-const SUPABASE_FUNCTIONS_URL = "https://pulaeosldsfcgyotolxa.supabase.co/functions/v1";
+const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 const Profile = () => {
   const { user, signOut } = useAuth();
