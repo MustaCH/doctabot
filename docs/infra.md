@@ -77,7 +77,9 @@ Leídos en runtime con `Deno.env.get(...)`. **Nunca en el repo.** Necesarios par
 
 ## Issues conocidos / runbook
 
-- 🔴 **`send-push-notification` devuelve 500 sistemático** en el proyecto nuevo (preexistente, no relacionado al streaming). Probable causa: faltan secrets VAPID / config de web-push en el proyecto migrado. Las push notifications NO funcionan hasta resolverlo. **Acción:** revisar la function `send-push-notification` y sus secrets (VAPID public/private keys).
+- ✅ **`send-push-notification` 500 — RESUELTO 2026-06-12.** La migración había seteado una VAPID keypair distinta y con la private rota en el proyecto nuevo → `importVapidKeys` reventaba → 500. **Fix:** se regeneró una keypair VAPID nueva (web-push format), se setearon `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` en el proyecto nuevo, y se actualizó el fallback del front ([use-push-notifications.ts](../src/hooks/use-push-notifications.ts)). Public key nueva: `BMP92PAdZwTWRt_0CkGLXf3VOoC8dJCG-mizz1i4vnZzTlEYBNo6tYgv5XhA17phjted4yD3zwgFOsICad4Ve5c`.
+  - ⚠️ **Consecuencia:** las subscriptions creadas con la keypair anterior quedaron inválidas (push service responde 403). **Los usuarios deben reactivar notificaciones** (toggle off/on) para re-suscribirse con la key nueva. Las 11 subs viejas seguirán dando 403 hasta que el usuario re-suscriba; conviene limpiarlas (`delete from push_subscriptions where created_at < '2026-06-12'`) para evitar ruido de 403.
+  - Generar una VAPID keypair (si hace falta a futuro): `node` con `crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'})` → public = base64url(`0x04`||x||y) (65 bytes), private = jwk.d (32 bytes). **Nunca imprimir la private**; setear con `supabase secrets set --env-file`.
 - 🟠 **Security advisors (DB):** varias funciones `SECURITY DEFINER` (`admin_*`, `has_role`, `validate_invitation_code*`, `cleanup_old_logs`) son ejecutables por `anon`/`authenticated` vía RPC. Y "leaked password protection" está OFF en Auth. Heredados del clone. Revisar con Architect si amerita endurecer (revoke EXECUTE / SECURITY INVOKER).
 
 ## Monitoreo
