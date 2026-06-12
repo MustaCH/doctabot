@@ -253,6 +253,12 @@ export function parseNumberWithSuffix(numStr: string, suffix?: string): number {
   return n;
 }
 
+/** Palabras genéricas que NO alcanzan para afirmar coincidencia de zona/municipio. */
+const ZONE_STOPWORDS = new Set([
+  "del", "las", "los", "san", "santa", "villa", "barrio", "alto", "alta",
+  "rio", "río", "calle", "este", "oeste", "norte", "sur", "parque",
+]);
+
 /** Try to extract matching info from free-text notes */
 function extractFromNotes(
   notes: string,
@@ -264,10 +270,18 @@ function extractFromNotes(
   const reasons: string[] = [];
   const lower = notes.toLowerCase();
 
-  // Zone match from notes (skip if already matched via structured data)
+  // Zone match from notes (skip if already matched via structured data).
+  // Solo contamos palabras DISTINTIVAS del zone de la propiedad: las stopwords y palabras
+  // cortas ("del", "san", "villa", "norte"…) matchearían casi cualquier nota y cruzarían
+  // municipios distintos (ej. "Falda del Carmen" matcheaba por "del"). Exigimos una palabra
+  // significativa (>=4 chars, no stopword) presente como palabra completa.
   if (!existingReasonPrefixes.has("📍") && effectiveZone) {
-    const zoneWords = effectiveZone.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-    if (zoneWords.some((w) => lower.includes(w))) {
+    const zoneWords = effectiveZone
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !ZONE_STOPWORDS.has(w));
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (zoneWords.some((w) => new RegExp(`\\b${escapeRe(w)}\\b`).test(lower))) {
       reasons.push(`📍 Zona (notas): ${effectiveZone}`);
     }
   }

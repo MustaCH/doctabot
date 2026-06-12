@@ -6,6 +6,9 @@ import {
   zonesMatch,
   parseNumberWithSuffix,
   findPropertyMatches,
+  computeMatchReasons,
+  computeEffectiveZone,
+  computeEffectiveTypeTokens,
   type ClientForMatch,
   type PropertyForMatch,
 } from "./property-matching";
@@ -45,6 +48,41 @@ function makeProperty(overrides: Partial<PropertyForMatch> = {}): PropertyForMat
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Zona por notas: no cruzar municipios distintos (ticket 86ah1ekcx)
+// ---------------------------------------------------------------------------
+
+describe("zona por notas — no cruza municipios distintos", () => {
+  const reasonsFor = (p: PropertyForMatch, c: ClientForMatch) =>
+    computeMatchReasons(p, c, computeEffectiveZone(p), computeEffectiveTypeTokens(p));
+
+  it("no marca coincidencia de zona por stopwords como 'del' (San Salvador vs Falda del Carmen)", () => {
+    const property = makeProperty({ zone: "Falda del Carmen", price: 100000, currency: "USD", property_type: "casa" });
+    // El cliente busca en San Salvador; la nota contiene "del" pero no la zona real de la propiedad.
+    const client = makeClient({
+      notes: "Quiere una casa en San Salvador, algo cerca del trabajo",
+      property_type_interest: "casa",
+      budget_max: 100000,
+      budget_currency: "USD",
+    });
+    const reasons = reasonsFor(property, client);
+    expect(reasons).not.toBeNull();
+    expect(reasons!.some((r) => r.startsWith("📍"))).toBe(false);
+  });
+
+  it("sigue matcheando una palabra distintiva de la zona presente en las notas", () => {
+    const property = makeProperty({ zone: "Villa Belgrano", price: 100000, currency: "USD", property_type: "casa" });
+    const client = makeClient({
+      notes: "Le interesa Belgrano",
+      property_type_interest: "casa",
+      budget_max: 100000,
+      budget_currency: "USD",
+    });
+    const reasons = reasonsFor(property, client);
+    expect(reasons!.some((r) => r.startsWith("📍"))).toBe(true);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // normalizePropertyType
