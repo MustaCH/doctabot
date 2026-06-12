@@ -402,10 +402,11 @@ Tu respuesta SIEMPRE debe ser la ACCIÓN solicitada (borrador, evento, etc.), NU
 
 export /** Build the contextual system prompt with agent identity */
 function buildContextualPrompt(agentName: string | null, agentCode: string | null): string {
+  // Fecha/hora real de Córdoba vía Intl (sin el hack now-3h + timeZone:"UTC").
   const now = new Date();
-  const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-  const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
-  const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  const CORDOBA_TZ = "America/Argentina/Cordoba";
+  const dateStr = now.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: CORDOBA_TZ });
+  const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: CORDOBA_TZ });
 
   const agentContext = agentName
     ? `\n\n## IDENTIDAD DEL AGENTE HUMANO — LEER CON ATENCIÓN
