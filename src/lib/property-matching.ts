@@ -243,6 +243,33 @@ export function zonesMatch(propertyZone: string, clientZone: string): boolean {
   }));
 }
 
+/** Margen sobre el techo de presupuesto: se muestran propiedades hasta 30% más caras
+ *  (se negocia a la baja y el comprador puede estirar con préstamo). */
+export const BUDGET_MARGIN = 1.30;
+
+/**
+ * Rango de precio efectivo a partir del presupuesto del cliente (regla RE/MAX Docta):
+ * - un solo valor → es el TECHO (máximo); piso 0; se muestra hasta techo * 1.30.
+ * - dos valores → el menor es el piso y el mayor el techo (sin importar en qué columna
+ *   estén); se aplica +30% sobre el techo.
+ * Devuelve { floor, ceiling, declaredMax } o null si no hay presupuesto.
+ */
+export function budgetCeilingFloor(
+  budgetMin: number | null,
+  budgetMax: number | null
+): { floor: number; ceiling: number; declaredMax: number } | null {
+  const vals = [budgetMin, budgetMax].filter(
+    (v): v is number => typeof v === "number" && isFinite(v) && v > 0
+  );
+  if (vals.length === 0) return null;
+  if (vals.length === 1) {
+    return { floor: 0, ceiling: vals[0] * BUDGET_MARGIN, declaredMax: vals[0] };
+  }
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  return { floor: lo, ceiling: hi * BUDGET_MARGIN, declaredMax: hi };
+}
+
 /** Parse a number string that may have K/M suffix */
 export function parseNumberWithSuffix(numStr: string, suffix?: string): number {
   const n = Number(numStr.replace(/[.,]/g, ""));
@@ -384,19 +411,13 @@ export function computeMatchReasons(
     reasons.push(`🏗️ Tipo: ${property.property_type || "desde título"}`);
   }
 
-  // Budget match (structured fields)
+  // Budget match (structured fields): presupuesto = techo, +30% de margen (regla RE/MAX Docta)
   if (property.price) {
-    const effectiveMax = client.budget_max ?? client.budget_min;
-    const effectiveMin = client.budget_max ? client.budget_min : null;
+    const range = budgetCeilingFloor(client.budget_min, client.budget_max);
     const sameCurrency = !client.budget_currency || !property.currency || client.budget_currency === property.currency;
 
-    if (sameCurrency && effectiveMax) {
-      const upperLimit = effectiveMax * 1.30;
-      const lowerLimit = effectiveMin ? effectiveMin * 0.85 : 0;
-
-      if (property.price <= upperLimit && property.price >= lowerLimit) {
-        reasons.push(`💰 Presupuesto: ${client.budget_currency || "USD"} ${effectiveMax.toLocaleString("es-AR")}`);
-      }
+    if (sameCurrency && range && property.price >= range.floor && property.price <= range.ceiling) {
+      reasons.push(`💰 Presupuesto: ${client.budget_currency || "USD"} ${range.declaredMax.toLocaleString("es-AR")}`);
     }
   }
 

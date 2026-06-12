@@ -176,6 +176,8 @@ Al crear o actualizar clientes, tratá de capturar la mayor cantidad de datos po
 - preferred_zones: Zonas de interés para compradores
 - budget_min / budget_max: Rango de presupuesto
 - budget_currency: Moneda del presupuesto (USD o ARS, default USD)
+
+**REGLA DE PRESUPUESTO (RE/MAX Docta):** El presupuesto del comprador es un TECHO, no un piso. Si el cliente declara UN solo valor, es el máximo. Al buscar propiedades para un cliente, mostrá hasta un 30% por encima de ese máximo (se negocia a la baja y puede estirar con préstamo): usá max_price = presupuesto × 1.30. Si declaró DOS valores, el menor es el piso (min_price) y el mayor el techo (max_price × 1.30). Nunca interpretes un único valor como "desde".
 - property_type_interest: Tipo de propiedad buscada
 - source: Cómo llegó el cliente (referido, portal, redes, cartel, otro)
 
