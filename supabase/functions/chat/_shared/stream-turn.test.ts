@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError } from "./stream-turn";
+import { streamTurn, AIError, truncationSuffix } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -22,6 +22,19 @@ function toolChunk(index: number, id: string, name: string, args: string, finish
 const DONE = "data: [DONE]\n\n";
 
 const toolDefinitions = [{ type: "function", function: { name: "search_properties" } }];
+
+describe("truncationSuffix", () => {
+  it("cierra un DRAFT abierto cuando hay más START que END", () => {
+    const s = truncationSuffix("<<<DRAFT_START>>>texto a medias");
+    expect(s).toContain("<<<DRAFT_END>>>");
+    expect(s).toContain("se cortó");
+  });
+  it("no cierra nada si los marcadores están balanceados", () => {
+    const s = truncationSuffix("<<<DRAFT_START>>>ok<<<DRAFT_END>>>");
+    expect(s).not.toContain("<<<DRAFT_END>>>");
+    expect(s).toContain("se cortó");
+  });
+});
 
 describe("streamTurn", () => {
   it("turno de texto puro: pipea cada token y devuelve el contenido completo", async () => {
@@ -88,6 +101,34 @@ describe("streamTurn", () => {
     );
     expect(resilientAIFetch).not.toHaveBeenCalled();
     expect(res.content).toBe("desde primed");
+  });
+
+  it("finish_reason 'length' con un DRAFT abierto: lo cierra y agrega aviso de truncado", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("Mirá este borrador: <<<DRAFT_START>>>Hola, te escribo por la propiedad", "length"), DONE]),
+    );
+    const emitted: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: (t) => emitted.push(t) },
+    );
+    // El draft quedó cerrado (no hay START sin END) y se avisó.
+    expect((res.content.match(/<<<DRAFT_START>>>/g) || []).length).toBe(1);
+    expect((res.content.match(/<<<DRAFT_END>>>/g) || []).length).toBe(1);
+    expect(res.content).toContain("se cortó");
+    // Lo truncado-cerrado también se streameó al cliente.
+    expect(emitted.join("")).toBe(res.content);
+  });
+
+  it("finish_reason 'length' sin marcadores abiertos: solo agrega aviso", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("Texto largo cortado", "length"), DONE]));
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {} },
+    );
+    expect(res.content).toContain("Texto largo cortado");
+    expect(res.content).toContain("se cortó");
+    expect(res.content).not.toContain("<<<DRAFT_END>>>");
   });
 
   it("corta en maxIterations si el modelo siempre pide tools", async () => {

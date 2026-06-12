@@ -455,6 +455,8 @@ export type Database = {
       }
       messages: {
         Row: {
+          ai_content: string | null
+          attachments: Json | null
           content: string
           conversation_id: string
           created_at: string
@@ -462,6 +464,8 @@ export type Database = {
           role: string
         }
         Insert: {
+          ai_content?: string | null
+          attachments?: Json | null
           content: string
           conversation_id: string
           created_at?: string
@@ -469,6 +473,8 @@ export type Database = {
           role: string
         }
         Update: {
+          ai_content?: string | null
+          attachments?: Json | null
           content?: string
           conversation_id?: string
           created_at?: string

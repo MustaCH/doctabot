@@ -188,7 +188,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
                 att.type === "image" ? (
                   <img
                     key={i}
-                    src={`data:${att.mimeType};base64,${att.base64}`}
+                    src={att.base64 ? `data:${att.mimeType};base64,${att.base64}` : att.url}
                     alt="Adjunto"
                     className="max-w-full max-h-48 rounded-lg object-cover"
                   />

@@ -5,7 +5,11 @@ import {
   extractTypeFromTitle,
   zonesMatch,
   parseNumberWithSuffix,
+  budgetCeilingFloor,
   findPropertyMatches,
+  computeMatchReasons,
+  computeEffectiveZone,
+  computeEffectiveTypeTokens,
   type ClientForMatch,
   type PropertyForMatch,
 } from "./property-matching";
@@ -45,6 +49,79 @@ function makeProperty(overrides: Partial<PropertyForMatch> = {}): PropertyForMat
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Presupuesto como techo +30% (ticket 86ah1gagw)
+// ---------------------------------------------------------------------------
+
+describe("budgetCeilingFloor", () => {
+  it("un solo valor es el techo; piso 0; se muestra hasta +30%", () => {
+    expect(budgetCeilingFloor(100000, null)).toEqual({ floor: 0, ceiling: 130000, declaredMax: 100000 });
+    expect(budgetCeilingFloor(null, 100000)).toEqual({ floor: 0, ceiling: 130000, declaredMax: 100000 });
+  });
+  it("dos valores: menor=piso, mayor=techo, +30% sobre el techo (aunque vengan invertidos)", () => {
+    expect(budgetCeilingFloor(80000, 120000)).toEqual({ floor: 80000, ceiling: 156000, declaredMax: 120000 });
+    expect(budgetCeilingFloor(120000, 80000)).toEqual({ floor: 80000, ceiling: 156000, declaredMax: 120000 });
+  });
+  it("sin presupuesto devuelve null", () => {
+    expect(budgetCeilingFloor(null, null)).toBeNull();
+    expect(budgetCeilingFloor(0, 0)).toBeNull();
+  });
+});
+
+describe("matcher — presupuesto como techo", () => {
+  const reasonsFor = (p: PropertyForMatch, c: ClientForMatch) =>
+    computeMatchReasons(p, c, computeEffectiveZone(p), computeEffectiveTypeTokens(p));
+
+  it("muestra una propiedad hasta 30% por encima del único valor (techo)", () => {
+    const client = makeClient({ budget_max: 100000, budget_currency: "USD" });
+    expect(reasonsFor(makeProperty({ price: 129000, currency: "USD" }), client)!.some((r) => r.startsWith("💰"))).toBe(true);
+  });
+  it("NO muestra una propiedad por encima de techo + 30%", () => {
+    const client = makeClient({ budget_max: 100000, budget_currency: "USD" });
+    expect(reasonsFor(makeProperty({ price: 140000, currency: "USD" }), client)!.some((r) => r.startsWith("💰"))).toBe(false);
+  });
+  it("con dos valores, NO muestra por debajo del piso", () => {
+    const client = makeClient({ budget_min: 80000, budget_max: 120000, budget_currency: "USD" });
+    expect(reasonsFor(makeProperty({ price: 70000, currency: "USD" }), client)!.some((r) => r.startsWith("💰"))).toBe(false);
+    expect(reasonsFor(makeProperty({ price: 90000, currency: "USD" }), client)!.some((r) => r.startsWith("💰"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Zona por notas: no cruzar municipios distintos (ticket 86ah1ekcx)
+// ---------------------------------------------------------------------------
+
+describe("zona por notas — no cruza municipios distintos", () => {
+  const reasonsFor = (p: PropertyForMatch, c: ClientForMatch) =>
+    computeMatchReasons(p, c, computeEffectiveZone(p), computeEffectiveTypeTokens(p));
+
+  it("no marca coincidencia de zona por stopwords como 'del' (San Salvador vs Falda del Carmen)", () => {
+    const property = makeProperty({ zone: "Falda del Carmen", price: 100000, currency: "USD", property_type: "casa" });
+    // El cliente busca en San Salvador; la nota contiene "del" pero no la zona real de la propiedad.
+    const client = makeClient({
+      notes: "Quiere una casa en San Salvador, algo cerca del trabajo",
+      property_type_interest: "casa",
+      budget_max: 100000,
+      budget_currency: "USD",
+    });
+    const reasons = reasonsFor(property, client);
+    expect(reasons).not.toBeNull();
+    expect(reasons!.some((r) => r.startsWith("📍"))).toBe(false);
+  });
+
+  it("sigue matcheando una palabra distintiva de la zona presente en las notas", () => {
+    const property = makeProperty({ zone: "Villa Belgrano", price: 100000, currency: "USD", property_type: "casa" });
+    const client = makeClient({
+      notes: "Le interesa Belgrano",
+      property_type_interest: "casa",
+      budget_max: 100000,
+      budget_currency: "USD",
+    });
+    const reasons = reasonsFor(property, client);
+    expect(reasons!.some((r) => r.startsWith("📍"))).toBe(true);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // normalizePropertyType

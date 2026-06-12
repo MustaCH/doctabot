@@ -6,11 +6,15 @@ import {
   VALID_BUDGET_CURRENCIES,
   VALID_CONVERSATION_TYPES,
   normalizeClientStatus,
+  resolveClientStatusForCreate,
   sanitizePattern,
   safePositiveNumber,
   safePositiveInt,
   safeDbError,
   normalizeDatetime,
+  nextOccurrenceISO,
+  todayCordobaISO,
+  addDaysISO,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -53,8 +57,8 @@ export async function executeTool(
       const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean }) => {
-        if (zone) q = q.ilike("zone", `%${zone}%`);
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean }) => {
+        if (zone && !opts?.skipZone) q = q.ilike("zone", `%${zone}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
         if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
@@ -119,6 +123,25 @@ export async function executeTool(
           totalCount = fbCountRes2.count ?? 0;
           data = fbDataRes2.data;
           error = fbDataRes2.error;
+        }
+      }
+
+      // Fallback: zona provista sin resultados → el término puede ser un desarrollo/loteo
+      // cuyo nombre vive en el título (no en el campo zone). Reintentamos buscándolo en title.
+      if (!error && (!data || data.length === 0) && zone && !titleSearch && !locality && !neighborhood) {
+        const fbBaseZ = applyFilters(
+          supabase.from("properties").select("*", { count: "exact", head: true }),
+          { skipZone: true }
+        ).ilike("title", `%${zone}%`);
+        const fbDataZ = applyFilters(
+          supabase.from("properties").select("*"),
+          { skipZone: true }
+        ).ilike("title", `%${zone}%`).limit(limit);
+        const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
+        if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
+          totalCount = fbCountResZ.count ?? 0;
+          data = fbDataResZ.data;
+          error = fbDataResZ.error;
         }
       }
 
@@ -193,7 +216,7 @@ export async function executeTool(
       const phone = typeof args.phone === "string" ? args.phone.trim().slice(0, 50) : null;
       const email = typeof args.email === "string" ? args.email.trim().slice(0, 200) : null;
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
-      const status = normalizeClientStatus(args.status) ?? "hot";
+      const status = resolveClientStatusForCreate(args.status);
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
@@ -227,8 +250,10 @@ export async function executeTool(
       if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
       if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
       if (typeof args.preferred_zones === "string") updates.preferred_zones = args.preferred_zones.trim().slice(0, 300);
-      if (typeof args.budget_min === "number" && isFinite(args.budget_min) && args.budget_min >= 0) updates.budget_min = args.budget_min;
-      if (typeof args.budget_max === "number" && isFinite(args.budget_max) && args.budget_max >= 0) updates.budget_max = args.budget_max;
+      const budgetMinUpd = safePositiveNumber(args.budget_min);
+      if (budgetMinUpd !== null) updates.budget_min = budgetMinUpd;
+      const budgetMaxUpd = safePositiveNumber(args.budget_max);
+      if (budgetMaxUpd !== null) updates.budget_max = budgetMaxUpd;
       if (VALID_BUDGET_CURRENCIES.includes(args.budget_currency)) updates.budget_currency = args.budget_currency;
       if (typeof args.property_type_interest === "string") updates.property_type_interest = args.property_type_interest.trim().slice(0, 200);
       if (typeof args.source === "string") updates.source = args.source.trim().slice(0, 100);
@@ -646,8 +671,23 @@ export async function executeTool(
       if (!resolvedPropertyId || !UUID_REGEX.test(resolvedPropertyId)) {
         if (!args.property_title) return JSON.stringify({ error: "Necesito el título/dirección o ID de la propiedad." });
         const searchTitle = sanitizePattern(args.property_title);
-        const { data: props } = await supabase.from("properties").select("id, title, address").or(`title.ilike.%${searchTitle}%,address.ilike.%${searchTitle}%`).limit(5);
-        if (!props || props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
+        const pattern = `%${searchTitle}%`;
+        // OR (title|address) con filtros parametrizados en vez de interpolar el string de .or():
+        // un .ilike() de columna única pasa el valor como parámetro y no parsea comas/paréntesis,
+        // así que no se pueden inyectar condiciones de filtro (ej. "x,user_id.eq.…").
+        const [byTitle, byAddress] = await Promise.all([
+          supabase.from("properties").select("id, title, address").ilike("title", pattern).limit(5),
+          supabase.from("properties").select("id, title, address").ilike("address", pattern).limit(5),
+        ]);
+        const seen = new Set<string>();
+        const props: Array<{ id: string; title: string | null; address: string | null }> = [];
+        for (const p of [...(byTitle.data ?? []), ...(byAddress.data ?? [])]) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          props.push(p);
+          if (props.length >= 5) break;
+        }
+        if (props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
         if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map(p => p.title || p.address).join(", ")}. ¿Cuál querés vincular?`, properties: props });
         resolvedPropertyId = props[0].id;
       }
@@ -744,18 +784,13 @@ export async function executeTool(
       try {
         const accessToken = await getCalendarToken();
         if (accessToken) {
-          // Calculate next occurrence for the calendar event
-          const today = new Date();
-          const [year, month, day] = eventDate.split("-").map(Number);
-          let nextDate = new Date(today.getFullYear(), month - 1, day);
-          if (nextDate < today && recurrence === "yearly") {
-            nextDate = new Date(today.getFullYear() + 1, month - 1, day);
-          }
-          
+          // Calculate next occurrence for the calendar event (date-only, Córdoba)
+          const nextDateISO = nextOccurrenceISO(eventDate, recurrence);
+
           const calendarBody: any = {
             summary: title,
-            start: { date: nextDate.toISOString().slice(0, 10) },
-            end: { date: nextDate.toISOString().slice(0, 10) },
+            start: { date: nextDateISO },
+            end: { date: nextDateISO },
             reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 1440 }] }, // 1 day before
           };
           if (notes) calendarBody.description = notes;
@@ -804,26 +839,16 @@ export async function executeTool(
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
 
-      // Filter to upcoming events within daysAhead (considering recurrence)
-      const today = new Date();
-      const cutoff = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-      
+      // Filter to upcoming events within daysAhead (considering recurrence).
+      // Comparación por fecha (YYYY-MM-DD) en Córdoba para no perder eventos de hoy.
+      const todayISO = todayCordobaISO();
+      const cutoffISO = addDaysISO(todayISO, daysAhead);
+
       const upcoming = (data ?? []).map((ev: any) => {
-        const [year, month, day] = ev.event_date.split("-").map(Number);
-        let nextOccurrence: Date;
-        if (ev.recurrence === "yearly") {
-          nextOccurrence = new Date(today.getFullYear(), month - 1, day);
-          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear() + 1, month - 1, day);
-        } else if (ev.recurrence === "monthly") {
-          nextOccurrence = new Date(today.getFullYear(), today.getMonth(), day);
-          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear(), today.getMonth() + 1, day);
-        } else {
-          nextOccurrence = new Date(year, month - 1, day);
-        }
-        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: nextOccurrence.toISOString().slice(0, 10) };
+        const next = nextOccurrenceISO(ev.event_date, ev.recurrence, todayISO);
+        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: next };
       }).filter((ev: any) => {
-        const next = new Date(ev.next_occurrence);
-        return next >= new Date(today.toISOString().slice(0, 10)) && next <= cutoff;
+        return ev.next_occurrence >= todayISO && ev.next_occurrence <= cutoffISO;
       }).sort((a: any, b: any) => a.next_occurrence.localeCompare(b.next_occurrence));
 
       return JSON.stringify({ events: upcoming, total: upcoming.length });

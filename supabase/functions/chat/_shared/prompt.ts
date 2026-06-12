@@ -176,6 +176,8 @@ Al crear o actualizar clientes, tratá de capturar la mayor cantidad de datos po
 - preferred_zones: Zonas de interés para compradores
 - budget_min / budget_max: Rango de presupuesto
 - budget_currency: Moneda del presupuesto (USD o ARS, default USD)
+
+**REGLA DE PRESUPUESTO (RE/MAX Docta):** El presupuesto del comprador es un TECHO, no un piso. Si el cliente declara UN solo valor, es el máximo. Al buscar propiedades para un cliente, mostrá hasta un 30% por encima de ese máximo (se negocia a la baja y puede estirar con préstamo): usá max_price = presupuesto × 1.30. Si declaró DOS valores, el menor es el piso (min_price) y el mayor el techo (max_price × 1.30). Nunca interpretes un único valor como "desde".
 - property_type_interest: Tipo de propiedad buscada
 - source: Cómo llegó el cliente (referido, portal, redes, cartel, otro)
 
@@ -402,10 +404,11 @@ Tu respuesta SIEMPRE debe ser la ACCIÓN solicitada (borrador, evento, etc.), NU
 
 export /** Build the contextual system prompt with agent identity */
 function buildContextualPrompt(agentName: string | null, agentCode: string | null): string {
+  // Fecha/hora real de Córdoba vía Intl (sin el hack now-3h + timeZone:"UTC").
   const now = new Date();
-  const argTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-  const dateStr = argTime.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
-  const timeStr = argTime.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  const CORDOBA_TZ = "America/Argentina/Cordoba";
+  const dateStr = now.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: CORDOBA_TZ });
+  const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: CORDOBA_TZ });
 
   const agentContext = agentName
     ? `\n\n## IDENTIDAD DEL AGENTE HUMANO — LEER CON ATENCIÓN
@@ -452,7 +455,9 @@ function buildAIMessages(msgs: any[]): any[] {
       const content: any[] = [];
       for (const att of m.attachments) {
         if (att.type === "image") {
-          content.push({ type: "image_url", image_url: { url: `data:${att.mimeType};base64,${att.base64}` } });
+          // En vivo viene base64; al reconstruir desde Storage (reload) viene una signed URL.
+          const url = att.base64 ? `data:${att.mimeType};base64,${att.base64}` : att.url;
+          if (url) content.push({ type: "image_url", image_url: { url } });
         }
       }
       if (m.content) {

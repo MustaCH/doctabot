@@ -1,11 +1,78 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
+import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { feedbackReceive } from "@/hooks/use-feedback";
 import type { ChatAttachment } from "@/components/ChatInput";
 import { useFileProcessing } from "@/hooks/use-file-processing";
 import { transcribeAudio } from "@/hooks/use-audio-recorder";
+
+// Persistencia de adjuntos del chat (ticket 86aj0p5bg): las imágenes van a Storage y se
+// reconstruyen al recargar; los PDFs/citas viajan como texto en messages.ai_content.
+const ATTACHMENTS_BUCKET = "chat-attachments";
+const SIGNED_URL_TTL = 60 * 60 * 24; // 24h: cubre display + re-envío dentro de la sesión
+
+type StoredAttachmentRef = {
+  type: "image" | "file";
+  path?: string;        // solo imágenes (objeto en Storage)
+  mimeType: string;
+  fileName?: string;
+};
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Sube las imágenes a Storage y devuelve refs serializables para messages.attachments. */
+async function persistAttachments(
+  userId: string,
+  convId: string,
+  atts?: MsgAttachment[],
+): Promise<StoredAttachmentRef[] | null> {
+  if (!atts || atts.length === 0) return null;
+  const refs: StoredAttachmentRef[] = [];
+  for (const att of atts) {
+    if (att.type === "image" && att.base64) {
+      const ext = (att.mimeType.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "");
+      const path = `${userId}/${convId}/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .upload(path, base64ToBytes(att.base64), { contentType: att.mimeType, upsert: false });
+      if (error) { console.error("Error subiendo adjunto:", error); continue; }
+      refs.push({ type: "image", path, mimeType: att.mimeType, fileName: att.fileName });
+    } else {
+      // PDFs/otros: el texto ya va en ai_content; guardamos metadata para reconstruir el chip.
+      refs.push({ type: att.type, mimeType: att.mimeType, fileName: att.fileName });
+    }
+  }
+  return refs.length > 0 ? refs : null;
+}
+
+/** Reconstruye MsgAttachment[] desde lo persistido, firmando URLs de las imágenes. */
+async function reconstructAttachments(stored: unknown): Promise<MsgAttachment[] | undefined> {
+  if (!Array.isArray(stored) || stored.length === 0) return undefined;
+  const out: MsgAttachment[] = [];
+  for (const a of stored as StoredAttachmentRef[]) {
+    if (a.type === "image" && a.path) {
+      const { data: signed } = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .createSignedUrl(a.path, SIGNED_URL_TTL);
+      out.push({ type: "image", url: signed?.signedUrl, storagePath: a.path, mimeType: a.mimeType, fileName: a.fileName });
+    } else {
+      out.push({ type: a.type, mimeType: a.mimeType, fileName: a.fileName });
+    }
+  }
+  return out;
+}
+
+/** Mapea el historial para que la IA reciba el contenido enriquecido (PDF/cita) cuando existe. */
+function historyForAI(msgs: Msg[]): Msg[] {
+  return msgs.map((m) => (m.aiContent ? { ...m, content: m.aiContent } : m));
+}
 
 export function useChatMessages(
   activeConvId: string | null,
@@ -33,7 +100,7 @@ export function useChatMessages(
   const reloadMessagesFromDB = useCallback(async (convId: string) => {
     const { data } = await supabase
       .from("messages")
-      .select("role, content")
+      .select("role, content, ai_content, attachments")
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
     if (data) {
@@ -49,7 +116,13 @@ export function useChatMessages(
             if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
           }
         } else {
-          expanded.push(msg as Msg);
+          // Reconstruimos el contexto multimodal del mensaje del usuario: adjuntos (imágenes
+          // desde Storage) + ai_content (PDF/[REFERENCIA]) para que Alan no lo pierda al recargar.
+          const m: Msg = { role: msg.role as Msg["role"], content: msg.content };
+          if (msg.ai_content) m.aiContent = msg.ai_content;
+          const atts = await reconstructAttachments(msg.attachments);
+          if (atts) m.attachments = atts;
+          expanded.push(m);
         }
       }
       if (mountedRef.current) {
@@ -182,9 +255,13 @@ export function useChatMessages(
       attachments: msgAttachments,
       quotedText: msgQuotedText,
     };
+    const displayText = displayContent || fallbackDisplay;
+    // Contenido "para la IA" cuando difiere del que se muestra (cita / texto de PDF embebido).
+    const aiForPersist = aiContent && aiContent !== displayText ? aiContent : null;
     const displayMsg: Msg = {
       role: "user",
-      content: displayContent || fallbackDisplay,
+      content: displayText,
+      aiContent: aiForPersist ?? undefined,
       attachments: msgAttachments,
       quotedText: msgQuotedText,
     };
@@ -192,11 +269,28 @@ export function useChatMessages(
     setMessages(newMessages);
     setIsStreaming(true);
 
-    await supabase.from("messages").insert({
+    // Subimos los adjuntos a Storage para poder reconstruirlos al recargar.
+    const { data: { session } } = await supabase.auth.getSession();
+    const attachmentRefs = session?.user.id
+      ? await persistAttachments(session.user.id, convId, msgAttachments)
+      : null;
+
+    // Persistimos el mensaje del usuario ANTES de arrancar el stream (orden garantizado:
+    // user antes que assistant). Si falla, no streameamos → evitamos un assistant sin user
+    // y no perdemos el mensaje en silencio.
+    const { error: userInsertError } = await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
-      content: displayContent || fallbackDisplay,
+      content: displayText,
+      ai_content: aiForPersist,
+      attachments: (attachmentRefs as Json) ?? null,
     });
+    if (userInsertError) {
+      console.error("Error guardando mensaje del usuario:", userInsertError);
+      toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+      if (mountedRef.current) setIsStreaming(false);
+      return;
+    }
 
     let assistantContent = "";
     let allAssistantMessages: string[] = [];
@@ -205,7 +299,7 @@ export function useChatMessages(
     abortRef.current = controller;
 
     try {
-      const aiMessages = [...messages, userMsg];
+      const aiMessages = [...historyForAI(messages), userMsg];
       await streamChat({
         messages: aiMessages,
         conversationId: convId!,
@@ -285,9 +379,15 @@ export function useChatMessages(
       );
       setIsTranscribing(false);
 
-      await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent });
+      // content = lo que se muestra ("🎙️ …"); ai_content = lo que ve la IA (transcript limpio).
+      const { error: userInsertError } = await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent, ai_content: transcript });
+      if (userInsertError) {
+        console.error("Error guardando mensaje de voz del usuario:", userInsertError);
+        toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+        return;
+      }
 
-      const msgsForAI: Msg[] = [...messages, { role: "user", content: transcript }];
+      const msgsForAI: Msg[] = [...historyForAI(messages), { role: "user", content: transcript }];
       setIsStreaming(true);
 
       let assistantContent = "";

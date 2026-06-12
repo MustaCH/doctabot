@@ -1,4 +1,5 @@
 // Google Calendar / Gmail helper functions
+import { normalizeDatetime } from "./validators.ts";
 
 /** Get a valid Google Calendar access token, refreshing if expired */
 export async function getValidCalendarToken(
@@ -74,18 +75,6 @@ export function buildCalendarEvent(args: {
       .map((e: string) => ({ email: e.trim().slice(0, 200) }));
   }
   return body;
-}
-
-/** Normalize ISO-ish datetime strings; returns Date or null. */
-export function normalizeDatetime(input: string): Date | null {
-  if (!input) return null;
-  let s = String(input).trim();
-  // If only date provided (YYYY-MM-DD), assume 09:00 local
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s = `${s}T09:00:00-03:00`;
-  // If datetime without timezone, append Argentina offset (-03:00)
-  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) s = `${s}-03:00`;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
 }
 
 /** Parse and validate start/end datetimes for calendar events */

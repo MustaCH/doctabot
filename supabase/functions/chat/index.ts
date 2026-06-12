@@ -15,7 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, MAX_MESSAGE_LENGTH } from "./_shared/cors.ts";
+import { corsHeaders, MAX_MESSAGE_LENGTH, validateAttachmentSizes } from "./_shared/cors.ts";
 import { authenticateRequest } from "./_shared/auth.ts";
 import { buildContextualPrompt, buildAIMessages } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
@@ -50,6 +50,15 @@ serve(async (req) => {
       }
     }
 
+    // Tope de tamaño de adjuntos (el límite de content no cubre el base64 de imágenes).
+    const attachmentSizeError = validateAttachmentSizes(messages);
+    if (attachmentSizeError) {
+      return new Response(JSON.stringify({ error: attachmentSizeError }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -58,6 +67,22 @@ serve(async (req) => {
     const authResult = await authenticateRequest(req, supabaseUrl, supabase);
     if (authResult instanceof Response) return authResult;
     const { userId, agentName, agentCode } = authResult;
+
+    // Rate limiting propio (control de costo). Límites configurables por env. Fail-open:
+    // si la función todavía no está deployada (rlError), no bloqueamos el chat.
+    const RL_MAX = parseInt(Deno.env.get("CHAT_RATE_LIMIT_MAX") ?? "30", 10);
+    const RL_WINDOW = parseInt(Deno.env.get("CHAT_RATE_LIMIT_WINDOW_SECONDS") ?? "300", 10);
+    const { data: rlAllowed, error: rlError } = await supabase.rpc("check_chat_rate_limit", {
+      p_user_id: userId,
+      p_max: RL_MAX,
+      p_window_seconds: RL_WINDOW,
+    });
+    if (!rlError && rlAllowed === false) {
+      return new Response(JSON.stringify({ error: "Demasiadas solicitudes. Esperá un momento e intentá de nuevo." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Google credentials
     const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
@@ -82,12 +107,18 @@ serve(async (req) => {
     const PRIMARY_MODEL = "gemini-2.5-pro";
     const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+    // Timeout por llamada al modelo: si Gemini cuelga, se aborta (cada iteración del turno
+    // es un fetch nuevo con su propia señal). max_tokens acota la respuesta y hace que
+    // finish_reason:"length" sea significativo (lo maneja streamTurn).
+    const AI_TIMEOUT_MS = 60_000;
+    const AI_MAX_TOKENS = 8192;
 
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
       return fetch(AI_URL, {
         method: "POST",
         headers: aiHeaders,
-        body: JSON.stringify({ ...body, model: PRIMARY_MODEL }),
+        body: JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS }),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       });
     };
 
