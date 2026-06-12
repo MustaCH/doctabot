@@ -57,8 +57,8 @@ export async function executeTool(
       const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean }) => {
-        if (zone) q = q.ilike("zone", `%${zone}%`);
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean }) => {
+        if (zone && !opts?.skipZone) q = q.ilike("zone", `%${zone}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
         if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
@@ -123,6 +123,25 @@ export async function executeTool(
           totalCount = fbCountRes2.count ?? 0;
           data = fbDataRes2.data;
           error = fbDataRes2.error;
+        }
+      }
+
+      // Fallback: zona provista sin resultados → el término puede ser un desarrollo/loteo
+      // cuyo nombre vive en el título (no en el campo zone). Reintentamos buscándolo en title.
+      if (!error && (!data || data.length === 0) && zone && !titleSearch && !locality && !neighborhood) {
+        const fbBaseZ = applyFilters(
+          supabase.from("properties").select("*", { count: "exact", head: true }),
+          { skipZone: true }
+        ).ilike("title", `%${zone}%`);
+        const fbDataZ = applyFilters(
+          supabase.from("properties").select("*"),
+          { skipZone: true }
+        ).ilike("title", `%${zone}%`).limit(limit);
+        const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
+        if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
+          totalCount = fbCountResZ.count ?? 0;
+          data = fbDataResZ.data;
+          error = fbDataResZ.error;
         }
       }
 
