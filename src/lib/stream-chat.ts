@@ -3,7 +3,9 @@ import { MarkerStream } from "./stream-markers";
 
 export type MsgAttachment = {
   type: "image" | "file";
-  base64: string;
+  base64?: string;       // presente en el turno en vivo (recién adjuntado)
+  url?: string;          // signed URL al reconstruir desde Storage (reload)
+  storagePath?: string;  // ref del objeto en el bucket chat-attachments
   mimeType: string;
   fileName?: string;
 };
@@ -11,6 +13,7 @@ export type MsgAttachment = {
 export type Msg = {
   role: "user" | "assistant";
   content: string;
+  aiContent?: string;    // contenido "para la IA" (PDF + [REFERENCIA]) cuando difiere de content
   attachments?: MsgAttachment[];
   audioUrl?: string;
   quotedText?: string;

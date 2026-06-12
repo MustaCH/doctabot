@@ -452,7 +452,9 @@ function buildAIMessages(msgs: any[]): any[] {
       const content: any[] = [];
       for (const att of m.attachments) {
         if (att.type === "image") {
-          content.push({ type: "image_url", image_url: { url: `data:${att.mimeType};base64,${att.base64}` } });
+          // En vivo viene base64; al reconstruir desde Storage (reload) viene una signed URL.
+          const url = att.base64 ? `data:${att.mimeType};base64,${att.base64}` : att.url;
+          if (url) content.push({ type: "image_url", image_url: { url } });
         }
       }
       if (m.content) {
