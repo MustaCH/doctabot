@@ -17,6 +17,7 @@ El front (`src/lib/stream-chat.ts`) **ya** consume un stream de deltas SSE real 
 2. **Se elimina el retry-loop del supervisor.** En modo post-hoc no hay a quién mostrarle la corrección. `runSupervisorLoop` → `runSupervisorEval` (single eval). El fix reciente de retry-con-tools queda superseded; su valor real (separar ejecución de tools) se preserva.
 3. **Full-streaming.** Todas las llamadas a Gemini van con `stream:true`; se parsea el SSE distinguiendo `content` vs `tool_calls`. Una sola arquitectura, sin llamadas desperdiciadas.
 4. **Docs:** ADR en `docs/adrs/`, este spec en `docs/superpowers/specs/`.
+5. **Marcadores parciales en el front → en scope** (revisión Nacho 2026-06-12). Con streaming real, `<<<DRAFT_START>>>` / `<<<DRAFT_END>>>` / `<<<WHATSAPP_TO:...>>>` llegan fragmentados y `ChatMessage.tsx` hoy muestra el marcador crudo mientras el draft no cerró. Se arregla en `stream-chat.ts`.
 
 ## Tradeoff aceptado
 
@@ -60,6 +61,7 @@ Notas:
 | `_shared/supervisor.ts` | `runSupervisorLoop` → `runSupervisorEval`: una eval flash, sin retry. Misma lógica de logging/n8n. | simplificar |
 | `_shared/sse.ts` | `buildSSEResponse(content)` deja de usarse para el camino feliz. El stream se arma dentro del driver/index. Se puede conservar para el fallback. | revisar |
 | `chat/index.ts` | Orquesta: arma el `ReadableStream`, corre `streamTurn` pasando el controller, y en `EdgeRuntime.waitUntil()` corre persistencia + `runSupervisorEval` + push notification + title. | reescribir flujo |
+| `src/lib/stream-chat.ts` (front) | Extender el hold-back que hoy hace con `MSG_BREAK`: retener la región de un draft incompleto (desde `<<<WHATSAPP_TO:...>>>`/`<<<DRAFT_START>>>` hasta `<<<DRAFT_END>>>`) y emitirla entera al cerrar. Así nunca llega un marcador parcial al renderer. `ChatMessage.tsx` queda intacto. | extender |
 
 ## Data flow
 
@@ -76,7 +78,7 @@ Notas:
 - **Gemini no-ok (429/402/otro):** `streamTurn` lanza `AIError(status)`. Como ya abrimos el stream, el mapeo 429/402 a HTTP status sólo es posible si el error ocurre **antes** del primer byte. Estrategia: hacer la primera llamada y validar `res.ok` **antes** de construir el `ReadableStream`; si falla, devolver el JSON de error con el status correcto (preserva el contrato actual del front: `resp.status === 429 → "rate_limit"`). Errores en iteraciones posteriores (ya streameando) → se cierra el stream con un mensaje de error en banda.
 - **Desconexión del cliente mid-stream:** `controller.enqueue` lanza si el stream se cerró. Se atrapa y se deja de enqueue, pero **se sigue consumiendo el stream de Gemini hasta el final** para llenar `contentBuffer` → la persistencia en `waitUntil` no se pierde.
 - **executeTool throw:** se preserva el comportamiento actual (burbujea). (Mejorar a tool-result de error queda fuera de scope.)
-- **Marcadores parciales (`<<<DRAFT_START>>>`, `===MSG_BREAK===`) llegando token a token:** el front ya bufferea `MSG_BREAK`. Los marcadores DRAFT/WHATSAPP podrían parpadear mid-stream en el render → **follow-up de Frontend Developer**, fuera de scope de este backend.
+- **Marcadores parciales llegando token a token:** se resuelve en `stream-chat.ts` reteniendo la región del draft hasta que cierra (ver Componentes). El front nunca pasa un marcador incompleto al renderer. `===MSG_BREAK===` ya estaba cubierto por el hold-back existente.
 
 ## Testing
 
@@ -84,6 +86,7 @@ Notas:
 - `stream-turn.ts` (deps mockeadas): (a) turno texto puro → pipea content, no llama executeTool; (b) tools-then-text → ejecuta tools, luego pipea texto; (c) desconexión (controller.enqueue throw) → sigue consumiendo Gemini, `content` completo; (d) `AIError` en primera llamada; (e) corta en maxIterations.
 - `execute-round.ts`: ejecuta ronda de tool_calls, trackea ejecutadas, ignora errores en el track.
 - Reusar/adaptar `loop.test.ts` existente para `executeToolCalls`.
+- `stream-chat.ts` (front, `src/lib/*.test.ts`): hold-back de marcadores — `<<<DRAFT_START>>>` partido entre deltas no llega crudo; `WHATSAPP_TO` + draft se emiten juntos al cerrar; draft incompleto al final del stream no deja marcador colgado; `MSG_BREAK` sigue funcionando.
 
 ## ADR
 
@@ -91,7 +94,6 @@ Notas:
 
 ## Fuera de scope (follow-ups)
 
-- Render de marcadores parciales mid-stream (Frontend).
 - Indicadores "buscando propiedades..." durante la fase de tools (UX/Frontend).
 - Timeout / `max_tokens` (ticket `86aj0p5cb` separado).
 - Corrección visible async del supervisor (descartado por YAGNI; reabrir si la calidad sin gate se degrada).
