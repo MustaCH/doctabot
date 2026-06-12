@@ -11,6 +11,9 @@ import {
   safePositiveInt,
   safeDbError,
   normalizeDatetime,
+  nextOccurrenceISO,
+  todayCordobaISO,
+  addDaysISO,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -744,18 +747,13 @@ export async function executeTool(
       try {
         const accessToken = await getCalendarToken();
         if (accessToken) {
-          // Calculate next occurrence for the calendar event
-          const today = new Date();
-          const [year, month, day] = eventDate.split("-").map(Number);
-          let nextDate = new Date(today.getFullYear(), month - 1, day);
-          if (nextDate < today && recurrence === "yearly") {
-            nextDate = new Date(today.getFullYear() + 1, month - 1, day);
-          }
-          
+          // Calculate next occurrence for the calendar event (date-only, Córdoba)
+          const nextDateISO = nextOccurrenceISO(eventDate, recurrence);
+
           const calendarBody: any = {
             summary: title,
-            start: { date: nextDate.toISOString().slice(0, 10) },
-            end: { date: nextDate.toISOString().slice(0, 10) },
+            start: { date: nextDateISO },
+            end: { date: nextDateISO },
             reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 1440 }] }, // 1 day before
           };
           if (notes) calendarBody.description = notes;
@@ -804,26 +802,16 @@ export async function executeTool(
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
 
-      // Filter to upcoming events within daysAhead (considering recurrence)
-      const today = new Date();
-      const cutoff = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-      
+      // Filter to upcoming events within daysAhead (considering recurrence).
+      // Comparación por fecha (YYYY-MM-DD) en Córdoba para no perder eventos de hoy.
+      const todayISO = todayCordobaISO();
+      const cutoffISO = addDaysISO(todayISO, daysAhead);
+
       const upcoming = (data ?? []).map((ev: any) => {
-        const [year, month, day] = ev.event_date.split("-").map(Number);
-        let nextOccurrence: Date;
-        if (ev.recurrence === "yearly") {
-          nextOccurrence = new Date(today.getFullYear(), month - 1, day);
-          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear() + 1, month - 1, day);
-        } else if (ev.recurrence === "monthly") {
-          nextOccurrence = new Date(today.getFullYear(), today.getMonth(), day);
-          if (nextOccurrence < today) nextOccurrence = new Date(today.getFullYear(), today.getMonth() + 1, day);
-        } else {
-          nextOccurrence = new Date(year, month - 1, day);
-        }
-        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: nextOccurrence.toISOString().slice(0, 10) };
+        const next = nextOccurrenceISO(ev.event_date, ev.recurrence, todayISO);
+        return { ...ev, client_name: ev.clients?.full_name, next_occurrence: next };
       }).filter((ev: any) => {
-        const next = new Date(ev.next_occurrence);
-        return next >= new Date(today.toISOString().slice(0, 10)) && next <= cutoff;
+        return ev.next_occurrence >= todayISO && ev.next_occurrence <= cutoffISO;
       }).sort((a: any, b: any) => a.next_occurrence.localeCompare(b.next_occurrence));
 
       return JSON.stringify({ events: upcoming, total: upcoming.length });

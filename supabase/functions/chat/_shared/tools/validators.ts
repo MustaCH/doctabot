@@ -46,6 +46,60 @@ export function safeDbError(error: any): string {
   return "Error al procesar la solicitud";
 }
 
+/** Current date in Córdoba (UTC-3) as YYYY-MM-DD. */
+export function todayCordobaISO(now: Date = new Date()): string {
+  // en-CA formatea como YYYY-MM-DD; el timeZone resuelve el offset (incl. histórico) sin hacks.
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Cordoba" }).format(now);
+}
+
+/** Suma `days` a una fecha YYYY-MM-DD y devuelve YYYY-MM-DD (aritmética en UTC, sin DST). */
+export function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Próxima ocurrencia (YYYY-MM-DD) de un evento recurrente, relativa a hoy en Córdoba.
+ * Compara por fecha (no por instante) para que un evento de HOY se agende hoy y no al período siguiente.
+ * Para `once` devuelve la fecha original. Ajusta días inexistentes (29-feb, día 31) al último día del mes.
+ */
+export function nextOccurrenceISO(
+  eventDate: string,
+  recurrence: string,
+  todayISO: string = todayCordobaISO(),
+): string {
+  const [, em, ed] = eventDate.split("-").map(Number);
+  if (recurrence === "once") return eventDate;
+
+  // Día válido para (año, mes 1-based), recortado al último día del mes.
+  const make = (year: number, month: number): string => {
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const day = Math.min(ed, lastDay);
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+
+  const [ty, tm] = todayISO.split("-").map(Number);
+
+  if (recurrence === "monthly") {
+    let year = ty;
+    let month = tm;
+    let iso = make(year, month);
+    if (iso < todayISO) {
+      month += 1;
+      if (month > 12) { month = 1; year += 1; }
+      iso = make(year, month);
+    }
+    return iso;
+  }
+
+  // yearly (default)
+  let iso = make(ty, em);
+  if (iso < todayISO) iso = make(ty + 1, em);
+  return iso;
+}
+
 /** Normalize a datetime string to full ISO format in Argentina time (UTC-3) */
 export function normalizeDatetime(raw: string): Date | null {
   if (!raw) return null;
