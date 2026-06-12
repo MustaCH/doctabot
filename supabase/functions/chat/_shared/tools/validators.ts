@@ -19,6 +19,19 @@ export function normalizeClientStatus(raw: unknown): string | null {
 }
 export const VALID_CONVERSATION_TYPES = ["search", "email", "followup", "general"];
 
+/**
+ * Resuelve el status al CREAR un cliente.
+ * - Sinónimo reconocido (incl. "frío"/"inactive") → su valor canónico (hot/warm/cold).
+ * - Sin status (nuevo lead) → "hot" (default del producto).
+ * - Status provisto pero NO reconocido → "warm" (neutral): nunca promovemos a "hot" un valor
+ *   que el modelo no expresó como caliente (evita que un cliente "frío" termine "caliente").
+ */
+export function resolveClientStatusForCreate(raw: unknown): string {
+  const normalized = normalizeClientStatus(raw);
+  if (normalized) return normalized;
+  return raw == null || raw === "" ? "hot" : "warm";
+}
+
 /** Sanitize ILIKE patterns – escape wildcards and limit length */
 export function sanitizePattern(val: unknown): string | null {
   if (typeof val !== "string" || val.trim() === "") return null;

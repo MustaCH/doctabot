@@ -1,5 +1,38 @@
 import { describe, it, expect } from "vitest";
-import { todayCordobaISO, nextOccurrenceISO, addDaysISO } from "./validators";
+import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate } from "./validators";
+
+describe("normalizeClientStatus", () => {
+  it("mapea sinónimos de frío a cold (incluye 'inactive')", () => {
+    for (const s of ["cold", "frío", "frio", "inactive", "inactivo", "sin actividad", "baja"]) {
+      expect(normalizeClientStatus(s)).toBe("cold");
+    }
+  });
+  it("mapea caliente/tibio correctamente y es case-insensitive", () => {
+    expect(normalizeClientStatus("CALIENTE")).toBe("hot");
+    expect(normalizeClientStatus("  En Seguimiento ")).toBe("warm");
+  });
+  it("devuelve null para valores no reconocidos o no-string", () => {
+    expect(normalizeClientStatus("banana")).toBeNull();
+    expect(normalizeClientStatus(undefined)).toBeNull();
+    expect(normalizeClientStatus(42)).toBeNull();
+  });
+});
+
+describe("resolveClientStatusForCreate", () => {
+  it("frío/inactive se persisten como cold (nunca hot) — caso Mauri Quiñones", () => {
+    expect(resolveClientStatusForCreate("frío")).toBe("cold");
+    expect(resolveClientStatusForCreate("inactive")).toBe("cold");
+    expect(resolveClientStatusForCreate("cold")).toBe("cold");
+  });
+  it("sin status (nuevo lead) defaultea a hot", () => {
+    expect(resolveClientStatusForCreate(undefined)).toBe("hot");
+    expect(resolveClientStatusForCreate(null)).toBe("hot");
+    expect(resolveClientStatusForCreate("")).toBe("hot");
+  });
+  it("status provisto pero no reconocido NO cae a hot: cae a warm (neutral)", () => {
+    expect(resolveClientStatusForCreate("banana")).toBe("warm");
+  });
+});
 
 describe("todayCordobaISO", () => {
   it("devuelve la fecha en Córdoba (UTC-3) en formato YYYY-MM-DD", () => {
