@@ -1,45 +1,54 @@
-// Supervisor layer: validates Alan's response quality and retries on rejection.
-// Logs to supervisor_logs and notifies n8n on persistent failures.
+// Supervisor post-hoc: evalúa la calidad de la respuesta de Alan UNA vez y loguea.
+// NO bloquea ni reescribe lo que ve el usuario (ver ADR 0001). Corre en background
+// (EdgeRuntime.waitUntil) después de cerrar el stream.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-interface SupervisorResult {
-  finalContent: string;
+export interface SupervisorResult {
   verdict: string;
   score: number;
   reason: string;
-  retryCount: number;
+  retryCount: number; // siempre 0 en modo post-hoc; se conserva por compatibilidad con el log
   latency: number;
 }
 
-export async function runSupervisorLoop(params: {
-  initialContent: string;
+export async function runSupervisorEval(params: {
+  content: string;
   userMessage: string;
-  currentMessages: any[];
-  executedTools: string[];
   apiKey: string;
-  resilientAIFetch: (body: Record<string, any>) => Promise<Response>;
 }): Promise<SupervisorResult> {
-  const { initialContent, userMessage, currentMessages, executedTools, apiKey, resilientAIFetch } = params;
-  let finalContent = initialContent;
-  let supervisorRetryCount = 0;
-  const maxRetries = 2;
-  let supervisorVerdict = "approved";
-  let supervisorScore = 10;
-  let supervisorReason = "";
-  let supervisorLatency = 0;
+  const { content, userMessage, apiKey } = params;
+  const supervisorStart = Date.now();
 
-  const runSupervisor = async (alanResponse: string): Promise<{ verdict: string; score: number; reason: string }> => {
-    const supervisorStart = Date.now();
-    try {
-      const supervisorRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `Sos un supervisor de calidad para "Alan", un asistente de IA para agentes inmobiliarios de RE/MAX Docta (Córdoba, Argentina). Tu trabajo es evaluar si la respuesta de Alan es adecuada.
+  const evalRequest = (messages: any[]) =>
+    fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gemini-2.5-flash",
+        messages,
+        tools: [{
+          type: "function",
+          function: {
+            name: "evaluate_response",
+            description: "Evalúa la calidad de la respuesta de Alan",
+            parameters: {
+              type: "object",
+              properties: {
+                verdict: { type: "string", enum: ["approved", "rejected"], description: "approved si es adecuada, rejected si necesita rehacerse" },
+                score: { type: "integer", description: "Puntuación de calidad del 1 al 10" },
+                reason: { type: "string", description: "Motivo breve de la evaluación" },
+              },
+              required: ["verdict", "score", "reason"],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "evaluate_response" } },
+        stream: false,
+      }),
+    });
+
+  const systemPrompt = `Sos un supervisor de calidad para "Alan", un asistente de IA para agentes inmobiliarios de RE/MAX Docta (Córdoba, Argentina). Tu trabajo es evaluar si la respuesta de Alan es adecuada.
 
 CONTEXTO DE ALAN:
 - Alan tiene herramientas para: buscar propiedades, gestionar favoritos, CRM de clientes (crear, editar, listar con campos enriquecidos como client_type buyer/seller/both, birthday, company, budget_min/max, budget_currency USD/ARS, preferred_zones, property_type_interest, source), vincular conversaciones a clientes, Google Calendar (crear/editar/eliminar eventos, Google Meet), enviar emails por Gmail, buscar en internet y leer páginas web.
@@ -67,148 +76,44 @@ CRITERIOS DE EVALUACIÓN:
 
 IMPORTANTE: Solo rechazá respuestas con problemas significativos (datos inventados, formato roto, acciones no ejecutadas, violaciones de seguridad). Errores menores de estilo NO justifican un rechazo.
 
-Usá la herramienta evaluate_response para dar tu veredicto.`
-            },
-            {
-              role: "user",
-              content: `MENSAJE DEL USUARIO:\n${userMessage.slice(0, 2000)}\n\nRESPUESTA DE ALAN:\n${alanResponse.slice(0, 3000)}`
-            }
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "evaluate_response",
-              description: "Evalúa la calidad de la respuesta de Alan",
-              parameters: {
-                type: "object",
-                properties: {
-                  verdict: { type: "string", enum: ["approved", "rejected"], description: "approved si es adecuada, rejected si necesita rehacerse" },
-                  score: { type: "integer", description: "Puntuación de calidad del 1 al 10" },
-                  reason: { type: "string", description: "Motivo breve de la evaluación" }
-                },
-                required: ["verdict", "score", "reason"],
-                additionalProperties: false
-              }
-            }
-          }],
-          tool_choice: { type: "function", function: { name: "evaluate_response" } },
-          stream: false,
-        }),
-      });
+Usá la herramienta evaluate_response para dar tu veredicto.`;
 
-      supervisorLatency = Date.now() - supervisorStart;
+  try {
+    const res = await evalRequest([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `MENSAJE DEL USUARIO:\n${userMessage.slice(0, 2000)}\n\nRESPUESTA DE ALAN:\n${content.slice(0, 3000)}` },
+    ]);
 
-      if (!supervisorRes.ok) {
-        console.error("Supervisor API error:", supervisorRes.status);
-        return { verdict: "error", score: 0, reason: "Supervisor API error" };
-      }
-
-      const supervisorData = await supervisorRes.json();
-      const toolCall = supervisorData.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        return JSON.parse(toolCall.function.arguments);
-      }
-      // Retry once if supervisor didn't return a tool call
-      console.warn("Supervisor did not return tool call, retrying...");
-      const retryRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "gemini-2.5-flash",
-          messages: [
-            supervisorData.choices?.[0]?.message ?
-              { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." } :
-              { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response." },
-            { role: "user", content: `MENSAJE DEL USUARIO:\n${alanResponse.slice(0, 500)}\n\nEvaluá con la herramienta evaluate_response. Verdict: approved o rejected.` }
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "evaluate_response",
-              description: "Evalúa la calidad de la respuesta de Alan",
-              parameters: {
-                type: "object",
-                properties: {
-                  verdict: { type: "string", enum: ["approved", "rejected"] },
-                  score: { type: "integer", description: "1-10" },
-                  reason: { type: "string" }
-                },
-                required: ["verdict", "score", "reason"],
-                additionalProperties: false
-              }
-            }
-          }],
-          tool_choice: { type: "function", function: { name: "evaluate_response" } },
-          stream: false,
-        }),
-      });
-      if (retryRes.ok) {
-        const retryData = await retryRes.json();
-        const retryToolCall = retryData.choices?.[0]?.message?.tool_calls?.[0];
-        if (retryToolCall?.function?.arguments) {
-          return JSON.parse(retryToolCall.function.arguments);
-        }
-      }
-      // If retry also fails, approve by default (fail-open)
-      console.warn("Supervisor retry also failed, approving by default");
-      return { verdict: "approved", score: 7, reason: "Auto-approved: supervisor could not evaluate" };
-    } catch (err) {
-      supervisorLatency = Date.now() - supervisorStart;
-      console.error("Supervisor error:", err);
-      return { verdict: "error", score: 0, reason: String(err) };
+    if (!res.ok) {
+      console.error("Supervisor API error:", res.status);
+      return { verdict: "error", score: 0, reason: "Supervisor API error", retryCount: 0, latency: Date.now() - supervisorStart };
     }
-  };
 
-  // Run supervisor
-  let result = await runSupervisor(finalContent);
-  supervisorVerdict = result.verdict;
-  supervisorScore = result.score;
-  supervisorReason = result.reason;
-
-  // Retry loop if rejected
-  while (result.verdict === "rejected" && supervisorRetryCount < maxRetries) {
-    supervisorRetryCount++;
-    console.log(`Supervisor rejected (attempt ${supervisorRetryCount}), regenerating...`);
-
-    // Regenerate with feedback
-    // Build context about tools already executed to prevent duplicate actions
-    const toolWarning = executedTools.includes("send_email")
-      ? ' IMPORTANTE: La herramienta send_email YA fue ejecutada exitosamente en este turno. El email YA fue enviado. NO vuelvas a mostrar el borrador ni pidas confirmación. Solo confirmá el envío.'
-      : '';
-
-    const retryMessages = [
-      ...currentMessages,
-      { role: "assistant", content: finalContent },
-      { role: "user", content: `[SISTEMA - SUPERVISIÓN INTERNA] Tu respuesta anterior fue rechazada por el supervisor de calidad. Motivo: "${result.reason}". Por favor, generá una nueva respuesta corregida para el mensaje original del usuario. No menciones esta corrección al usuario.${toolWarning}` }
-    ];
-
-    const retryRes = await resilientAIFetch({ messages: retryMessages, stream: false });
-
-    if (retryRes.ok) {
-      const retryData = await retryRes.json();
-      const retryContent = retryData.choices?.[0]?.message?.content;
-      if (retryContent) {
-        finalContent = retryContent;
-        result = await runSupervisor(finalContent);
-        supervisorVerdict = result.verdict;
-        supervisorScore = result.score;
-        supervisorReason = result.reason;
-      } else {
-        break; // No content in retry, use previous
-      }
-    } else {
-      break; // Retry failed, use previous
+    const data = await res.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const parsed = JSON.parse(toolCall.function.arguments);
+      return { verdict: parsed.verdict, score: parsed.score, reason: parsed.reason, retryCount: 0, latency: Date.now() - supervisorStart };
     }
+
+    // Si no devolvió tool call, retry simple de la eval (no del turno).
+    const retry = await evalRequest([
+      { role: "system", content: "Respondé ÚNICAMENTE usando la herramienta evaluate_response. No respondas con texto." },
+      { role: "user", content: `RESPUESTA DE ALAN:\n${content.slice(0, 500)}\n\nEvaluá con la herramienta evaluate_response. Verdict: approved o rejected.` },
+    ]);
+    if (retry.ok) {
+      const retryData = await retry.json();
+      const retryToolCall = retryData.choices?.[0]?.message?.tool_calls?.[0];
+      if (retryToolCall?.function?.arguments) {
+        const parsed = JSON.parse(retryToolCall.function.arguments);
+        return { verdict: parsed.verdict, score: parsed.score, reason: parsed.reason, retryCount: 0, latency: Date.now() - supervisorStart };
+      }
+    }
+    return { verdict: "approved", score: 7, reason: "Auto-approved: supervisor could not evaluate", retryCount: 0, latency: Date.now() - supervisorStart };
+  } catch (err) {
+    console.error("Supervisor error:", err);
+    return { verdict: "error", score: 0, reason: String(err), retryCount: 0, latency: Date.now() - supervisorStart };
   }
-
-  return {
-    finalContent,
-    verdict: supervisorVerdict,
-    score: supervisorScore,
-    reason: supervisorReason,
-    retryCount: supervisorRetryCount,
-    latency: supervisorLatency,
-  };
 }
 
 export function logSupervisorResult(params: {
