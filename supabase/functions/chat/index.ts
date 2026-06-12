@@ -68,6 +68,22 @@ serve(async (req) => {
     if (authResult instanceof Response) return authResult;
     const { userId, agentName, agentCode } = authResult;
 
+    // Rate limiting propio (control de costo). Límites configurables por env. Fail-open:
+    // si la función todavía no está deployada (rlError), no bloqueamos el chat.
+    const RL_MAX = parseInt(Deno.env.get("CHAT_RATE_LIMIT_MAX") ?? "30", 10);
+    const RL_WINDOW = parseInt(Deno.env.get("CHAT_RATE_LIMIT_WINDOW_SECONDS") ?? "300", 10);
+    const { data: rlAllowed, error: rlError } = await supabase.rpc("check_chat_rate_limit", {
+      p_user_id: userId,
+      p_max: RL_MAX,
+      p_window_seconds: RL_WINDOW,
+    });
+    if (!rlError && rlAllowed === false) {
+      return new Response(JSON.stringify({ error: "Demasiadas solicitudes. Esperá un momento e intentá de nuevo." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Google credentials
     const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
     const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
