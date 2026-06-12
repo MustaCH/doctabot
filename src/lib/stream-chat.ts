@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { MarkerStream } from "./stream-markers";
 
 export type MsgAttachment = {
   type: "image" | "file";
@@ -16,8 +17,6 @@ export type Msg = {
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
-
-const MSG_BREAK = "===MSG_BREAK===";
 
 export async function streamChat({
   messages,
@@ -60,41 +59,10 @@ export async function streamChat({
   let buf = "";
   let done = false;
 
-  let contentBuffer = "";
-
-  const processContent = (text: string) => {
-    contentBuffer += text;
-    while (contentBuffer.includes(MSG_BREAK)) {
-      const idx = contentBuffer.indexOf(MSG_BREAK);
-      const before = contentBuffer.slice(0, idx);
-      if (before.trim()) {
-        onDelta(before);
-      }
-      onNewMessage?.();
-      contentBuffer = contentBuffer.slice(idx + MSG_BREAK.length);
-    }
-    const safeLen = contentBuffer.length - (MSG_BREAK.length - 1);
-    if (safeLen > 0) {
-      onDelta(contentBuffer.slice(0, safeLen));
-      contentBuffer = contentBuffer.slice(safeLen);
-    }
-  };
-
-  const flushContentBuffer = () => {
-    if (contentBuffer.trim()) {
-      while (contentBuffer.includes(MSG_BREAK)) {
-        const idx = contentBuffer.indexOf(MSG_BREAK);
-        const before = contentBuffer.slice(0, idx);
-        if (before.trim()) onDelta(before);
-        onNewMessage?.();
-        contentBuffer = contentBuffer.slice(idx + MSG_BREAK.length);
-      }
-      if (contentBuffer.trim()) {
-        onDelta(contentBuffer);
-      }
-    }
-    contentBuffer = "";
-  };
+  const markers = new MarkerStream(
+    (text) => onDelta(text),
+    () => onNewMessage?.(),
+  );
 
   while (!done) {
     const { done: readerDone, value } = await reader.read();
@@ -113,7 +81,7 @@ export async function streamChat({
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-        if (content) processContent(content);
+        if (content) markers.push(content);
       } catch {
         buf = line + "\n" + buf;
         break;
@@ -131,11 +99,11 @@ export async function streamChat({
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-        if (content) processContent(content);
+        if (content) markers.push(content);
       } catch { /* ignore */ }
     }
   }
 
-  flushContentBuffer();
+  markers.flush();
   onDone();
 }
