@@ -192,11 +192,20 @@ export function useChatMessages(
     setMessages(newMessages);
     setIsStreaming(true);
 
-    await supabase.from("messages").insert({
+    // Persistimos el mensaje del usuario ANTES de arrancar el stream (orden garantizado:
+    // user antes que assistant). Si falla, no streameamos → evitamos un assistant sin user
+    // y no perdemos el mensaje en silencio.
+    const { error: userInsertError } = await supabase.from("messages").insert({
       conversation_id: convId,
       role: "user",
       content: displayContent || fallbackDisplay,
     });
+    if (userInsertError) {
+      console.error("Error guardando mensaje del usuario:", userInsertError);
+      toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+      if (mountedRef.current) setIsStreaming(false);
+      return;
+    }
 
     let assistantContent = "";
     let allAssistantMessages: string[] = [];
@@ -285,7 +294,12 @@ export function useChatMessages(
       );
       setIsTranscribing(false);
 
-      await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent });
+      const { error: userInsertError } = await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent });
+      if (userInsertError) {
+        console.error("Error guardando mensaje de voz del usuario:", userInsertError);
+        toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+        return;
+      }
 
       const msgsForAI: Msg[] = [...messages, { role: "user", content: transcript }];
       setIsStreaming(true);
