@@ -7,7 +7,7 @@
 
 | Parte | Dónde corre | Notas |
 |-------|-------------|-------|
-| **Frontend** (PWA React/Vite) | **VPS via Dokploy** (`server.ignaciopoletti.dev`) | Build con Dockerfile en el repo. Deploy gestionado por Dokploy. |
+| **Frontend** (PWA React/Vite) | **VPS via Dokploy** (`server.ignaciopoletti.dev`) | Build con Dockerfile en el repo. **Auto-deploy con cada push a `main`** (Dokploy app "Doctabot", id `UjIs40YosJu3aFdyPt84R`, proyecto RemaxDocta, env production). Trigger manual: `POST /api/trpc/application.deploy` con `{"json":{"applicationId":"UjIs40YosJu3aFdyPt84R"}}`. |
 | **Backend** (Edge Functions + Postgres) | **Supabase Cloud** | Proyecto **Doctabot** ref `osrphpndujdelfyetoah` (org QiuAutomations, región **sa-east-1**). |
 | **DB** | Postgres de Supabase (`osrphpndujdelfyetoah`) | Esquema en `supabase/migrations/`. 44 migraciones aplicadas al 2026-06-12. |
 
