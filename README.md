@@ -1,73 +1,157 @@
-# Welcome to your Lovable project
+# Alan — Asistente IA para agentes inmobiliarios (RE/MAX Docta)
 
-## Project info
+**Alan** es una PWA con un asistente de IA conversacional para los agentes inmobiliarios de **RE/MAX Docta** (Córdoba, Argentina). Desde un chat, el agente busca propiedades, gestiona su mini-CRM de clientes, agenda visitas en Google Calendar, redacta y envía emails/WhatsApp, y consulta el mercado — todo en lenguaje natural, con voz o texto.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+El asistente (Alan) corre sobre **Gemini** con una capa de herramientas (30 tools), un **supervisor de calidad** que valida cada respuesta, y soporte multimodal (imágenes y PDFs).
 
-## How can I edit this code?
+---
 
-There are several ways of editing your application.
+## Stack
 
-**Use Lovable**
+| Capa | Tecnología |
+|---|---|
+| Frontend | Vite + React 18 + TypeScript + Tailwind + shadcn/ui (Radix) |
+| Routing / estado | React Router v6 + TanStack Query |
+| Backend | Supabase (Auth + Postgres + Edge Functions en Deno) |
+| IA | Gemini API (OpenAI-compatible): `gemini-2.5-pro` (chat) · `gemini-2.5-flash` (supervisor, títulos, transcripción) |
+| Búsqueda web | Firecrawl (search + scrape) |
+| Integraciones | Google Calendar + Gmail (OAuth), n8n (webhooks), Web Push (PWA) |
+| Deploy | Docker (build Vite → nginx) sobre VPS vía Dokploy |
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+---
 
-Changes made via Lovable will be committed automatically to this repo.
+## Arranque local
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Requisitos: Node.js 20+ (el repo se versiona con `bun.lock`, pero el build usa npm).
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+npm install --legacy-peer-deps
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Variables de entorno (frontend)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Vite las hornea en el bundle en build-time. Crear un `.env` local:
 
-**Use GitHub Codespaces**
+```sh
+VITE_SUPABASE_URL=https://<project>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon/publishable key>
+VITE_SUPABASE_PROJECT_ID=<project id>
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+> El `.env` **no se versiona** (está fuera del tracking). Las credenciales reales viven en Dokploy como Environment Variables.
 
-## What technologies are used for this project?
+### Secrets de las Edge Functions
 
-This project is built with:
+Se configuran en Supabase (no en el frontend):
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+GEMINI_API_KEY            # Gemini (chat, supervisor, transcripción, títulos)
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY # acceso admin desde las functions
+SUPABASE_ANON_KEY         # validación de JWT del usuario
+GOOGLE_CLIENT_ID          # OAuth Calendar/Gmail
+GOOGLE_CLIENT_SECRET
+FIRECRAWL_API_KEY         # web_search / scrape_url / portales externos
+N8N_WEBHOOK_URL           # alertas de fallos del supervisor (opcional)
+```
 
-## How can I deploy this project?
+---
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Scripts
 
-## Can I connect a custom domain to my Lovable project?
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Dev server con HMR |
+| `npm run build` | Build de producción |
+| `npm run build:dev` | Build en modo development |
+| `npm run lint` | ESLint |
+| `npm run test` | Tests (Vitest, una corrida) |
+| `npm run test:watch` | Tests en watch |
 
-Yes, you can!
+---
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Estructura
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```
+src/
+  pages/            Rutas (Chat, Clients, Properties, Dashboard, Profile, …)
+  components/       UI (ChatMessage, PropertyCard, … + ui/ de shadcn)
+  hooks/            use-chat-messages, use-audio-recorder, use-push-notifications, …
+  lib/              stream-chat (SSE), property-matching, contact-* (con tests)
+  contexts/         AuthContext
+  integrations/     Supabase client + types (generados)
+  sw.ts             Service worker (PWA + push)
+
+supabase/
+  functions/
+    chat/           ⭐ Núcleo de Alan (ver abajo)
+    transcribe/     Voz → texto (Gemini)
+    scrape-properties/      Ingesta de propiedades
+    google-calendar-auth/   OAuth de Google
+    sync-calendar-event/    Sync de eventos
+    morning-matches/        Matching diario cliente↔propiedad
+    parse-client-import/    Importación de clientes (Excel/CSV)
+    send-push-notification/ Web Push
+    admin-stats/  ·  test-webhook/
+    _shared/        CORS, http, validation compartidos
+  migrations/       Esquema de la base (Postgres)
+```
+
+### El núcleo de Alan (`supabase/functions/chat/`)
+
+La function `chat` es un **orquestador delgado**; la lógica vive en `_shared/`:
+
+| Módulo | Rol |
+|---|---|
+| `prompt.ts` | System prompt + contexto del agente + armado de mensajes multimodales |
+| `tools/definitions.ts` | Schemas de las 30 herramientas |
+| `tools/executor.ts` | Dispatcher que ejecuta cada herramienta |
+| `tools/validators.ts` | Sanitización de inputs |
+| `tools/google.ts` | Helpers de Calendar / Gmail |
+| `auth.ts` | Validación de JWT + perfil del agente |
+| `supervisor.ts` | Supervisor de calidad + loop de retry + logging |
+| `notifications.ts` | Web Push + webhook n8n |
+| `title.ts` | Título automático de la conversación |
+| `sse.ts` | Respuesta por Server-Sent Events |
+
+**Flujo de un turno:** autenticación → armado del prompt con contexto del agente → llamada a Gemini con tools → loop de tool-calls (máx. 5) → supervisor de calidad (con retry si rechaza) → persistencia → respuesta SSE al cliente.
+
+---
+
+## Rutas de la app
+
+| Ruta | Página | Acceso |
+|---|---|---|
+| `/login` | Login (Google OAuth vía Supabase) | público |
+| `/onboarding` | Alta de perfil del agente | autenticado |
+| `/tutorial` | Tutorial inicial | autenticado |
+| `/` | **Chat con Alan** | perfil completo |
+| `/properties` | Listado de propiedades | perfil completo |
+| `/clients` · `/clients/:id` | Mini-CRM | perfil completo |
+| `/dashboard` | Tareas, eventos y matches | perfil completo |
+| `/profile` | Perfil + conexión de Google | perfil completo |
+| `/changelog` | Novedades | perfil completo |
+| `/superadminpanel` | Panel de admin | — |
+
+---
+
+## Deploy
+
+Build multi-stage con Docker: compila el frontend con Vite y lo sirve con **nginx** (config SPA + cache de assets + no-cache del service worker para que la PWA reciba updates). Se despliega en un **VPS vía Dokploy**, que inyecta las `VITE_*` como build args.
+
+```sh
+docker build \
+  --build-arg VITE_SUPABASE_URL=... \
+  --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=... \
+  --build-arg VITE_SUPABASE_PROJECT_ID=... \
+  -t alan .
+```
+
+Las Edge Functions se despliegan por separado en Supabase.
+
+---
+
+## Origen
+
+El proyecto se scaffoldeó inicialmente con Lovable y luego se sacó de esa plataforma: hoy la auth es Google OAuth nativo de Supabase, las URLs de las functions derivan de env, y el deploy es self-hosted en VPS.
