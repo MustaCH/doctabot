@@ -100,7 +100,7 @@ async function getVapidPublicKey(): Promise<string> {
   } catch {
     // fall through
   }
-  _cachedVapidKey = "BBli4ZxvrgXo2eh39AGYKoJz7YpnGyyDDA9akOy4o3588KRSWX7ThpZDERp9vGEjd7dLoSaY3frCCxcta_42QXU";
+  _cachedVapidKey = "BMP92PAdZwTWRt_0CkGLXf3VOoC8dJCG-mizz1i4vnZzTlEYBNo6tYgv5XhA17phjted4yD3zwgFOsICad4Ve5c";
   return _cachedVapidKey!;
 }
 
