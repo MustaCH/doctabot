@@ -33,6 +33,20 @@ export interface StreamTurnResult {
   executedTools: string[];
 }
 
+/**
+ * Sufijo a agregar cuando Gemini corta la respuesta por longitud (finish_reason: "length").
+ * Cierra un <<<DRAFT_*>>> que haya quedado abierto (para que el front no parsee un borrador
+ * a medias) y agrega un aviso visible. Puro y testeable.
+ */
+export function truncationSuffix(content: string): string {
+  const opens = (content.match(/<<<DRAFT_START>>>/g) || []).length;
+  const closes = (content.match(/<<<DRAFT_END>>>/g) || []).length;
+  let suffix = "";
+  if (opens > closes) suffix += "\n<<<DRAFT_END>>>";
+  suffix += "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
+  return suffix;
+}
+
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
   const { resilientAIFetch, executeTool, toolCtx, toolDefinitions } = deps;
   const { messages, emit } = opts;
@@ -90,6 +104,15 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     if (buf.trim()) {
       const { deltas } = drainSSE(buf + "\n");
       for (const d of deltas) applyDelta(d);
+    }
+
+    if (finishReason === "length") {
+      // Respuesta truncada por límite de tokens: cerramos marcadores abiertos y avisamos
+      // en vez de persistir/streamear un borrador o tarjeta a medias.
+      const suffix = truncationSuffix(assistantContent);
+      fullContent += suffix;
+      safeEmit(suffix);
+      break;
     }
 
     if (finishReason === "tool_calls" && toolAccum.size > 0) {

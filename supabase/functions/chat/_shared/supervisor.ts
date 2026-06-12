@@ -46,6 +46,8 @@ export async function runSupervisorEval(params: {
         tool_choice: { type: "function", function: { name: "evaluate_response" } },
         stream: false,
       }),
+      // Corre en background; si Gemini cuelga, abortamos en vez de colgar el waitUntil.
+      signal: AbortSignal.timeout(20_000),
     });
 
   const systemPrompt = `Sos un supervisor de calidad para "Alan", un asistente de IA para agentes inmobiliarios de RE/MAX Docta (Córdoba, Argentina). Tu trabajo es evaluar si la respuesta de Alan es adecuada.

@@ -26,6 +26,7 @@ export async function generateTitle(
         ],
         stream: false,
       }),
+      signal: AbortSignal.timeout(15_000),
     });
     if (titleRes.ok) {
       const titleData = await titleRes.json();

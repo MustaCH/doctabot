@@ -82,12 +82,18 @@ serve(async (req) => {
     const PRIMARY_MODEL = "gemini-2.5-pro";
     const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
+    // Timeout por llamada al modelo: si Gemini cuelga, se aborta (cada iteración del turno
+    // es un fetch nuevo con su propia señal). max_tokens acota la respuesta y hace que
+    // finish_reason:"length" sea significativo (lo maneja streamTurn).
+    const AI_TIMEOUT_MS = 60_000;
+    const AI_MAX_TOKENS = 8192;
 
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
       return fetch(AI_URL, {
         method: "POST",
         headers: aiHeaders,
-        body: JSON.stringify({ ...body, model: PRIMARY_MODEL }),
+        body: JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS }),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       });
     };
 
