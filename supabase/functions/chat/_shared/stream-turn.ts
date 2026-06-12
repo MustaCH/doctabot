@@ -34,17 +34,22 @@ export interface StreamTurnResult {
 }
 
 /**
- * Sufijo a agregar cuando Gemini corta la respuesta por longitud (finish_reason: "length").
- * Cierra un <<<DRAFT_*>>> que haya quedado abierto (para que el front no parsee un borrador
- * a medias) y agrega un aviso visible. Puro y testeable.
+ * Validación mínima de formato: si quedó un <<<DRAFT_START>>> sin su <<<DRAFT_END>>>,
+ * devuelve el cierre faltante (si no, ""). Evita que el front parsee un borrador a medias.
+ * Puro y testeable.
  */
-export function truncationSuffix(content: string): string {
+export function unbalancedDraftClose(content: string): string {
   const opens = (content.match(/<<<DRAFT_START>>>/g) || []).length;
   const closes = (content.match(/<<<DRAFT_END>>>/g) || []).length;
-  let suffix = "";
-  if (opens > closes) suffix += "\n<<<DRAFT_END>>>";
-  suffix += "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
-  return suffix;
+  return opens > closes ? "\n<<<DRAFT_END>>>" : "";
+}
+
+/**
+ * Sufijo a agregar cuando Gemini corta la respuesta por longitud (finish_reason: "length").
+ * Cierra un <<<DRAFT_*>>> que haya quedado abierto y agrega un aviso visible. Puro y testeable.
+ */
+export function truncationSuffix(content: string): string {
+  return unbalancedDraftClose(content) + "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
 }
 
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
@@ -128,7 +133,15 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
-    break; // turno de texto terminado (ya streameado)
+    // Turno de texto terminado (ya streameado). Validación mínima de formato: si el modelo
+    // dejó un <<<DRAFT_START>>> sin cerrar (sin truncación), agregamos el cierre faltante para
+    // que el front no parsee un borrador a medias. Se emite también para no divergir live/persistido.
+    const draftClose = unbalancedDraftClose(assistantContent);
+    if (draftClose) {
+      fullContent += draftClose;
+      safeEmit(draftClose);
+    }
+    break;
   }
 
   return { content: fullContent, executedTools };

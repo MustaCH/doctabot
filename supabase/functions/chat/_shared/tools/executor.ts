@@ -15,6 +15,8 @@ import {
   nextOccurrenceISO,
   todayCordobaISO,
   addDaysISO,
+  wrapUntrustedWebContent,
+  UNTRUSTED_WEB_NOTICE,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -534,9 +536,9 @@ export async function executeTool(
           title: r.title,
           url: r.url,
           description: r.description,
-          content: r.markdown?.slice(0, 2000),
+          content: r.markdown ? wrapUntrustedWebContent(r.markdown.slice(0, 2000)) : "",
         }));
-        return JSON.stringify({ results, total: results.length });
+        return JSON.stringify({ untrusted_content_notice: UNTRUSTED_WEB_NOTICE, results, total: results.length });
       } catch (e) {
         console.error("Web search error:", e);
         return JSON.stringify({ error: "Error al buscar en internet" });
@@ -566,7 +568,8 @@ export async function executeTool(
         return JSON.stringify({
           title: metadata.title || "",
           url: metadata.sourceURL || url,
-          content: content.slice(0, 8000),
+          untrusted_content_notice: UNTRUSTED_WEB_NOTICE,
+          content: wrapUntrustedWebContent(content.slice(0, 8000)),
         });
       } catch (e) {
         console.error("Scrape error:", e);

@@ -28,7 +28,6 @@ import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  const requestStartTime = Date.now();
 
   try {
     const { messages, conversationId } = await req.json();
@@ -207,8 +206,11 @@ serve(async (req) => {
               notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: "", verdict: "error", reason: "empty", score: 0, retryCount: 0 });
             }
 
-            const elapsed = Date.now() - requestStartTime;
-            if (elapsed > 1500 && userId && conversationId && finalContent) {
+            // Push: ya no usamos la heurística de latencia (con streaming real casi todo
+            // turno supera el viejo umbral de 1.5s → push redundante). Disparamos cuando
+            // hay una respuesta real; el service worker decide si MOSTRARLA según el foco
+            // real del usuario (suprime si ya está mirando esta conversación). Ver sw.ts.
+            if (userId && conversationId && finalContent && !streamFailed) {
               sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: finalContent });
             }
           } catch (bgErr) {

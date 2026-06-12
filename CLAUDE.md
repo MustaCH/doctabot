@@ -29,7 +29,7 @@ npm test           # Vitest (una corrida)
 
 2. **Las Edge Functions usan el `service_role` key → bypassean RLS.** Por eso **cada tool filtra manualmente por `.eq("user_id", userId)`**. Si agregás una query a datos del usuario, scopeala por `userId` sí o sí, o exponés datos de otros agentes.
 
-3. **Dos prompts a mantener sincronizados.** El comportamiento de Alan está definido en `_shared/prompt.ts` (system prompt) **y** parcialmente re-descrito en `_shared/supervisor.ts` (prompt del supervisor de calidad). Si cambiás una regla de comportamiento, revisá ambos. (Hay un ticket para unificarlos.)
+3. **Reglas de comportamiento canónicas: una sola fuente.** Los hechos/reglas duras de Alan (marcadores, enums de cliente, confirmación de email, prioridad Docta, contenido web no confiable, etc.) viven en `_shared/alan-facts.ts` (`ALAN_CONTEXT_FACTS`). Tanto el system prompt (`_shared/prompt.ts`) como el supervisor (`_shared/supervisor.ts`) los importan de ahí: para cambiar una regla canónica editás `alan-facts.ts` y se refleja en los dos. La prosa instruccional detallada (el "cómo") sigue viviendo en `prompt.ts`; el supervisor solo evalúa contra los hechos canónicos.
 
 4. **Marcadores de formato que el front parsea — no romper:**
    - `===MSG_BREAK===` → separa la respuesta en burbujas de chat.
@@ -40,7 +40,7 @@ npm test           # Vitest (una corrida)
 
 5. **IA = Gemini directo (endpoint OpenAI-compatible), no Lovable Gateway.** En `chat/index.ts` vas a ver una variable `LOVABLE_API_KEY` que es solo un alias de `GEMINI_API_KEY` (legado). Modelos: `gemini-2.5-pro` para el turno, `gemini-2.5-flash` para supervisor/títulos/transcripción.
 
-6. **El "streaming" hoy es bloqueante** (se espera toda la respuesta + supervisor y recién ahí se streamea cortando por `MSG_BREAK`). Es un punto flaco conocido y hay tickets para rediseñarlo — no lo asumas como streaming real.
+6. **Streaming real, supervisor post-hoc.** El turno se streamea token a token vía `_shared/stream-turn.ts` (driver con tool loop); cada token se reenvía al cliente. El supervisor (`_shared/supervisor.ts`) corre **después** de cerrar el stream, en background (`EdgeRuntime.waitUntil`), y **no bloquea ni reescribe** lo que ve el usuario — solo evalúa y loguea (ver ADR 0001). El catch de `index.ts` (cuando `streamTurn` tira) persiste un mensaje de error estático y no corre el supervisor.
 
 7. **Validación de inputs de tools** centralizada en `_shared/tools/validators.ts`. Reutilizá `sanitizePattern`, `safePositiveInt`, `UUID_REGEX`, `normalizeClientStatus`, etc. en vez de validar a mano.
 
