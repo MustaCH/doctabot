@@ -22,8 +22,8 @@ import { toolDefinitions } from "./_shared/tools/definitions.ts";
 import { executeTool } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
 import { generateTitle } from "./_shared/title.ts";
-import { buildSSEResponse } from "./_shared/sse.ts";
-import { runSupervisorLoop, logSupervisorResult } from "./_shared/supervisor.ts";
+import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
+import { streamTurn } from "./_shared/stream-turn.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
 
 serve(async (req) => {
@@ -73,7 +73,7 @@ serve(async (req) => {
 
     // Build prompt and messages
     const contextualPrompt = buildContextualPrompt(agentName, agentCode);
-    let currentMessages: any[] = [
+    const currentMessages: any[] = [
       { role: "system", content: contextualPrompt },
       ...buildAIMessages(messages),
     ];
@@ -91,149 +91,111 @@ serve(async (req) => {
       });
     };
 
-    // First call – non-streaming to handle tool calls
-    let aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
+    const toolLoopDeps = { resilientAIFetch, executeTool, toolCtx, toolDefinitions };
 
-    if (!aiResponse.ok) {
-      const status = aiResponse.status;
-      if (status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI error: ${status}`);
+    // Primera llamada con stream:true. Validamos el status ANTES de abrir el stream al
+    // cliente para preservar el contrato 429/402 que el front espera por HTTP status.
+    const firstRes = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: true });
+    if (!firstRes.ok) {
+      if (firstRes.status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (firstRes.status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`AI error: ${firstRes.status}`);
     }
 
-    let aiData = await aiResponse.json();
-    let choice = aiData.choices?.[0];
+    // Mensaje del usuario para el supervisor (filtra SILENT THOUGHTS de transcripción).
+    let userMessage = messages[messages.length - 1]?.content ?? "";
+    userMessage = userMessage.replace(/^SILENT THOUGHTS:[\s\S]*?(?=\S)/i, "").trim();
+    if (!userMessage) userMessage = messages[messages.length - 1]?.content ?? "";
 
-    // Tool call loop (max 5 iterations)
-    let iterations = 0;
-    const executedTools: string[] = [];
-    while (choice?.finish_reason === "tool_calls" && iterations < 5) {
-      iterations++;
-      const toolCalls = choice.message.tool_calls;
-      currentMessages.push(choice.message);
-
-      for (const tc of toolCalls) {
-        const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments), toolCtx);
-        currentMessages.push({ role: "tool", tool_call_id: tc.id, content: result });
-        // Track successfully executed tools (no error in result)
-        try {
-          const parsed = JSON.parse(result);
-          if (parsed.success || !parsed.error) {
-            executedTools.push(tc.function.name);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        let clientOpen = true;
+        const emit = (text: string) => {
+          if (!clientOpen) return;
+          try {
+            const chunk = JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: null }] });
+            controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+          } catch {
+            clientOpen = false; // cliente desconectado; streamTurn sigue drenando Gemini
           }
-        } catch { executedTools.push(tc.function.name); }
-      }
+        };
 
-      aiResponse = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: false });
+        let finalContent = "";
+        let streamFailed = false;
+        try {
+          const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes });
+          finalContent = result.content;
+        } catch (err) {
+          console.error("streamTurn error:", err);
+          // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
+          finalContent = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
+          emit(finalContent);
+          streamFailed = true;
+        }
 
-      if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
-      aiData = await aiResponse.json();
-      choice = aiData.choices?.[0];
-    }
+        try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* noop */ }
+        try { controller.close(); } catch { /* noop */ }
 
-    // Auto-generate title after first user message
-    if (conversationId && messages.length === 1 && userId) {
-      generateTitle(messages, choice?.message?.content ?? "", conversationId, supabase, GEMINI_API_KEY);
-    }
+        // Trabajo de fondo: persistencia + supervisor + título + push. Desacoplado del
+        // cliente: corre aunque se haya desconectado.
+        const background = (async () => {
+          try {
+            if (finalContent && conversationId) {
+              const admin = createClient(supabaseUrl, supabaseServiceKey);
+              await admin.from("messages").insert({ conversation_id: conversationId, role: "assistant", content: finalContent });
+              await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+            }
 
-    // ========== SUPERVISOR LAYER ==========
-    let finalContent = choice?.message?.content ?? "";
+            if (conversationId && messages.length === 1 && userId && !streamFailed) {
+              generateTitle(messages, finalContent, conversationId, supabase, GEMINI_API_KEY);
+            }
 
-    if (finalContent) {
-      // Filter out "SILENT THOUGHTS" leaked from transcription models
-      let userMessage = messages[messages.length - 1]?.content ?? "";
-      userMessage = userMessage.replace(/^SILENT THOUGHTS:[\s\S]*?(?=\S)/i, "").trim();
-      if (!userMessage) userMessage = messages[messages.length - 1]?.content ?? "";
+            if (streamFailed) {
+              // El turno falló: no corre el supervisor (no tiene sentido evaluar el mensaje de error).
+              notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: "stream_error", score: 0, retryCount: 0 });
+            } else if (finalContent) {
+              const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY });
+              logSupervisorResult({ supabaseUrl, supabaseServiceKey, conversationId: conversationId || null, userId, userMessage, finalContent, result: supervisorResult });
 
-      const supervisorResult = await runSupervisorLoop({
-        initialContent: finalContent,
-        userMessage,
-        currentMessages,
-        executedTools,
-        apiKey: LOVABLE_API_KEY,
-        resilientAIFetch,
-      });
-      finalContent = supervisorResult.finalContent;
+              const shouldNotify = supervisorResult.verdict === "error" || supervisorResult.verdict === "rejected";
+              if (shouldNotify) {
+                notifyN8nWebhook({
+                  type: supervisorResult.verdict === "error" ? "supervisor_error" : "persistent_rejection",
+                  conversationId: conversationId || null,
+                  userId,
+                  userMessage,
+                  alanResponse: finalContent,
+                  verdict: supervisorResult.verdict,
+                  reason: supervisorResult.reason,
+                  score: supervisorResult.score,
+                  retryCount: supervisorResult.retryCount,
+                });
+              }
+            } else {
+              notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: "", verdict: "error", reason: "empty", score: 0, retryCount: 0 });
+            }
 
-      // Log to supervisor_logs (fire-and-forget)
-      logSupervisorResult({
-        supabaseUrl,
-        supabaseServiceKey,
-        conversationId: conversationId || null,
-        userId,
-        userMessage,
-        finalContent,
-        result: supervisorResult,
-      });
+            const elapsed = Date.now() - requestStartTime;
+            if (elapsed > 1500 && userId && conversationId && finalContent) {
+              sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: finalContent });
+            }
+          } catch (bgErr) {
+            console.error("background task error:", bgErr);
+          }
+        })();
 
-      // Notify n8n webhook on errors or empty responses (fire-and-forget)
-      const shouldNotify = supervisorResult.verdict === "error" || !finalContent.trim() || (supervisorResult.verdict === "rejected" && supervisorResult.retryCount >= 2);
-      if (shouldNotify) {
-        notifyN8nWebhook({
-          type: !finalContent.trim() ? "empty_response" : supervisorResult.verdict === "error" ? "supervisor_error" : "persistent_rejection",
-          conversationId: conversationId || null,
-          userId,
-          userMessage,
-          alanResponse: finalContent,
-          verdict: supervisorResult.verdict,
-          reason: supervisorResult.reason,
-          score: supervisorResult.score,
-          retryCount: supervisorResult.retryCount,
-        });
-      }
-    }
+        // Mantener viva la función para el trabajo de fondo tras cerrar la respuesta.
+        const edgeRuntime = (globalThis as any).EdgeRuntime;
+        if (edgeRuntime?.waitUntil) {
+          edgeRuntime.waitUntil(background);
+        } else {
+          await background; // fallback local/test
+        }
+      },
+    });
 
-    // Return SSE response
-    if (finalContent) {
-      // Persist assistant message to DB BEFORE streaming to client
-      // This ensures the message is saved even if the client disconnects mid-stream
-      if (conversationId) {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        await supabaseAdmin.from("messages").insert({
-          conversation_id: conversationId,
-          role: "assistant",
-          content: finalContent,
-        });
-        await supabaseAdmin.from("conversations").update({
-          updated_at: new Date().toISOString(),
-        }).eq("id", conversationId);
-      }
-
-      // Send push notification if response took >1.5s (fire-and-forget)
-      // Faster responses are assumed to mean the user is actively viewing the chat.
-      const elapsed = Date.now() - requestStartTime;
-      if (elapsed > 1500 && userId && conversationId) {
-        sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: finalContent });
-      }
-      return buildSSEResponse(finalContent);
-    }
-
-    const fallbackResponse = await resilientAIFetch({ messages: currentMessages, stream: false });
-
-    if (!fallbackResponse.ok) throw new Error(`Fallback error: ${fallbackResponse.status}`);
-    const fallbackData = await fallbackResponse.json();
-    const fallbackContent = fallbackData.choices?.[0]?.message?.content || "Lo siento, no pude generar una respuesta. ¿Podés intentar de nuevo?";
-
-    // Persist fallback message
-    if (conversationId) {
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-      await supabaseAdmin.from("messages").insert({
-        conversation_id: conversationId,
-        role: "assistant",
-        content: fallbackContent,
-      });
-      await supabaseAdmin.from("conversations").update({
-        updated_at: new Date().toISOString(),
-      }).eq("id", conversationId);
-
-      // Send push notification for fallback too
-      const elapsed = Date.now() - requestStartTime;
-      if (elapsed > 1500 && userId) {
-        sendPushNotification({ supabaseUrl, supabaseServiceKey, userId, conversationId, content: fallbackContent });
-      }
-    }
-
-    return buildSSEResponse(fallbackContent);
+    return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
   } catch (e) {
     console.error("chat error:", e);
     return new Response(JSON.stringify({ error: "Error al procesar la solicitud" }), {
