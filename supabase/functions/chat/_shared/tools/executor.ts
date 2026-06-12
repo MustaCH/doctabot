@@ -650,8 +650,23 @@ export async function executeTool(
       if (!resolvedPropertyId || !UUID_REGEX.test(resolvedPropertyId)) {
         if (!args.property_title) return JSON.stringify({ error: "Necesito el título/dirección o ID de la propiedad." });
         const searchTitle = sanitizePattern(args.property_title);
-        const { data: props } = await supabase.from("properties").select("id, title, address").or(`title.ilike.%${searchTitle}%,address.ilike.%${searchTitle}%`).limit(5);
-        if (!props || props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
+        const pattern = `%${searchTitle}%`;
+        // OR (title|address) con filtros parametrizados en vez de interpolar el string de .or():
+        // un .ilike() de columna única pasa el valor como parámetro y no parsea comas/paréntesis,
+        // así que no se pueden inyectar condiciones de filtro (ej. "x,user_id.eq.…").
+        const [byTitle, byAddress] = await Promise.all([
+          supabase.from("properties").select("id, title, address").ilike("title", pattern).limit(5),
+          supabase.from("properties").select("id, title, address").ilike("address", pattern).limit(5),
+        ]);
+        const seen = new Set<string>();
+        const props: Array<{ id: string; title: string | null; address: string | null }> = [];
+        for (const p of [...(byTitle.data ?? []), ...(byAddress.data ?? [])]) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          props.push(p);
+          if (props.length >= 5) break;
+        }
+        if (props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
         if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map(p => p.title || p.address).join(", ")}. ¿Cuál querés vincular?`, properties: props });
         resolvedPropertyId = props[0].id;
       }
