@@ -73,7 +73,7 @@ serve(async (req) => {
 
     // Build prompt and messages
     const contextualPrompt = buildContextualPrompt(agentName, agentCode);
-    let currentMessages: any[] = [
+    const currentMessages: any[] = [
       { role: "system", content: contextualPrompt },
       ...buildAIMessages(messages),
     ];
