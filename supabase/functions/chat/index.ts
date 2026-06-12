@@ -122,12 +122,16 @@ serve(async (req) => {
         };
 
         let finalContent = "";
+        let streamFailed = false;
         try {
           const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes });
           finalContent = result.content;
         } catch (err) {
           console.error("streamTurn error:", err);
-          emit("Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?");
+          // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
+          finalContent = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
+          emit(finalContent);
+          streamFailed = true;
         }
 
         try { controller.enqueue(encoder.encode("data: [DONE]\n\n")); } catch { /* noop */ }
@@ -143,11 +147,14 @@ serve(async (req) => {
               await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
             }
 
-            if (conversationId && messages.length === 1 && userId) {
+            if (conversationId && messages.length === 1 && userId && !streamFailed) {
               generateTitle(messages, finalContent, conversationId, supabase, GEMINI_API_KEY);
             }
 
-            if (finalContent) {
+            if (streamFailed) {
+              // El turno falló: no corre el supervisor (no tiene sentido evaluar el mensaje de error).
+              notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: "stream_error", score: 0, retryCount: 0 });
+            } else if (finalContent) {
               const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY });
               logSupervisorResult({ supabaseUrl, supabaseServiceKey, conversationId: conversationId || null, userId, userMessage, finalContent, result: supervisorResult });
 
