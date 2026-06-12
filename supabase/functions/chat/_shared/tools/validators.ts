@@ -116,24 +116,36 @@ export function nextOccurrenceISO(
   return iso;
 }
 
-/** Normalize a datetime string to full ISO format in Argentina time (UTC-3) */
+/**
+ * Implementación ÚNICA y compartida de normalización de datetime a hora de Córdoba (UTC-3).
+ * Usada tanto al crear como al editar eventos (antes había una copia en google.ts con lógica
+ * distinta: date-only fallaba en una y asumía 09:00 en la otra). Casos soportados:
+ *  - con tz (+hh:mm o Z): se parsea tal cual.
+ *  - solo fecha (YYYY-MM-DD): se asume 09:00 hora Córdoba.
+ *  - fecha y hora sin tz ("2026-02-20T16:00" / "2026-02-20 16:00"): se asume Córdoba (-03:00).
+ *  - solo hora ("16:00"): se combina con HOY en Córdoba.
+ */
 export function normalizeDatetime(raw: string): Date | null {
   if (!raw) return null;
-  // Already has timezone info
-  if (raw.includes("+") || raw.endsWith("Z")) {
-    const d = new Date(raw);
+  const s = String(raw).trim();
+  // Already has timezone info (Z o ±hh:mm, incluye offsets negativos)
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Only date (YYYY-MM-DD) → assume 09:00 Córdoba
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(`${s}T09:00:00-03:00`);
     return isNaN(d.getTime()) ? null : d;
   }
   // Has date and time (e.g. "2026-02-20T16:00" or "2026-02-20 16:00")
-  const withTz = raw.replace(" ", "T") + "-03:00";
+  const withTz = s.replace(" ", "T") + "-03:00";
   const d = new Date(withTz);
   if (!isNaN(d.getTime())) return d;
-  // Only time provided (e.g. "16:00") — combine with today in Argentina
-  const nowArg = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  const dateStr = nowArg.toISOString().slice(0, 10);
-  const timeMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  // Only time provided (e.g. "16:00") — combine with today in Córdoba
+  const timeMatch = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (timeMatch) {
-    const d2 = new Date(`${dateStr}T${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}:00-03:00`);
+    const d2 = new Date(`${todayCordobaISO()}T${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}:00-03:00`);
     return isNaN(d2.getTime()) ? null : d2;
   }
   return null;

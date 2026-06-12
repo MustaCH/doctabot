@@ -1,5 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber } from "./validators";
+import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber, normalizeDatetime } from "./validators";
+
+describe("normalizeDatetime (única, compartida create/update)", () => {
+  it("solo fecha (YYYY-MM-DD) asume 09:00 Córdoba — idéntico en crear y editar", () => {
+    const d = normalizeDatetime("2026-02-20");
+    expect(d).not.toBeNull();
+    // 09:00 -03:00 == 12:00 UTC
+    expect(d!.toISOString()).toBe("2026-02-20T12:00:00.000Z");
+  });
+  it("fecha y hora sin tz asume Córdoba (-03:00)", () => {
+    expect(normalizeDatetime("2026-02-20T16:00")!.toISOString()).toBe("2026-02-20T19:00:00.000Z");
+    expect(normalizeDatetime("2026-02-20 16:00")!.toISOString()).toBe("2026-02-20T19:00:00.000Z");
+  });
+  it("respeta tz explícita", () => {
+    expect(normalizeDatetime("2026-02-20T16:00:00Z")!.toISOString()).toBe("2026-02-20T16:00:00.000Z");
+    expect(normalizeDatetime("2026-02-20T16:00:00-05:00")!.toISOString()).toBe("2026-02-20T21:00:00.000Z");
+  });
+  it("solo hora (HH:MM) se combina con hoy en Córdoba", () => {
+    const d = normalizeDatetime("16:00");
+    expect(d).not.toBeNull();
+    expect(d!.toISOString().slice(0, 10)).toBe(todayCordobaISO());
+  });
+  it("vacío o inválido devuelve null", () => {
+    expect(normalizeDatetime("")).toBeNull();
+    expect(normalizeDatetime("no es fecha")).toBeNull();
+  });
+});
 
 describe("safePositiveNumber", () => {
   it("acepta números positivos y cero", () => {
