@@ -15,7 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders, MAX_MESSAGE_LENGTH } from "./_shared/cors.ts";
+import { corsHeaders, MAX_MESSAGE_LENGTH, validateAttachmentSizes } from "./_shared/cors.ts";
 import { authenticateRequest } from "./_shared/auth.ts";
 import { buildContextualPrompt, buildAIMessages } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
@@ -48,6 +48,15 @@ serve(async (req) => {
           });
         }
       }
+    }
+
+    // Tope de tamaño de adjuntos (el límite de content no cubre el base64 de imágenes).
+    const attachmentSizeError = validateAttachmentSizes(messages);
+    if (attachmentSizeError) {
+      return new Response(JSON.stringify({ error: attachmentSizeError }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
