@@ -38,10 +38,13 @@ export function sanitizePattern(val: unknown): string | null {
   return val.replace(/[%_\\]/g, "\\$&").slice(0, 100);
 }
 
-/** Safe positive number validation */
+/** Safe positive number validation. Coerce strings numéricas (el modelo a veces manda
+ *  "50000" en vez de 50000) con el mismo criterio que safePositiveInt, sin descartarlas. */
 export function safePositiveNumber(val: unknown): number | null {
+  if (typeof val !== "number" && typeof val !== "string") return null;
+  if (typeof val === "string" && val.trim() === "") return null;
   const n = Number(val);
-  return typeof val === "number" && isFinite(n) && n >= 0 ? n : null;
+  return isFinite(n) && n >= 0 ? n : null;
 }
 
 /** Safe positive integer validation */

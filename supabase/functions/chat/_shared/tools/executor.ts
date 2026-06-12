@@ -231,8 +231,10 @@ export async function executeTool(
       if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
       if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
       if (typeof args.preferred_zones === "string") updates.preferred_zones = args.preferred_zones.trim().slice(0, 300);
-      if (typeof args.budget_min === "number" && isFinite(args.budget_min) && args.budget_min >= 0) updates.budget_min = args.budget_min;
-      if (typeof args.budget_max === "number" && isFinite(args.budget_max) && args.budget_max >= 0) updates.budget_max = args.budget_max;
+      const budgetMinUpd = safePositiveNumber(args.budget_min);
+      if (budgetMinUpd !== null) updates.budget_min = budgetMinUpd;
+      const budgetMaxUpd = safePositiveNumber(args.budget_max);
+      if (budgetMaxUpd !== null) updates.budget_max = budgetMaxUpd;
       if (VALID_BUDGET_CURRENCIES.includes(args.budget_currency)) updates.budget_currency = args.budget_currency;
       if (typeof args.property_type_interest === "string") updates.property_type_interest = args.property_type_interest.trim().slice(0, 200);
       if (typeof args.source === "string") updates.source = args.source.trim().slice(0, 100);

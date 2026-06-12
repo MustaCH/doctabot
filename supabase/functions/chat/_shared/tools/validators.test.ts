@@ -1,5 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate } from "./validators";
+import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber } from "./validators";
+
+describe("safePositiveNumber", () => {
+  it("acepta números positivos y cero", () => {
+    expect(safePositiveNumber(50000)).toBe(50000);
+    expect(safePositiveNumber(0)).toBe(0);
+    expect(safePositiveNumber(1234.56)).toBe(1234.56);
+  });
+  it("coerce strings numéricas (el modelo a veces manda '50000')", () => {
+    expect(safePositiveNumber("50000")).toBe(50000);
+    expect(safePositiveNumber("  1200.5 ")).toBe(1200.5);
+  });
+  it("rechaza negativos, vacío, no-numérico y tipos raros", () => {
+    expect(safePositiveNumber(-1)).toBeNull();
+    expect(safePositiveNumber("-5")).toBeNull();
+    expect(safePositiveNumber("")).toBeNull();
+    expect(safePositiveNumber("abc")).toBeNull();
+    expect(safePositiveNumber(undefined)).toBeNull();
+    expect(safePositiveNumber(null)).toBeNull();
+    expect(safePositiveNumber(true)).toBeNull();
+    expect(safePositiveNumber({})).toBeNull();
+  });
+});
 
 describe("normalizeClientStatus", () => {
   it("mapea sinónimos de frío a cold (incluye 'inactive')", () => {
