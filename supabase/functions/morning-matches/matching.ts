@@ -120,6 +120,7 @@ export interface PropertyRow {
   address: string | null;
   m2_total: number | null;
   habitaciones: number | null;
+  photo: string | null;
   url: string | null;
 }
 
@@ -132,6 +133,7 @@ export interface ClientRow {
   budget_currency: string | null;
   property_type_interest: string | null;
   client_type: string;
+  status: string | null;
   notes: string | null;
 }
 

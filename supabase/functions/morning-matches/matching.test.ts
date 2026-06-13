@@ -6,7 +6,7 @@ function property(overrides: Partial<PropertyRow>): PropertyRow {
   return {
     id: "p1", zone: null, price: null, currency: null, property_type: null,
     title: null, locality: null, operation: null, address: null,
-    m2_total: null, habitaciones: null, url: null,
+    m2_total: null, habitaciones: null, photo: null, url: null,
     ...overrides,
   };
 }
@@ -14,7 +14,7 @@ function client(overrides: Partial<ClientRow>): ClientRow {
   return {
     id: "c1", full_name: "Cliente", preferred_zones: null,
     budget_min: null, budget_max: null, budget_currency: null,
-    property_type_interest: null, client_type: "buyer", notes: null,
+    property_type_interest: null, client_type: "buyer", status: null, notes: null,
     ...overrides,
   };
 }

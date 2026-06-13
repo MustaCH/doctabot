@@ -14,54 +14,7 @@ import {
   type PropertyRow,
   type ClientRow,
 } from "./matching.ts";
-
-function buildClientSearchSummary(client: ClientRow): string {
-  const parts: string[] = [];
-
-  // Tipo
-  const types = client.property_type_interest
-    ?.split(",").map((t) => t.trim()).filter(Boolean) || [];
-  if (types.length === 0 && client.notes) {
-    const noteTypes = extractTypeFromTitle(client.notes);
-    if (noteTypes.length) types.push(...noteTypes);
-  }
-
-  // Zonas
-  const zones = client.preferred_zones
-    ?.split(",").map((z) => z.trim()).filter(Boolean) || [];
-  if (client.notes) {
-    const noteZones = extractClientZonesFromNotes(client.notes);
-    for (const z of noteZones) {
-      if (!zones.some((ez) => ez.toLowerCase() === z)) zones.push(z);
-    }
-  }
-
-  // Construir texto tipo + zona
-  const typeStr = types.length
-    ? types.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join("/")
-    : null;
-  const zoneStr = zones.length ? zones.join(", ") : null;
-  if (typeStr && zoneStr) parts.push(`${typeStr} en ${zoneStr}`);
-  else if (typeStr) parts.push(typeStr);
-  else if (zoneStr) parts.push(`en ${zoneStr}`);
-
-  // Presupuesto
-  if (client.budget_max) {
-    const curr = client.budget_currency || "USD";
-    parts.push(`Hasta ${curr} ${client.budget_max.toLocaleString("es-AR")}`);
-  } else if (client.budget_min) {
-    // Legacy: single value stored in min = treat as max
-    const curr = client.budget_currency || "USD";
-    parts.push(`Hasta ${curr} ${client.budget_min.toLocaleString("es-AR")}`);
-  }
-
-  // Fallback: si no hay datos estructurados, usar notas
-  if (parts.length === 0 && client.notes) {
-    return `🔍 **Busca:** ${client.notes.substring(0, 100)}`;
-  }
-
-  return parts.length ? `🔍 **Busca:** ${parts.join(" · ")}` : "";
-}
+import { buildClientSearchSummary, formatPropertyLine } from "./format.ts";
 
 function buildSellerSummary(seller: ClientRow): string {
   const parts: string[] = [];
@@ -111,19 +64,6 @@ function formatBuyerLine(buyer: ClientRow): string {
   return lines.join("\n");
 }
 
-function formatPropertyLine(p: PropertyRow): string {
-  const lines: string[] = [];
-  if (p.title) lines.push(`🏠 **${p.title}**`);
-  if (p.price) lines.push(`💰 ${p.currency || "USD"} ${p.price.toLocaleString("es-AR")}`);
-  if (p.address) lines.push(`📍 ${p.address}`);
-  const surfaceParts: string[] = [];
-  if (p.m2_total) surfaceParts.push(`${p.m2_total} m²`);
-  if (p.habitaciones) surfaceParts.push(`${p.habitaciones} hab.`);
-  if (surfaceParts.length) lines.push(`📐 ${surfaceParts.join(" · ")}`);
-  if (p.url) lines.push(`🔗 [Ver propiedad](${p.url})`);
-  return lines.join("\n");
-}
-
 // ---- Main handler ----
 
 serve(async (req) => {
@@ -139,7 +79,7 @@ serve(async (req) => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: newProperties, error: propErr } = await admin
       .from("properties")
-      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, habitaciones, url")
+      .select("id, zone, price, currency, property_type, title, locality, operation, address, m2_total, habitaciones, photo, url")
       .or(`created_at.gte.${since},last_seen_at.gte.${since}`)
       .limit(500);
 
@@ -169,7 +109,7 @@ serve(async (req) => {
       // 3. Get this user's buyer/both clients
       const { data: clients } = await admin
         .from("clients")
-        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
+        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, status, notes")
         .eq("user_id", userId)
         .eq("is_client", true)
         .neq("client_type", "seller");
