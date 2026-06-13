@@ -1,7 +1,7 @@
 # Infraestructura — doctabot (Alan)
 
 > Dueño: **DevOps** (`/devops`). Fuente única de verdad de **cómo se deploya, dónde corre, qué env vars necesita y qué hacer cuando algo se rompe**.
-> Última actualización: 2026-06-12.
+> Última actualización: 2026-06-13.
 
 ## Hosting
 
@@ -82,6 +82,9 @@ Leídos en runtime con `Deno.env.get(...)`. **Nunca en el repo.** Necesarios par
   - Generar una VAPID keypair (si hace falta a futuro): `node` con `crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'})` → public = base64url(`0x04`||x||y) (65 bytes), private = jwk.d (32 bytes). **Nunca imprimir la private**; setear con `supabase secrets set --env-file`.
 - ℹ️ **"No me llegó el push" puede ser supresión intencional (desde 2026-06-12, edge `chat` v5 + SW).** El backend (`chat/index.ts`) ahora dispara el push siempre que hay respuesta real (se eliminó la heurística `elapsed > 1.5s`); **quién decide MOSTRARLO es el service worker** (`src/sw.ts` → `isViewingConversation` de [push-visibility.ts](../src/lib/push-visibility.ts)). Si el usuario tiene una ventana **visible mirando esa misma conversación**, el SW **suprime** la notificación a propósito (no es bug — evita push redundante con lo que ya ve en pantalla). Se muestra si la app está en background/lock o el usuario está en otra conversación. Al debuggear: si `send-push-notification` devolvió 200 pero "no llegó", chequear si el cliente estaba en foco en esa conversación. La entrega real se loguea en `push_delivery_logs`; la supresión es client-side y **no** deja rastro en esa tabla.
 - 🟠 **Security advisors (DB):** varias funciones `SECURITY DEFINER` (`admin_*`, `has_role`, `validate_invitation_code*`, `cleanup_old_logs`) son ejecutables por `anon`/`authenticated` vía RPC. Y "leaked password protection" está OFF en Auth. Heredados del clone. Revisar con Architect si amerita endurecer (revoke EXECUTE / SECURITY INVOKER).
+- ✅ **`morning-matches` v3 deployado 2026-06-13** — fix del cross-match de municipios (bug 86aj165ed). La lógica de matching se extrajo de `index.ts` a `morning-matches/matching.ts` (pura, unit-testeada en `matching.test.ts`) y se portó el fix de stopwords de zona. Deploy: `supabase functions deploy morning-matches --project-ref osrphpndujdelfyetoah` (v2→v3, `verify_jwt` true). El build de Deno pasó limpio (valida lo que no se puede `deno check` en local).
+- 🔁 **Runbook "commit ≠ deploy":** un commit/push **NO** deploya edge functions — Dokploy solo redeploya el front. Si un fix de edge function "no aparece en prod", correr `supabase functions deploy <slug> --project-ref osrphpndujdelfyetoah` y verificar con `supabase functions list` (o MCP `list_edge_functions`) que sube la `version`.
+- ℹ️ **Rate-limiting del chat confirmado en prod (2026-06-13):** la migración `20260612130000_chat_rate_limiting` figura aplicada (`list_migrations`), así que `check_chat_rate_limit` existe y el gate **no es un no-op** (era un riesgo porque el gate es fail-open).
 
 ## Monitoreo
 
