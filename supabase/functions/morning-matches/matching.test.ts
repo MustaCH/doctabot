@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findMatchReasons, type PropertyRow, type ClientRow } from "./matching";
+import { findMatchReasons, minReasonsFor, type PropertyRow, type ClientRow } from "./matching";
 
 /** Property/Client mínimos para los tests de matching de zona por notas. */
 function property(overrides: Partial<PropertyRow>): PropertyRow {
@@ -38,5 +38,22 @@ describe("findMatchReasons — zona por notas no cruza municipios", () => {
     const reasons = findMatchReasons(prop, cli);
 
     expect(reasons.some((r) => r.startsWith("📍"))).toBe(true);
+  });
+});
+
+describe("minReasonsFor (umbral solo-zona)", () => {
+  it("cliente solo-zona (solo preferred_zones, sin tipo ni budget) alcanza con 1 reason", () => {
+    expect(minReasonsFor({ preferred_zones: "Nueva Córdoba" })).toBe(1);
+  });
+  it("cliente con tipo cargado exige 2", () => {
+    expect(minReasonsFor({ preferred_zones: "Centro", property_type_interest: "Departamento" })).toBe(2);
+  });
+  it("cliente con budget cargado exige 2", () => {
+    expect(minReasonsFor({ preferred_zones: "Centro", budget_max: 100000 })).toBe(2);
+    expect(minReasonsFor({ preferred_zones: "Centro", budget_min: 50000 })).toBe(2);
+  });
+  it("cliente sin zona NO es solo-zona → exige 2", () => {
+    expect(minReasonsFor({ property_type_interest: "Casa" })).toBe(2);
+    expect(minReasonsFor({})).toBe(2);
   });
 });

@@ -11,6 +11,7 @@ import {
   extractClientZonesFromNotes,
   findMatchReasons,
   findSellerBuyerMatchReasons,
+  minReasonsFor,
   type PropertyRow,
   type ClientRow,
 } from "./matching.ts";
@@ -62,6 +63,12 @@ function formatBuyerLine(buyer: ClientRow): string {
   if (summary) lines.push(summary);
   if ((buyer as any).phone) lines.push(`📞 ${(buyer as any).phone}`);
   return lines.join("\n");
+}
+
+/** Prioridad por temperatura: mostrar primero los más calientes en los nombres truncados
+ *  del push (hot > warm > cold). No suprime ninguno, solo ordena. Ver ticket 86aj1f13j. */
+function tempRank(status: string | null | undefined): number {
+  return status === "hot" ? 0 : status === "warm" ? 1 : 2;
 }
 
 // ---- Main handler ----
@@ -135,7 +142,8 @@ serve(async (req) => {
           if (notifiedSet.has(`${client.id}:${prop.id}`)) continue;
 
           const reasons = findMatchReasons(prop, client);
-          if (reasons.length >= 2) {
+          // Umbral por cliente: solo-zona entra con 1, el resto exige 2 (ver minReasonsFor).
+          if (reasons.length >= minReasonsFor(client)) {
             if (!clientMatches.has(client.id)) {
               clientMatches.set(client.id, { client, properties: [] });
             }
@@ -216,23 +224,46 @@ serve(async (req) => {
           .update({ updated_at: new Date().toISOString() })
           .eq("id", convId);
 
-        // Record notified matches to avoid duplicates
-        const notifyRecords = matchedProps.slice(0, 5).map(({ prop }) => ({
+        // Record notified matches to avoid duplicates + crear el vínculo estructurado en
+        // client_properties (status 'sugerida') para cerrar el loop "Alan ACTÚA": el match
+        // entra a list_client_properties y al pipeline de estados. ignoreDuplicates:true →
+        // NO pisa una ficha ya movida a enviada/visitada. Ver ticket 86aj1f13j.
+        const shown = matchedProps.slice(0, 5);
+        const notifyRecords = shown.map(({ prop }) => ({
           user_id: userId,
           client_id: clientId,
           property_id: prop.id,
         }));
-        await admin.from("notified_matches").upsert(notifyRecords, {
-          onConflict: "user_id,client_id,property_id",
-          ignoreDuplicates: true,
-        });
+        const clientPropertyRecords = shown.map(({ prop, reasons }) => ({
+          user_id: userId,
+          client_id: clientId,
+          property_id: prop.id,
+          status: "sugerida",
+          notes: `Match automático (${new Date().toISOString().slice(0, 10)}): ${reasons.join(", ")}`,
+        }));
+        await Promise.all([
+          admin.from("notified_matches").upsert(notifyRecords, {
+            onConflict: "user_id,client_id,property_id",
+            ignoreDuplicates: true,
+          }),
+          admin.from("client_properties").upsert(clientPropertyRecords, {
+            onConflict: "client_id,property_id",
+            ignoreDuplicates: true,
+          }),
+        ]);
 
         totalMatches++;
       }
 
       // 6. Send push notification to user
       if (clientMatches.size > 0) {
-        const clientNames = [...clientMatches.values()].map((m) => m.client.full_name).slice(0, 3);
+        // El push se dispara para clientes de CUALQUIER status (cold incluido: un match nuevo
+        // es la excusa para revivir el lead). Solo ordenamos hot>warm>cold para que los 3
+        // nombres truncados muestren primero los más calientes. Ver ticket 86aj1f13j.
+        const clientNames = [...clientMatches.values()]
+          .sort((a, b) => tempRank(a.client.status) - tempRank(b.client.status))
+          .map((m) => m.client.full_name)
+          .slice(0, 3);
         const extra = clientMatches.size > 3 ? ` y ${clientMatches.size - 3} más` : "";
 
         try {
@@ -259,7 +290,7 @@ serve(async (req) => {
       // 7. Get this user's seller clients
       const { data: sellers } = await admin
         .from("clients")
-        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes")
+        .select("id, full_name, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, client_type, notes, status")
         .eq("user_id", userId)
         .eq("is_client", true)
         .eq("client_type", "seller");
@@ -294,7 +325,9 @@ serve(async (req) => {
               if (sellerNotifiedSet.has(`${seller.id}:${buyer.id}`)) continue;
 
               const reasons = findSellerBuyerMatchReasons(seller, buyer);
-              if (reasons.length >= 2) {
+              // Mismo criterio que buyer→propiedad, sobre el seller (la entidad que se notifica):
+              // seller solo-zona entra con 1 reason, el resto exige 2.
+              if (reasons.length >= minReasonsFor(seller)) {
                 matchedBuyers.push({ buyer, reasons });
               }
             }
@@ -381,7 +414,8 @@ serve(async (req) => {
           // Push notification for seller matches
           if (sellerMatchCount > 0) {
             const sellerNames = (sellers as ClientRow[])
-              .filter((s) => true)
+              .slice()
+              .sort((a, b) => tempRank(a.status) - tempRank(b.status))
               .map((s) => s.full_name)
               .slice(0, 3);
             const extra = sellerMatchCount > 3 ? ` y ${sellerMatchCount - 3} más` : "";

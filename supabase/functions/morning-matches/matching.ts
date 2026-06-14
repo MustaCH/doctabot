@@ -206,6 +206,30 @@ export function findSellerBuyerMatchReasons(seller: ClientRow, buyer: ClientRow)
   return reasons;
 }
 
+/** Umbral por defecto de reasons para notificar un match. */
+export const MIN_MATCH_REASONS = 2;
+
+/**
+ * Umbral de reasons para que un cliente sea elegible para notificación.
+ *
+ * Un cliente "solo-zona" — tiene `preferred_zones` cargada pero NO `property_type_interest`
+ * ni budget — alcanza con 1 reason (la zona matcheó), porque para ese cliente la zona es
+ * todo lo que pidió. Antes el umbral fijo de 2 silenciaba estas fichas (las más comunes).
+ * El resto (con tipo o budget) sigue exigiendo MIN_MATCH_REASONS. Ver ticket 86aj1f13j.
+ */
+export function minReasonsFor(client: {
+  preferred_zones?: string | null;
+  property_type_interest?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+}): number {
+  const hasZone = !!(client.preferred_zones && client.preferred_zones.trim());
+  const hasType = !!(client.property_type_interest && client.property_type_interest.trim());
+  const hasBudget = !!(client.budget_min || client.budget_max);
+  if (hasZone && !hasType && !hasBudget) return 1;
+  return MIN_MATCH_REASONS;
+}
+
 export function findMatchReasons(property: PropertyRow, client: ClientRow): string[] {
   const effectiveZone =
     property.zone
