@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAIMessages } from "./prompt";
+import { buildAIMessages, buildActiveClientBlock } from "./prompt";
 
 describe("buildAIMessages", () => {
   it("mensaje de texto plano pasa sin cambios", () => {
@@ -37,5 +37,50 @@ describe("buildAIMessages", () => {
       { role: "user", content: "", attachments: [{ type: "image", base64: "AAAA", mimeType: "image/png" }] },
     ]);
     expect(out[0].content).toContainEqual({ type: "text", text: "Analizá esta imagen y describí lo que ves." });
+  });
+});
+
+describe("buildActiveClientBlock", () => {
+  it("sin cliente (conversación no vinculada o sin conversationId) no inyecta nada", () => {
+    expect(buildActiveClientBlock(null)).toBe("");
+    expect(buildActiveClientBlock(undefined)).toBe("");
+    expect(buildActiveClientBlock({})).toBe("");
+    expect(buildActiveClientBlock({ full_name: "" })).toBe("");
+  });
+
+  it("conversación vinculada incluye el bloque con nombre, estado y tipo siempre", () => {
+    const block = buildActiveClientBlock({ full_name: "María González", status: "hot", client_type: "buyer" });
+    expect(block).toContain("CLIENTE ACTIVO EN ESTA CONVERSACIÓN");
+    expect(block).toContain("María González");
+    expect(block).toContain("hot");
+    expect(block).toContain("buyer");
+    // instrucción de no re-preguntar
+    expect(block).toMatch(/NO vuelvas a preguntar/i);
+  });
+
+  it("solo incluye los campos no-null", () => {
+    const block = buildActiveClientBlock({
+      full_name: "Juan Pérez",
+      status: "warm",
+      client_type: "both",
+      phone: "+5493511234567",
+      preferred_zones: "Nueva Córdoba, Centro",
+      budget_max: 120000,
+      budget_currency: "USD",
+      property_type_interest: "Departamento 2 amb",
+    });
+    expect(block).toContain("+5493511234567");
+    expect(block).toContain("Nueva Córdoba, Centro");
+    expect(block).toContain("USD");
+    expect(block).toContain("Departamento 2 amb");
+    // campos ausentes no aparecen
+    expect(block).not.toContain("Email:");
+    expect(block).not.toContain("Cumpleaños:");
+    expect(block).not.toContain("Empresa");
+  });
+
+  it("renderiza presupuesto como rango cuando hay min y max", () => {
+    const block = buildActiveClientBlock({ full_name: "Ana", budget_min: 80000, budget_max: 120000, budget_currency: "USD" });
+    expect(block).toMatch(/Presupuesto: USD 80\.000.120\.000/);
   });
 });

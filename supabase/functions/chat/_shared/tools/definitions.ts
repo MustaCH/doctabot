@@ -1,4 +1,5 @@
 // Tool definitions for the AI Gateway (OpenAI-compatible function-calling format)
+import { CLIENT_EVENT_TYPES, CLIENT_EVENT_RECURRENCES } from "../alan-facts.ts";
 
 export const toolDefinitions = [
   {
@@ -34,7 +35,7 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "compare_properties",
-      description: "Comparar propiedades por sus IDs. Devuelve una tabla comparativa.",
+      description: "Comparar 2+ propiedades lado a lado por sus dimensiones (precio, m², habitaciones, baños, zona, precio por m²). Ideal para ayudar al cliente a decidir y manejar objeciones con datos. Devuelve los datos para armar una tabla comparativa.",
       parameters: {
         type: "object",
         properties: {
@@ -94,7 +95,7 @@ export const toolDefinitions = [
           full_name: { type: "string", description: "Nombre completo del cliente (requerido)" },
           phone: { type: "string", description: "Teléfono del cliente" },
           email: { type: "string", description: "Email del cliente" },
-          notes: { type: "string", description: "Notas libres sobre el cliente" },
+          notes: { type: "string", description: "Perfil descriptivo ESTABLE del cliente (ej. 'matrimonio con 2 hijos, médico'). NO usar para tareas/recordatorios ni cosas a retomar — eso va a create_client_note." },
           status: { type: "string", description: "Estado: hot (caliente/interesado, default), warm (tibio/en seguimiento), cold (frío/sin actividad)" },
           client_type: { type: "string", description: "Tipo: buyer (compra/alquila, default), seller (vende/alquila su propiedad), both" },
           birthday: { type: "string", description: "Fecha de cumpleaños formato YYYY-MM-DD" },
@@ -124,7 +125,7 @@ export const toolDefinitions = [
           full_name: { type: "string", description: "Nuevo nombre completo" },
           phone: { type: "string", description: "Nuevo teléfono" },
           email: { type: "string", description: "Nuevo email" },
-          notes: { type: "string", description: "Nuevas notas" },
+          notes: { type: "string", description: "Perfil descriptivo ESTABLE del cliente. NO usar para tareas/recordatorios ni cosas a retomar — eso va a create_client_note." },
           status: { type: "string", description: "Nuevo estado: hot (caliente), warm (tibio), cold (frío)" },
           client_type: { type: "string", description: "Tipo: buyer, seller, both" },
           birthday: { type: "string", description: "Cumpleaños formato YYYY-MM-DD" },
@@ -162,7 +163,7 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "get_client",
-      description: "Obtener el perfil completo de un cliente con su historial de conversaciones vinculadas.",
+      description: "Obtener el perfil completo (ficha 360) de un cliente: datos, historial de conversaciones, propiedades vinculadas, tareas pendientes y próximos eventos/vencimientos.",
       parameters: {
         type: "object",
         properties: {
@@ -252,7 +253,7 @@ export const toolDefinitions = [
         properties: {
           to: { type: "string", description: "Email del destinatario" },
           subject: { type: "string", description: "Asunto del email" },
-          body: { type: "string", description: "Cuerpo del email (texto plano o HTML básico)" },
+          body: { type: "string", description: "Cuerpo del email en TEXTO PLANO, NO uses HTML (se envía como text/plain)." },
           cc: { type: "string", description: "Email para copia (CC), opcional" },
         },
         required: ["to", "subject", "body"],
@@ -345,7 +346,7 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "search_external_portals",
-      description: "Buscar propiedades en portales inmobiliarios externos (ZonaProp y ArgentProp). Devuelve URLs de propiedades encontradas en esos portales.",
+      description: "Buscar propiedades en portales inmobiliarios externos (ZonaProp y ArgenProp). Devuelve URLs de propiedades encontradas en esos portales.",
       parameters: {
         type: "object",
         properties: {
@@ -416,16 +417,18 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "update_client_property",
-      description: "Actualizar el estado o las notas de una propiedad vinculada a un cliente.",
+      description: "Actualizar el estado o las notas de una propiedad YA vinculada a un cliente. Podés pasar client_id/property_id si los tenés, o client_name/property_title para que se resuelvan automáticamente.",
       parameters: {
         type: "object",
         properties: {
-          client_id: { type: "string", description: "ID del cliente" },
-          property_id: { type: "string", description: "ID de la propiedad" },
+          client_id: { type: "string", description: "ID del cliente (opcional si pasás client_name)" },
+          client_name: { type: "string", description: "Nombre del cliente para resolver su ID automáticamente" },
+          property_id: { type: "string", description: "ID de la propiedad (opcional si pasás property_title)" },
+          property_title: { type: "string", description: "Título o dirección de la propiedad para resolver su ID automáticamente" },
           status: { type: "string", description: "Nuevo estado: sugerida, enviada, visitada, descartada" },
           notes: { type: "string", description: "Nuevas notas" },
         },
-        required: ["client_id", "property_id"],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -440,10 +443,10 @@ export const toolDefinitions = [
         properties: {
           client_id: { type: "string", description: "ID del cliente" },
           client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
-          event_type: { type: "string", description: "Tipo: birthday, purchase_anniversary, contract_expiry, followup, custom" },
+          event_type: { type: "string", description: `Tipo: ${CLIENT_EVENT_TYPES.join(", ")}` },
           title: { type: "string", description: "Título del evento (ej: 'Cumpleaños de María González')" },
           event_date: { type: "string", description: "Fecha del evento en formato YYYY-MM-DD" },
-          recurrence: { type: "string", description: "Recurrencia: yearly (default), once, monthly" },
+          recurrence: { type: "string", description: `Recurrencia: ${CLIENT_EVENT_RECURRENCES.join(", ")} (yearly = default)` },
           notes: { type: "string", description: "Notas adicionales (opcional)" },
         },
         required: ["title", "event_date"],
@@ -485,7 +488,7 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "create_client_note",
-      description: "Crear una nota o tarea pendiente para un cliente. Usar cuando el agente quiera dejar un recordatorio, una observación o una acción pendiente sobre un cliente.",
+      description: "Crear una nota o tarea pendiente ACCIONABLE para un cliente. Es el almacén correcto para todo lo que haya que recordar, retomar o marcar como hecho (a diferencia del campo notes del cliente, que es solo perfil estable). is_action=true para tareas, false para observaciones puntuales. Aparece en el dashboard.",
       parameters: {
         type: "object",
         properties: {

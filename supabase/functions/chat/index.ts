@@ -17,7 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders, MAX_MESSAGE_LENGTH, validateAttachmentSizes } from "./_shared/cors.ts";
 import { authenticateRequest } from "./_shared/auth.ts";
-import { buildContextualPrompt, buildAIMessages } from "./_shared/prompt.ts";
+import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
 import { executeTool } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
@@ -95,10 +95,32 @@ serve(async (req) => {
       getCalendarToken: () => getValidCalendarToken(supabase, userId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
     };
 
+    // Cliente vinculado a la conversación: lo releemos UNA vez (join) en el critical path
+    // para que Alan no arranque ciego (keystone 86aj1f0vm). Scopeado por user_id (service_role
+    // bypassa RLS). Fail-open: si no hay client_id, la query falla o no hay cliente, no se
+    // inyecta nada y el chat sigue normal.
+    let activeClientBlock = "";
+    if (conversationId) {
+      try {
+        const { data: conv } = await supabase
+          .from("conversations")
+          .select("client_id, clients(full_name, status, client_type, phone, email, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, birthday, company)")
+          .eq("id", conversationId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (conv?.client_id && conv.clients) {
+          activeClientBlock = buildActiveClientBlock(conv.clients as any);
+        }
+      } catch (e) {
+        console.error("active client lookup error:", e);
+      }
+    }
+
     // Build prompt and messages
     const contextualPrompt = buildContextualPrompt(agentName, agentCode);
+    const systemContent = activeClientBlock ? `${contextualPrompt}\n\n${activeClientBlock}` : contextualPrompt;
     const currentMessages: any[] = [
-      { role: "system", content: contextualPrompt },
+      { role: "system", content: systemContent },
       ...buildAIMessages(messages),
     ];
 
@@ -136,6 +158,16 @@ serve(async (req) => {
     let userMessage = messages[messages.length - 1]?.content ?? "";
     userMessage = userMessage.replace(/^SILENT THOUGHTS:[\s\S]*?(?=\S)/i, "").trim();
     if (!userMessage) userMessage = messages[messages.length - 1]?.content ?? "";
+
+    // Contexto del turno anterior (penúltimo user + último assistant) para que el supervisor
+    // interprete follow-ups ("sí, dale", "mandáselo") en contexto. Solo con historial. Ver 86aj1f1up.
+    const asText = (c: any): string => typeof c === "string" ? c : Array.isArray(c) ? c.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join(" ") : "";
+    const priorContext = messages.length > 1
+      ? {
+          user: asText([...messages].slice(0, -1).reverse().find((m: any) => m.role === "user")?.content),
+          assistant: asText([...messages].reverse().find((m: any) => m.role === "assistant")?.content),
+        }
+      : null;
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -203,13 +235,32 @@ serve(async (req) => {
               // El turno falló: no corre el supervisor (no tiene sentido evaluar el mensaje de error).
               notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: "stream_error", score: 0, retryCount: 0 });
             } else if (finalContent) {
-              const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY });
+              const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY, executedTools, priorContext });
               logSupervisorResult({ supabaseUrl, supabaseServiceKey, conversationId: conversationId || null, userId, userMessage, finalContent, result: supervisorResult });
 
               const shouldNotify = supervisorResult.verdict === "error" || supervisorResult.verdict === "rejected";
               if (shouldNotify) {
                 notifyN8nWebhook({
                   type: supervisorResult.verdict === "error" ? "supervisor_error" : "persistent_rejection",
+                  conversationId: conversationId || null,
+                  userId,
+                  userMessage,
+                  alanResponse: finalContent,
+                  verdict: supervisorResult.verdict,
+                  reason: supervisorResult.reason,
+                  score: supervisorResult.score,
+                  retryCount: supervisorResult.retryCount,
+                });
+              } else if (
+                // Respuesta aprobada pero mediocre: alertamos para que la franja media no pase
+                // silenciosa. Umbral configurable (default 5). Ver ticket 86aj1f157.
+                supervisorResult.verdict === "approved" &&
+                typeof supervisorResult.score === "number" &&
+                supervisorResult.score > 0 &&
+                supervisorResult.score <= parseInt(Deno.env.get("LOW_QUALITY_THRESHOLD") ?? "5", 10)
+              ) {
+                notifyN8nWebhook({
+                  type: "low_quality",
                   conversationId: conversationId || null,
                   userId,
                   userMessage,

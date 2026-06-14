@@ -151,7 +151,8 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                           <span className="shrink-0 text-xs" title={c.conversation_type}>
                             {c.conversation_type === "search" ? "🔍" :
                              c.conversation_type === "email" ? "✉️" :
-                             c.conversation_type === "followup" ? "🔔" : "💬"}
+                             c.conversation_type === "followup" ? "🔔" :
+                             c.conversation_type === "proactive_match" ? "🎯" : "💬"}
                           </span>
                         )}
                         <p className="truncate text-sm font-medium">{c.title}</p>

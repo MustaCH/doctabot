@@ -310,27 +310,33 @@ Deno.serve(async (req) => {
       since.setDate(since.getDate() - 30);
       const sinceISO = since.toISOString();
 
-      const [allRes, approvedRes, rejectedRes, errorRes] = await Promise.all([
+      const [allRes, approvedRes, rejectedRes, errorRes, unevaluatedRes] = await Promise.all([
         supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }),
         supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "approved"),
         supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "rejected"),
         supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "error"),
+        supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "unevaluated"),
       ]);
 
       const { data: scoreData } = await supabaseAdmin.from("supervisor_logs").select("score").not("score", "is", null);
       const scores = (scoreData ?? []).map((r: any) => r.score).filter((s: number) => s > 0);
       const avgScore = scores.length > 0 ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
 
+      // Conteo por categoría (loop de mejora agregable). Ver ticket 86aj1f1up.
+      const { data: catData } = await supabaseAdmin.from("supervisor_logs").select("category").not("category", "is", null);
+      const byCategory: Record<string, number> = {};
+      (catData ?? []).forEach((r: any) => { if (r.category) byCategory[r.category] = (byCategory[r.category] ?? 0) + 1; });
+
       const { data: timeData } = await supabaseAdmin
         .from("supervisor_logs")
         .select("verdict, created_at")
         .gte("created_at", sinceISO);
 
-      const dailyMap: Record<string, { approved: number; rejected: number; error: number }> = {};
+      const dailyMap: Record<string, { approved: number; rejected: number; error: number; unevaluated: number }> = {};
       (timeData ?? []).forEach((r: any) => {
         const d = r.created_at.slice(0, 10);
-        if (!dailyMap[d]) dailyMap[d] = { approved: 0, rejected: 0, error: 0 };
-        const v = r.verdict as "approved" | "rejected" | "error";
+        if (!dailyMap[d]) dailyMap[d] = { approved: 0, rejected: 0, error: 0, unevaluated: 0 };
+        const v = r.verdict as "approved" | "rejected" | "error" | "unevaluated";
         if (dailyMap[d][v] !== undefined) dailyMap[d][v]++;
       });
 
@@ -339,7 +345,9 @@ Deno.serve(async (req) => {
         approved: approvedRes.count ?? 0,
         rejected: rejectedRes.count ?? 0,
         errors: errorRes.count ?? 0,
+        unevaluated: unevaluatedRes.count ?? 0,
         avgScore: Math.round(avgScore * 10) / 10,
+        byCategory,
         daily: dailyMap,
       });
     }
@@ -348,7 +356,7 @@ Deno.serve(async (req) => {
     if (action === "supervisor-logs") {
       let query = supabaseAdmin
         .from("supervisor_logs")
-        .select("id, conversation_id, user_id, user_message, alan_response, verdict, rejection_reason, score, retry_count, latency_ms, created_at", { count: "exact" })
+        .select("id, conversation_id, user_id, user_message, alan_response, verdict, rejection_reason, score, category, retry_count, latency_ms, created_at", { count: "exact" })
         .order("created_at", { ascending: false });
 
       if (body.verdict) query = query.eq("verdict", body.verdict);

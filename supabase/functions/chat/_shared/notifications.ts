@@ -25,14 +25,14 @@ export function sendPushNotification(params: {
 }
 
 export function notifyN8nWebhook(params: {
-  type: "empty_response" | "supervisor_error" | "persistent_rejection";
+  type: "empty_response" | "supervisor_error" | "persistent_rejection" | "low_quality";
   conversationId: string | null;
   userId: string;
   userMessage: string;
   alanResponse: string;
   verdict: string;
   reason: string;
-  score: number;
+  score: number | null;
   retryCount: number;
 }): void {
   const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");

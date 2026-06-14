@@ -21,6 +21,7 @@ import {
   neutralizeControlMarkers,
   sanitizeExternalPortalResult,
   normalizeOperation,
+  stripChatMarkers,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -28,6 +29,7 @@ import {
   parseEventDates,
   buildMimeEmail,
 } from "./google.ts";
+import { CLIENT_EVENT_TYPES, CLIENT_EVENT_RECURRENCES } from "../alan-facts.ts";
 
 export async function executeTool(
   name: string,
@@ -103,6 +105,9 @@ export async function executeTool(
       let totalCount = countResult.count ?? 0;
       let data = dataResult.data;
       let error = dataResult.error;
+      // Cuando los resultados provienen de un reintento por título (no por zona/localidad exacta),
+      // lo etiquetamos para que Alan lo aclare en vez de presentarlo como match exacto. Ver 86aj1f1w6.
+      let titleFallbackTerm: string | null = null;
 
       // Fallback: if locality was provided but got 0 results, retry searching in title
       if (!error && (!data || data.length === 0) && locality && !titleSearch) {
@@ -119,6 +124,7 @@ export async function executeTool(
           totalCount = fbCountRes.count ?? 0;
           data = fbDataRes.data;
           error = fbDataRes.error;
+          titleFallbackTerm = locality;
         }
       }
 
@@ -141,6 +147,7 @@ export async function executeTool(
           totalCount = fbCountRes2.count ?? 0;
           data = fbDataRes2.data;
           error = fbDataRes2.error;
+          titleFallbackTerm = neighborhood;
         }
       }
 
@@ -160,6 +167,7 @@ export async function executeTool(
           totalCount = fbCountResZ.count ?? 0;
           data = fbDataResZ.data;
           error = fbDataResZ.error;
+          titleFallbackTerm = zone;
         }
       }
 
@@ -190,7 +198,13 @@ export async function executeTool(
       const ranked = rankProperties(data, limit);
       const doctaCount = ranked.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
 
-      return JSON.stringify({ total_count: totalCount, showing: ranked.length, docta_in_results: doctaCount, results: ranked });
+      return JSON.stringify({
+        total_count: totalCount,
+        showing: ranked.length,
+        docta_in_results: doctaCount,
+        results: ranked,
+        ...(titleFallbackTerm ? { match_mode: "title_fallback", searched_term: titleFallbackTerm } : {}),
+      });
     }
 
     case "compare_properties": {
@@ -201,7 +215,7 @@ export async function executeTool(
       if (validIds.length === 0) return JSON.stringify({ error: "IDs de propiedades inválidos" });
       const { data, error } = await supabase.from("properties").select("*").in("id", validIds);
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ properties: data });
+      return JSON.stringify({ properties: data, instruction: "Compará estas propiedades en una tabla markdown con las dimensiones: precio, m² totales, habitaciones, baños, zona/ubicación y precio por m² ($/m², calculalo cuando tengas precio y m²). Resaltá la mejor opción por criterio para ayudar al agente a manejar objeciones con datos." });
     }
 
     // ---- Favorites ----
@@ -238,7 +252,7 @@ export async function executeTool(
       }
       const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con clientes. Incluí todos los datos relevantes de forma organizada." });
+      return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con el cliente, en PROSA organizada (NO tarjeta con emojis 🏠💰📍). Envolvé TODA la ficha entre <<<DRAFT_START>>> y <<<DRAFT_END>>> (cada marcador solo en su línea) para que sea un texto copiable. Incluí el link de la propiedad con la atribución ?associate." });
     }
 
     // ---- Clients ----
@@ -329,7 +343,10 @@ export async function executeTool(
         .eq("is_client", true)
         .single();
       if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
-      const [{ data: convs }, { data: clientProps }] = await Promise.all([
+      // Ficha 360: además de conversaciones y propiedades, traemos tareas pendientes y
+      // próximos eventos para que afloren sin encadenar tool-calls. Todo scopeado por user_id.
+      // Ver ticket 86aj1f0y3.
+      const [{ data: convs }, { data: clientProps }, { data: pendingNotes }, { data: eventsRaw }] = await Promise.all([
         supabase
           .from("conversations")
           .select("id, title, conversation_type, updated_at")
@@ -341,8 +358,31 @@ export async function executeTool(
           .eq("client_id", args.client_id)
           .eq("user_id", userId)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("client_notes")
+          .select("id, content, is_action, is_done, created_at")
+          .eq("client_id", args.client_id)
+          .eq("user_id", userId)
+          .eq("is_done", false)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("client_events")
+          .select("id, event_type, title, event_date, recurrence, google_event_id, notes")
+          .eq("client_id", args.client_id)
+          .eq("user_id", userId)
+          .order("event_date", { ascending: true }),
       ]);
-      return JSON.stringify({ client, conversations: convs ?? [], properties: clientProps ?? [] });
+
+      // Próximos 90 días, considerando recurrencia (misma semántica que list_client_events).
+      const todayISO = todayCordobaISO();
+      const cutoffISO = addDaysISO(todayISO, 90);
+      const upcoming_events = (eventsRaw ?? [])
+        .map((ev: any) => ({ ...ev, next_occurrence: nextOccurrenceISO(ev.event_date, ev.recurrence, todayISO) }))
+        .filter((ev: any) => ev.next_occurrence >= todayISO && ev.next_occurrence <= cutoffISO)
+        .sort((a: any, b: any) => a.next_occurrence.localeCompare(b.next_occurrence));
+
+      return JSON.stringify({ client, conversations: convs ?? [], properties: clientProps ?? [], pending_notes: pendingNotes ?? [], upcoming_events });
     }
 
     case "link_conversation": {
@@ -439,7 +479,11 @@ export async function executeTool(
       if (!to || !to.includes("@")) return JSON.stringify({ error: "Email de destinatario inválido" });
       const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 500) : null;
       if (!subject) return JSON.stringify({ error: "El asunto es requerido" });
-      const body = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
+      const rawBody = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
+      if (!rawBody) return JSON.stringify({ error: "El cuerpo del email es requerido" });
+      // Garantía server-side: strippeamos los marcadores de chat (DRAFT/WHATSAPP_TO/MSG_BREAK)
+      // para que NUNCA lleguen al email real del cliente, aunque el modelo los filtre. Ver 86aj1f236.
+      const body = stripChatMarkers(rawBody);
       if (!body) return JSON.stringify({ error: "El cuerpo del email es requerido" });
       const cc = typeof args.cc === "string" ? args.cc.trim().slice(0, 500) : null;
 
@@ -488,6 +532,7 @@ export async function executeTool(
         start: e.start?.dateTime ?? e.start?.date,
         end: e.end?.dateTime ?? e.end?.date,
         html_link: e.htmlLink,
+        meet_link: extractMeetLink(e),
       }));
       return JSON.stringify({ events, total: events.length });
     }
@@ -607,7 +652,7 @@ export async function executeTool(
       }
     }
 
-    // ---- External Portal Search (ZonaProp & ArgentProp) ----
+    // ---- External Portal Search (ZonaProp & ArgenProp) ----
     case "search_external_portals": {
       const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
       if (!firecrawlKey) return JSON.stringify({ error: "Búsqueda en portales externos no configurada." });
@@ -672,7 +717,7 @@ export async function executeTool(
           for (const r of results) {
             // title/description son contenido externo no confiable: neutralizamos los
             // marcadores de control para que no inyecten burbujas/botones falsos.
-            allResults.push(sanitizeExternalPortalResult(r, portal === "zonaprop" ? "ZonaProp" : "ArgentProp"));
+            allResults.push(sanitizeExternalPortalResult(r, portal === "zonaprop" ? "ZonaProp" : "ArgenProp"));
           }
         } catch (e) {
           console.error(`Error searching ${portal}:`, e);
@@ -779,8 +824,39 @@ export async function executeTool(
     }
 
     case "update_client_property": {
-      if (!args.client_id || !UUID_REGEX.test(args.client_id)) return JSON.stringify({ error: "ID de cliente inválido" });
-      if (!args.property_id || !UUID_REGEX.test(args.property_id)) return JSON.stringify({ error: "ID de propiedad inválido" });
+      // Acepta client_id/property_id directos o client_name/property_title (mismo patrón de
+      // resolución que save_property_to_client). Así Alan puede mover el estado sin tener IDs
+      // a mano. Ver ticket 86aj1f1bb. Scoping por user_id se preserva en la query de update.
+      let resolvedClientId = args.client_id;
+      if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) {
+        if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente." });
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).eq("is_client", true).ilike("full_name", `%${searchName}%`).limit(5);
+        if (!clients || clients.length === 0) return JSON.stringify({ error: `No encontré un cliente con el nombre "${args.client_name}".` });
+        if (clients.length > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map((c) => c.full_name).join(", ")}. ¿Cuál querés?`, clients });
+        resolvedClientId = clients[0].id;
+      }
+      let resolvedPropertyId = args.property_id;
+      if (!resolvedPropertyId || !UUID_REGEX.test(resolvedPropertyId)) {
+        if (!args.property_title) return JSON.stringify({ error: "Necesito el título/dirección o ID de la propiedad." });
+        const searchTitle = sanitizePattern(args.property_title);
+        const pattern = `%${searchTitle}%`;
+        const [byTitle, byAddress] = await Promise.all([
+          supabase.from("properties").select("id, title, address").ilike("title", pattern).limit(5),
+          supabase.from("properties").select("id, title, address").ilike("address", pattern).limit(5),
+        ]);
+        const seen = new Set<string>();
+        const props: Array<{ id: string; title: string | null; address: string | null }> = [];
+        for (const p of [...(byTitle.data ?? []), ...(byAddress.data ?? [])]) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          props.push(p);
+          if (props.length >= 5) break;
+        }
+        if (props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
+        if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map((p) => p.title || p.address).join(", ")}. ¿Cuál querés?`, properties: props });
+        resolvedPropertyId = props[0].id;
+      }
       const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
       const updates: Record<string, any> = {};
       if (args.status && validStatuses.includes(args.status)) updates.status = args.status;
@@ -789,8 +865,8 @@ export async function executeTool(
       const { data, error } = await supabase
         .from("client_properties")
         .update(updates)
-        .eq("client_id", args.client_id)
-        .eq("property_id", args.property_id)
+        .eq("client_id", resolvedClientId)
+        .eq("property_id", resolvedPropertyId)
         .eq("user_id", userId)
         .select("id, status, notes")
         .single();
@@ -798,7 +874,7 @@ export async function executeTool(
       // enviada/visitada = contacto saliente real → registramos last_contact_at (señal del
       // panel staleClients del dashboard). Scopeado por userId. Ver ticket 86aj1f0wj.
       if (updates.status === "enviada" || updates.status === "visitada") {
-        await supabase.from("clients").update({ last_contact_at: new Date().toISOString() }).eq("id", args.client_id).eq("user_id", userId);
+        await supabase.from("clients").update({ last_contact_at: new Date().toISOString() }).eq("id", resolvedClientId).eq("user_id", userId);
       }
       return JSON.stringify({ success: true, message: "Propiedad del cliente actualizada.", data });
     }
@@ -822,9 +898,9 @@ export async function executeTool(
       const eventDate = typeof args.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.event_date) ? args.event_date : null;
       if (!eventDate) return JSON.stringify({ error: "La fecha es requerida (formato YYYY-MM-DD)" });
       
-      const validEventTypes = ["birthday", "purchase_anniversary", "contract_expiry", "followup", "custom"];
+      const validEventTypes: string[] = [...CLIENT_EVENT_TYPES];
       const eventType = validEventTypes.includes(args.event_type) ? args.event_type : "custom";
-      const validRecurrences = ["yearly", "once", "monthly"];
+      const validRecurrences: string[] = [...CLIENT_EVENT_RECURRENCES];
       const recurrence = validRecurrences.includes(args.recurrence) ? args.recurrence : "yearly";
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 1000) : null;
 

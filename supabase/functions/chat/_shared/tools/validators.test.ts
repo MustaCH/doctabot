@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber, normalizeDatetime, neutralizeControlMarkers, wrapUntrustedWebContent, sanitizePattern, rankProperties, sanitizeExternalPortalResult, normalizeOperation } from "./validators";
+import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber, normalizeDatetime, neutralizeControlMarkers, wrapUntrustedWebContent, sanitizePattern, rankProperties, sanitizeExternalPortalResult, normalizeOperation, stripChatMarkers } from "./validators";
 
 describe("normalizeDatetime (única, compartida create/update)", () => {
   it("solo fecha (YYYY-MM-DD) asume 09:00 Córdoba — idéntico en crear y editar", () => {
@@ -267,9 +267,26 @@ describe("sanitizeExternalPortalResult (portales externos = contenido no confiab
     expect(out.url).toBe("https://www.zonaprop.com.ar/propiedad-123.html");
   });
   it("usa 'Sin título' cuando falta o está vacío el title, y url '' si no es string", () => {
-    const out = sanitizeExternalPortalResult({ description: "x" }, "ArgentProp");
+    const out = sanitizeExternalPortalResult({ description: "x" }, "ArgenProp");
     expect(out.title).toBe("Sin título");
     expect(out.url).toBe("");
+  });
+});
+
+describe("stripChatMarkers (puente draft→send_email)", () => {
+  it("remueve DRAFT_START/END, WHATSAPP_TO y MSG_BREAK del body", () => {
+    const body = `<<<WHATSAPP_TO:+5493511234567>>>\n<<<DRAFT_START>>>\nHola María, soy Nacho.\n<<<DRAFT_END>>>`;
+    const out = stripChatMarkers(body);
+    expect(out).toBe("Hola María, soy Nacho.");
+    expect(out).not.toMatch(/<<<|MSG_BREAK|WHATSAPP_TO/);
+  });
+
+  it("un body con SOLO marcadores queda vacío (el executor lo rechaza)", () => {
+    expect(stripChatMarkers("<<<DRAFT_START>>>\n<<<DRAFT_END>>>")).toBe("");
+  });
+
+  it("texto sin marcadores pasa intacto (trim)", () => {
+    expect(stripChatMarkers("  Estimado cliente,\n\nLe escribo por...  ")).toBe("Estimado cliente,\n\nLe escribo por...");
   });
 });
 

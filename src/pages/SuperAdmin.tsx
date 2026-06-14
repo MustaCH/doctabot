@@ -1479,15 +1479,21 @@ function ClientsTable({ pin }: { pin: string }) {
 interface SupervisorLogRow {
   id: string; conversation_id: string | null; user_id: string | null;
   user_message: string; alan_response: string; verdict: string;
-  rejection_reason: string | null; score: number | null;
+  rejection_reason: string | null; score: number | null; category: string | null;
   retry_count: number; latency_ms: number | null; created_at: string;
   user_name: string;
 }
 
 interface SupervisorStats {
-  total: number; approved: number; rejected: number; errors: number;
-  avgScore: number; daily: Record<string, { approved: number; rejected: number; error: number }>;
+  total: number; approved: number; rejected: number; errors: number; unevaluated: number;
+  avgScore: number; byCategory?: Record<string, number>;
+  daily: Record<string, { approved: number; rejected: number; error: number; unevaluated: number }>;
 }
+
+const CATEGORY_LABEL: Record<string, string> = {
+  dato_inventado: "Dato inventado", formato_roto: "Formato roto", accion_no_ejecutada: "Acción no ejecutada",
+  regla_negocio: "Regla de negocio", seguridad: "Seguridad", crm_protocol: "Protocolo CRM", tono: "Tono",
+};
 
 function SupervisorPanel({ pin }: { pin: string }) {
   const [stats, setStats] = useState<SupervisorStats | null>(null);
@@ -1521,17 +1527,20 @@ function SupervisorPanel({ pin }: { pin: string }) {
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const approvalRate = stats && stats.total > 0 ? Math.round((stats.approved / stats.total) * 100) : 0;
+  // Tasa de aprobación sobre lo realmente EVALUADO (approved+rejected): excluye unevaluated
+  // y errores para no inflar el termómetro. Ver ticket 86aj1f157.
+  const evaluated = stats ? stats.approved + stats.rejected : 0;
+  const approvalRate = evaluated > 0 ? Math.round((stats!.approved / evaluated) * 100) : 0;
 
   const chartData = (() => {
     if (!stats?.daily) return [];
-    const days: { date: string; aprobados: number; rechazados: number; errores: number }[] = [];
+    const days: { date: string; aprobados: number; rechazados: number; errores: number; sinEvaluar: number }[] = [];
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const entry = stats.daily[key] ?? { approved: 0, rejected: 0, error: 0 };
-      days.push({ date: key.slice(5), aprobados: entry.approved, rechazados: entry.rejected, errores: entry.error });
+      const entry = stats.daily[key] ?? { approved: 0, rejected: 0, error: 0, unevaluated: 0 };
+      days.push({ date: key.slice(5), aprobados: entry.approved, rechazados: entry.rejected, errores: entry.error, sinEvaluar: entry.unevaluated });
     }
     return days;
   })();
@@ -1540,6 +1549,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
     switch (verdict) {
       case "approved": return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"><CheckCircle className="h-3 w-3 mr-1" />Aprobado</Badge>;
       case "rejected": return <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 hover:bg-rose-500/20"><XCircle className="h-3 w-3 mr-1" />Rechazado</Badge>;
+      case "unevaluated": return <Badge className="bg-slate-500/15 text-slate-500 border-slate-500/30 hover:bg-slate-500/20"><AlertTriangle className="h-3 w-3 mr-1" />Sin evaluar</Badge>;
       default: return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 hover:bg-amber-500/20"><AlertTriangle className="h-3 w-3 mr-1" />Error</Badge>;
     }
   };
@@ -1547,7 +1557,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
   return (
     <div className="mt-4 space-y-6">
       {loading ? <LoadingSpinner /> : stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
             <span className="text-xs text-muted-foreground">Total evaluaciones</span>
             <p className="text-2xl font-bold">{stats.total.toLocaleString("es-AR")}</p>
@@ -1563,6 +1573,23 @@ function SupervisorPanel({ pin }: { pin: string }) {
           <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
             <span className="text-xs text-muted-foreground">Errores supervisor</span>
             <p className="text-2xl font-bold text-amber-600">{stats.errors}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
+            <span className="text-xs text-muted-foreground">Sin evaluar</span>
+            <p className="text-2xl font-bold text-slate-500">{(stats.unevaluated ?? 0).toLocaleString("es-AR")}</p>
+          </div>
+        </div>
+      )}
+
+      {stats?.byCategory && Object.keys(stats.byCategory).length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2 shadow-sm">
+          <h2 className="text-sm font-semibold">Veredictos por categoría</h2>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+              <span key={cat} className="text-xs px-2 py-1 rounded-md bg-muted text-foreground border border-border">
+                {(CATEGORY_LABEL[cat] ?? cat)}: <strong>{count}</strong>
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -1580,6 +1607,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
               <Line type="monotone" dataKey="aprobados" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="rechazados" stroke="hsl(0, 84%, 60%)" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="errores" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="sinEvaluar" stroke="hsl(215, 16%, 47%)" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -1594,6 +1622,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
             <option value="approved">Aprobados</option>
             <option value="rejected">Rechazados</option>
             <option value="error">Errores</option>
+            <option value="unevaluated">Sin evaluar</option>
           </select>
           <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(logs, "supervisor-logs")}>
             <Download className="h-3.5 w-3.5 mr-1.5" />CSV
@@ -1620,7 +1649,16 @@ function SupervisorPanel({ pin }: { pin: string }) {
                           {new Date(l.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </TableCell>
                         <TableCell className="text-xs font-medium">{l.user_name}</TableCell>
-                        <TableCell>{verdictBadge(l.verdict)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {verdictBadge(l.verdict)}
+                            {l.category && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border whitespace-nowrap">
+                                {CATEGORY_LABEL[l.category] ?? l.category}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-xs font-mono">{l.score ?? "—"}</TableCell>
                         <TableCell className="text-xs">{l.retry_count}</TableCell>
                         <TableCell className="text-xs">{l.latency_ms ? `${l.latency_ms}ms` : "—"}</TableCell>
@@ -1783,8 +1821,10 @@ function ReportsPanel({ pin }: { pin: string }) {
 
   if (loading) return <LoadingSpinner />;
 
-  const approvalRate = supervisorStats && supervisorStats.total > 0
-    ? Math.round((supervisorStats.approved / supervisorStats.total) * 100) : 0;
+  // Aprobación sobre lo evaluado (approved+rejected): excluye unevaluated. Ver ticket 86aj1f157.
+  const supEvaluated = supervisorStats ? supervisorStats.approved + supervisorStats.rejected : 0;
+  const approvalRate = supEvaluated > 0
+    ? Math.round((supervisorStats!.approved / supEvaluated) * 100) : 0;
 
   const statusLabel: Record<string, string> = { hot: "🔥 Caliente", warm: "🌡️ Tibio", cold: "❄️ Frío" };
   const statusColor: Record<string, string> = { hot: "text-red-500", warm: "text-amber-500", cold: "text-blue-500" };

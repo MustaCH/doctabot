@@ -75,7 +75,22 @@ export function wrapUntrustedWebContent(content: unknown): string {
 }
 
 /**
- * Normaliza un resultado crudo de un portal externo (ZonaProp/ArgentProp) a la forma
+ * Strip determinista de los marcadores de chat de un texto (DRAFT_START/END, WHATSAPP_TO,
+ * MSG_BREAK). Garantía server-side de que esos marcadores nunca llegan a un canal externo
+ * (ej. el body real de un email). Puro y testeable. Ver ticket 86aj1f236.
+ */
+export function stripChatMarkers(text: string): string {
+  return (text || "")
+    .replace(/<<<WHATSAPP_TO:[^>]*>>>/g, "")
+    .replace(/<<<DRAFT_START>>>/g, "")
+    .replace(/<<<DRAFT_END>>>/g, "")
+    .replace(/===MSG_BREAK===/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Normaliza un resultado crudo de un portal externo (ZonaProp/ArgenProp) a la forma
  * que ve el modelo. El title/description vienen de una página externa y NO son confiables:
  * pasan por neutralizeControlMarkers para que un title malicioso (ej. con ===MSG_BREAK===
  * o <<<WHATSAPP_TO:...>>>) no inyecte burbujas, borradores ni botones falsos en el front
