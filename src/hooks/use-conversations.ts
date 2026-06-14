@@ -7,6 +7,7 @@ export interface Conversation {
   title: string;
   updated_at: string;
   client_name?: string;
+  client_phone?: string;
   conversation_type?: string;
   has_unread?: boolean;
 }
@@ -26,7 +27,7 @@ export function useConversations(userId: string | undefined, activeConvIdRef?: (
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
       .from("conversations")
-      .select("id, title, updated_at, conversation_type, client_id, clients(full_name), last_read_at")
+      .select("id, title, updated_at, conversation_type, client_id, clients(full_name, phone), last_read_at")
       .order("updated_at", { ascending: false });
     if (data) {
       // Fetch latest assistant message per conversation to detect unread
@@ -60,6 +61,8 @@ export function useConversations(userId: string | undefined, activeConvIdRef?: (
             updated_at: c.updated_at,
             conversation_type: c.conversation_type ?? undefined,
             client_name: c.clients?.full_name ?? undefined,
+            // `|| undefined` colapsa null y "" → undefined: nunca propagamos string vacío (renderiza botón disabled inútil).
+            client_phone: c.clients?.phone || undefined,
             has_unread: hasUnread,
           };
         })

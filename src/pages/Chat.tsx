@@ -109,6 +109,12 @@ const Chat = () => {
     return conv?.title && conv.title !== "Nueva conversación" ? conv.title : null;
   }, [activeConvId, conversations]);
 
+  // Teléfono del cliente vinculado a la conversación activa — habilita el botón compartir-por-WhatsApp en las PropertyCard.
+  const activeClientPhone = useMemo(
+    () => conversations.find((c) => c.id === activeConvId)?.client_phone,
+    [activeConvId, conversations]
+  );
+
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
 
@@ -236,6 +242,7 @@ const Chat = () => {
               userAvatar={userAvatar}
               userName={userName}
               quotedText={msg.quotedText}
+              clientPhone={activeClientPhone}
               onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
             />
           ))}

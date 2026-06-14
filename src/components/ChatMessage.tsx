@@ -34,6 +34,8 @@ interface ChatMessageProps {
   userAvatar?: string;
   userName?: string;
   quotedText?: string;
+  /** Teléfono del cliente vinculado a la conversación activa. Habilita el botón compartir-por-WhatsApp en las PropertyCard. */
+  clientPhone?: string;
   onReply?: (content: string) => void;
 }
 
@@ -151,7 +153,7 @@ const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
   );
 };
 
-const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, onReply }: ChatMessageProps) => {
+const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, clientPhone, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -206,7 +208,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
           ) : isUser ? (
             content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && content !== "(mensaje de voz)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
           ) : (
-            <AssistantContent content={content} />
+            <AssistantContent content={content} clientPhone={clientPhone} />
           )}
         </div>
         {!isUser && (
@@ -323,8 +325,10 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
 };
 
 /** Renders assistant content – detects property cards or falls back to markdown */
-const AssistantContent = ({ content }: { content: string }) => {
+const AssistantContent = ({ content, clientPhone }: { content: string; clientPhone?: string }) => {
   const { agentCode } = useAuth();
+  // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
+  const whatsappPhone = clientPhone || undefined;
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
   const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
@@ -335,7 +339,7 @@ const AssistantContent = ({ content }: { content: string }) => {
       <div className="space-y-3">
         {multiCards.map((segment, i) =>
           segment.type === "property" && segment.property ? (
-            <PropertyCard key={i} {...segment.property} agentCode={agentCode} />
+            <PropertyCard key={i} {...segment.property} agentCode={agentCode} whatsappPhone={whatsappPhone} />
           ) : (
             <div key={i} className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word]">
               <ReactMarkdown components={{
@@ -349,7 +353,7 @@ const AssistantContent = ({ content }: { content: string }) => {
   }
 
   if (propertyData) {
-    return <PropertyCard {...propertyData} agentCode={agentCode} />;
+    return <PropertyCard {...propertyData} agentCode={agentCode} whatsappPhone={whatsappPhone} />;
   }
 
   if (draftSegments) {

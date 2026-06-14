@@ -191,7 +191,7 @@ export function parseMultiplePropertyCards(md: string): ContentSegment[] | null 
   return segments.length > 0 ? segments : null;
 }
 
-const PropertyCard = ({ photo, title, office, price, location, surface, url, extras, agentCode, contactPhone, contactEmail, whatsappPhone }: PropertyCardProps) => {
+const PropertyCard = ({ photo, title, office, price, location, surface, url, extras = [], agentCode, contactPhone, contactEmail, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
@@ -316,6 +316,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
               <Button
                 size="sm"
                 variant="outline"
+                aria-label="Compartir por WhatsApp"
                 className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
                 onClick={handleWhatsApp}
                 disabled={!whatsappPhone}
