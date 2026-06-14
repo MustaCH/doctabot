@@ -17,3 +17,10 @@ verify_jwt = false
 
 [functions.sync-calendar-event]
 verify_jwt = false
+
+# Sirve get_vapid_key al front SIN auth (es una public key, pensada para fetcharse).
+# Con verify_jwt=true el gateway rechaza ese fetch y el front cae a un fallback
+# hardcodeado que puede quedar viejo -> mismatch de VAPID -> 403. La function valida
+# sus propios inputs; los dispatchers (chat, morning-matches) llaman con service key.
+[functions.send-push-notification]
+verify_jwt = false
