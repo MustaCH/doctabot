@@ -59,4 +59,18 @@ describe("executeToolCalls", () => {
     expect(executed).toEqual(["search_properties"]);
     expect(toolMessages).toHaveLength(2); // error de c1 + resultado de c2
   });
+
+  // 86aj1ncj4 #1 ampliado: un throw inesperado de la tool (ej. red en getCalendarToken/Gmail) tampoco
+  // debe abortar el turno.
+  it("un tool que tira (throw inesperado) degrada a tool-message de error y NO aborta", async () => {
+    const executeTool = vi.fn(async () => { throw new Error("network boom"); });
+    const { toolMessages, executed } = await executeToolCalls(
+      [{ id: "c1", name: "send_email", arguments: '{"to":"x@y.com"}' }],
+      { executeTool, toolCtx: {} },
+    );
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(executed).toEqual([]);
+    expect(toolMessages).toHaveLength(1);
+    expect(JSON.parse(toolMessages[0].content).error).toBeTruthy();
+  });
 });

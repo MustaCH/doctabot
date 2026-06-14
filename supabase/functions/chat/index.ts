@@ -24,6 +24,7 @@ import { getValidCalendarToken } from "./_shared/tools/google.ts";
 import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
+import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
 
 serve(async (req) => {
@@ -134,13 +135,17 @@ serve(async (req) => {
     const AI_TIMEOUT_MS = 60_000;
     const AI_MAX_TOKENS = 8192;
 
+    // Retry con backoff para transitorios (5xx/429/red/timeout). Seguro: re-pide la generación a
+    // Gemini sin re-ejecutar tools (los resultados ya están en `messages`). Evita que un blip
+    // transitorio en una continuación del tool-loop tumbe el turno entero. Ver 86aj1ncj4.
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
-      return fetch(AI_URL, {
+      const payload = JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS });
+      return fetchWithRetry(() => fetch(AI_URL, {
         method: "POST",
         headers: aiHeaders,
-        body: JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS }),
+        body: payload,
         signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      });
+      }));
     };
 
     const toolLoopDeps = { resilientAIFetch, executeTool, toolCtx, toolDefinitions };
@@ -186,12 +191,15 @@ serve(async (req) => {
         let finalContent = "";
         let executedTools: string[] = [];
         let streamFailed = false;
+        let streamErrorMessage = "";
         try {
           const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes });
           finalContent = result.content;
           executedTools = result.executedTools;
         } catch (err) {
           console.error("streamTurn error:", err);
+          // Guardamos el error real para mandarlo al webhook (observabilidad — ver 86aj1ncj4).
+          streamErrorMessage = err instanceof Error ? err.message : String(err);
           // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
           finalContent = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
           emit(finalContent);
@@ -245,7 +253,7 @@ serve(async (req) => {
 
             if (streamFailed) {
               // El turno falló: no corre el supervisor (no tiene sentido evaluar el mensaje de error).
-              notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: "stream_error", score: 0, retryCount: 0 });
+              notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: streamErrorMessage || "stream_error", score: 0, retryCount: 0 });
             } else if (finalContent) {
               const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY, executedTools, priorContext });
               logSupervisorResult({ supabaseUrl, supabaseServiceKey, conversationId: conversationId || null, userId, userMessage, finalContent, result: supervisorResult });

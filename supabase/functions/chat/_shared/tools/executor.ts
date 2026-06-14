@@ -473,7 +473,15 @@ export async function executeTool(
 
     // ---- Gmail ----
     case "send_email": {
-      const accessToken = await getCalendarToken();
+      // try/catch propio (alineado con web_search/scrape_url): un throw transitorio acá NO debe
+      // tumbar el turno; devolvemos un error útil para que el modelo avise/reintente. Ver 86aj1ncj4.
+      let accessToken: string | null;
+      try {
+        accessToken = await getCalendarToken();
+      } catch (err) {
+        console.error("send_email getCalendarToken error:", err);
+        return JSON.stringify({ error: "No pude validar la conexión con Gmail (error transitorio). Reintentá en un momento." });
+      }
       if (!accessToken) return JSON.stringify({ error: "Gmail no conectado. El agente debe reconectar su cuenta desde el perfil para activar el envío de emails." });
 
       const to = typeof args.to === "string" ? args.to.trim().slice(0, 500) : null;
@@ -490,11 +498,17 @@ export async function executeTool(
 
       const encoded = buildMimeEmail(to, subject, body, cc);
 
-      const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: encoded }),
-      });
+      let gmailRes: Response;
+      try {
+        gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ raw: encoded }),
+        });
+      } catch (err) {
+        console.error("send_email Gmail fetch error:", err);
+        return JSON.stringify({ error: "Error de red al enviar el email. El email NO se envió; reintentá en un momento." });
+      }
 
       if (!gmailRes.ok) {
         const err = await gmailRes.text();
