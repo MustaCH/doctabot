@@ -128,7 +128,7 @@ const Chat = () => {
 
       {/* Mobile sidebar (sheet) */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-72 p-0">
+        <SheetContent side="left" className="w-72 p-0" showClose={false}>
           <SheetTitle className="sr-only">Conversaciones</SheetTitle>
           <ConversationList
             conversations={conversations}
