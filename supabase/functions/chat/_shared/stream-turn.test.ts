@@ -180,4 +180,66 @@ describe("streamTurn", () => {
     expect(executeTool).toHaveBeenCalledTimes(2);
     expect(res.content).toBe("");
   });
+
+  it("suprime el preámbulo de una ronda que termina en tool_calls (no re-saludo): solo muestra la ronda de texto final", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([contentChunk("¡Hola, Ignacio! Dame que reviso a Armando. "), toolChunk(0, "c1", "search_properties", '{"zone":"centro"}', "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Encontré 3 propiedades para vos.", "stop"), DONE]));
+    const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+    const emitted: string[] = [];
+    const messages: any[] = [{ role: "user", content: "buscá para Armando" }];
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+      { messages, emit: (t) => emitted.push(t) },
+    );
+
+    // El preámbulo de la ronda con tool_calls NO se mostró ni se persistió (sin re-saludo).
+    expect(emitted.join("")).toBe("Encontré 3 propiedades para vos.");
+    expect(res.content).toBe("Encontré 3 propiedades para vos.");
+    expect(res.content).not.toContain("Hola");
+    // Pero sí quedó en `messages` (memoria del modelo) y la tool corrió.
+    expect(executeTool).toHaveBeenCalledWith("search_properties", { zone: "centro" }, {});
+    expect(messages.some((m) => m.role === "assistant" && typeof m.content === "string" && m.content.includes("Hola"))).toBe(true);
+  });
+
+  it("si el turno se queda sin ronda de texto final, vuelca el último preámbulo suprimido (fallback anti-pantalla-muda)", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("Buscando propiedades… "), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
+    );
+    const executeTool = vi.fn(async () => JSON.stringify({ results: [] }));
+    const emitted: string[] = [];
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+      { messages: [], emit: (t) => emitted.push(t), maxIterations: 1 },
+    );
+
+    expect(res.content).toBe("Buscando propiedades… ");
+    expect(emitted.join("")).toBe("Buscando propiedades… ");
+  });
+
+  // Regresión del bug 86aj1ncj4 (doble envío de email). Un turno con side-effect externo
+  // (send_email) ejecuta la tool en iter 0 y recién redacta la confirmación en iter 1. Si la
+  // llamada de IA de iter 1 falla transitoriamente, streamTurn tira DESPUÉS de que el efecto
+  // externo ya ocurrió → el reintento del usuario lo re-ejecuta. Este test fija el comportamiento
+  // actual (la tool corre antes del fallo) y deja el gancho para validar la idempotencia del fix.
+  it("la tool con side-effect ya se ejecutó cuando falla la llamada de IA post-tool (iter 1)", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "send_email", '{"to":"cliente@mail.com","subject":"Hola","body":"Cuerpo"}', "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([], false, 503)); // iter 1: fallo transitorio del proveedor
+    const executeTool = vi.fn(async () => JSON.stringify({ success: true, message_id: "m1" }));
+
+    await expect(
+      streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [{ role: "user", content: "envialo" }], emit: () => {} },
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+
+    // El envío YA ocurrió (iter 0) antes de que el turno se cayera (iter 1): sin idempotencia,
+    // el reintento del usuario ejecutaría send_email una segunda vez → email duplicado.
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(executeTool).toHaveBeenCalledWith("send_email", { to: "cliente@mail.com", subject: "Hola", body: "Cuerpo" }, {});
+  });
 });

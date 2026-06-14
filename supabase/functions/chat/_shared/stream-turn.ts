@@ -1,6 +1,9 @@
-// Driver del turno con streaming real. Todas las llamadas a Gemini van con stream:true.
-// El content se pipea al cliente vía `emit`; los tool_calls se acumulan por índice y se
-// ejecutan (bloqueante) entre iteraciones. Puro (deps inyectadas) → testeable.
+// Driver del turno con tool loop. Todas las llamadas a Gemini van con stream:true.
+// El contenido de cada ronda se BUFFERIZA y recién se vuelca al cliente (`emit`) cuando se
+// conoce el finish_reason: si la ronda termina en tool_calls su preámbulo se DESCARTA (supresión
+// determinista del re-saludo y la narración duplicada, 86aj1n43n); solo la ronda de texto final
+// se muestra. Los tool_calls se acumulan por índice y se ejecutan (bloqueante) entre iteraciones.
+// Puro (deps inyectadas) → testeable.
 
 import { drainSSE } from "./sse-parse.ts";
 import { executeToolCalls, AccumulatedToolCall } from "./tools/execute-round.ts";
@@ -59,8 +62,10 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
 
   const executedTools: string[] = [];
   let fullContent = "";
+  let lastPreamble = "";     // contenido de la última ronda suprimida (tool_calls); fallback si el turno no llega a una ronda de texto final
+  let emittedFinal = false;  // true cuando ya volcamos una ronda final (texto o length)
 
-  const safeEmit = (t: string) => { try { emit(t); } catch { /* cliente desconectado: seguimos drenando */ } };
+  const safeEmit = (t: string) => { if (!t) return; try { emit(t); } catch { /* cliente desconectado: seguimos drenando */ } };
 
   for (let iter = 0; iter < maxIterations; iter++) {
     let res: Response;
@@ -81,9 +86,9 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
 
     const applyDelta = (d: { contentDelta?: string; toolCallDeltas?: any[]; finishReason?: string | null }) => {
       if (d.contentDelta) {
+        // No se emite ni se acumula en vivo: el contenido de la ronda se bufferiza y recién se
+        // vuelca (o se descarta, si la ronda termina en tool_calls) al conocer el finish_reason.
         assistantContent += d.contentDelta;
-        fullContent += d.contentDelta;
-        safeEmit(d.contentDelta);
       }
       if (d.toolCallDeltas) {
         for (const tcd of d.toolCallDeltas) {
@@ -112,15 +117,21 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     }
 
     if (finishReason === "length") {
-      // Respuesta truncada por límite de tokens: cerramos marcadores abiertos y avisamos
-      // en vez de persistir/streamear un borrador o tarjeta a medias.
-      const suffix = truncationSuffix(assistantContent);
-      fullContent += suffix;
-      safeEmit(suffix);
+      // Ronda final truncada por límite de tokens: volcamos el contenido bufferizado + cierre de
+      // marcadores abiertos + aviso, en vez de persistir/mostrar un borrador o tarjeta a medias.
+      const flush = assistantContent + truncationSuffix(assistantContent);
+      fullContent += flush;
+      safeEmit(flush);
+      emittedFinal = true;
       break;
     }
 
     if (finishReason === "tool_calls" && toolAccum.size > 0) {
+      // Opción 2 (86aj1n43n): el preámbulo de una ronda que termina en tool_calls NO se muestra
+      // ni se persiste. El modelo regenera saludos/narración en las continuaciones del mismo turno
+      // y mostrarlos produce el re-saludo y la narración duplicada. El texto SÍ se conserva en
+      // `messages` (memoria del modelo) y como fallback si el turno no llega a una ronda final.
+      lastPreamble = assistantContent;
       const toolCalls = [...toolAccum.values()];
       messages.push({
         role: "assistant",
@@ -133,15 +144,21 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
-    // Turno de texto terminado (ya streameado). Validación mínima de formato: si el modelo
-    // dejó un <<<DRAFT_START>>> sin cerrar (sin truncación), agregamos el cierre faltante para
-    // que el front no parsee un borrador a medias. Se emite también para no divergir live/persistido.
-    const draftClose = unbalancedDraftClose(assistantContent);
-    if (draftClose) {
-      fullContent += draftClose;
-      safeEmit(draftClose);
-    }
+    // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Validación
+    // mínima de formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar (sin truncación),
+    // agregamos el cierre faltante para que el front no parsee un borrador a medias.
+    const flush = assistantContent + unbalancedDraftClose(assistantContent);
+    fullContent += flush;
+    safeEmit(flush);
+    emittedFinal = true;
     break;
+  }
+
+  // El turno agotó las iteraciones sin una ronda de texto final (todas terminaron en tool_calls).
+  // Para no dejar la pantalla muda, volcamos el último preámbulo que habíamos suprimido.
+  if (!emittedFinal && lastPreamble) {
+    fullContent += lastPreamble;
+    safeEmit(lastPreamble);
   }
 
   return { content: fullContent, executedTools };
