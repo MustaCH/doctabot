@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# docs/ = memoria operativa del equipo (runbooks, ADRs, specs con refs/URLs
+# internos). Se mantiene fuera del repo a propósito; vive en disco/OneDrive.
+/docs/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -32,3 +36,7 @@ dist-ssr
 # Lockfiles: el repo se estandariza en Bun (bun.lock). npm queda fuera para no
 # tener dos gestores en paralelo. Una instalación local con npm no ensucia el repo.
 package-lock.json
+
+# Supabase CLI: estado local del link al proyecto (project-ref, pooler-url,
+# versiones de CLI/gotrue/postgres). Lo genera la CLI, no es código del proyecto.
+supabase/.temp/
