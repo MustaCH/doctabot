@@ -186,7 +186,7 @@ const Chat = () => {
 
         {/* Messages */}
         <div className="relative flex-1 overflow-hidden">
-          <div className={`aurora-bg ${isStreaming ? "aurora-active" : "aurora-idle"}`} />
+          <div className={`aurora-bg ${isStreaming && messages[messages.length - 1]?.role !== "assistant" ? "aurora-active" : "aurora-idle"}`} />
           <div ref={scrollRef} className="relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom">
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
