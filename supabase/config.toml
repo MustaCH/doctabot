@@ -24,3 +24,12 @@ verify_jwt = false
 # sus propios inputs; los dispatchers (chat, morning-matches) llaman con service key.
 [functions.send-push-notification]
 verify_jwt = false
+
+# report-error: el front reporta errores del cliente (puede ser pre-auth / sesión rota).
+# Valida sus inputs y solo loguea; no es un boundary de seguridad. Ver ticket 86aj18r6x.
+[functions.report-error]
+verify_jwt = false
+
+# health-monitor: lo dispara pg_cron (anon bearer). Endpoint interno de heartbeat.
+[functions.health-monitor]
+verify_jwt = false

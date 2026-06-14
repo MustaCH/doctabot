@@ -26,6 +26,7 @@ import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts"
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
+import { reportEdgeErrorBg } from "../_shared/observability.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -320,6 +321,8 @@ serve(async (req) => {
     return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
   } catch (e) {
     console.error("chat error:", e);
+    // Observabilidad (ticket 86aj18r6x): registrar el error en error_logs + ping n8n.
+    reportEdgeErrorBg({ context: "chat", error: e });
     return new Response(JSON.stringify({ error: "Error al procesar la solicitud" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

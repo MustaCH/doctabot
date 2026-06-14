@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleOptions } from "../_shared/cors.ts";
 import { errorResponse, safeError } from "../_shared/http.ts";
+import { reportEdgeErrorBg } from "../_shared/observability.ts";
 
 const SCRAPE_BASE_URL = "http://remaxdocta-scrapingdocta-zos1k5-a90019-31-97-164-164.sslip.io/api/scrape";
 
@@ -377,6 +378,7 @@ serve(async (req) => {
     });
 
   } catch (e) {
+    reportEdgeErrorBg({ context: "scrape-properties", error: e });
     return errorResponse(safeError(e, "scrape-properties"), 500);
   }
 });

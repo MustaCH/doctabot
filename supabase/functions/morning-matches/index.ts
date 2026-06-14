@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleOptions } from "../_shared/cors.ts";
 import { errorResponse, safeError } from "../_shared/http.ts";
+import { reportEdgeErrorBg } from "../_shared/observability.ts";
 
 // ---- Matching helpers ----
 // Lógica pura de matching extraída a ./matching.ts para poder unit-testearla
@@ -467,6 +468,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    reportEdgeErrorBg({ context: "morning-matches", error: err });
     return errorResponse(safeError(err, "morning-matches"), 500);
   }
 });

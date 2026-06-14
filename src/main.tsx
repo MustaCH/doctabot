@@ -1,6 +1,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { installGlobalErrorHandlers } from "@/lib/error-reporting";
+
+// Observabilidad (ticket 86aj18r6x): capturar errores no manejados del front.
+installGlobalErrorHandlers();
 
 // One-time cleanup: the previous architecture registered TWO service workers
 // (/sw-push.js + the PWA-generated SW). Now there's only one (/sw.js via

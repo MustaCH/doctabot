@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { useVisualViewport } from "@/hooks/use-visual-viewport";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const Login = lazy(() => import("./pages/Login"));
 const Chat = lazy(() => import("./pages/Chat"));
@@ -74,6 +75,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 const App = () => {
   useVisualViewport();
   return (
+  <ErrorBoundary>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -100,6 +102,7 @@ const App = () => {
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
+  </ErrorBoundary>
   );
 };
 
