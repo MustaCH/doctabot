@@ -135,6 +135,9 @@ serve(async (req) => {
 
       // 4. Cross each property with each client, skipping already notified
       const clientMatches: Map<string, { client: ClientRow; properties: { prop: PropertyRow; reasons: string[] }[] }> = new Map();
+      // convId por cliente, capturado al crear/encontrar la conversación, para deep-linkear
+      // el push a la conversación del cliente más caliente. Ver finding push-matches-deeplink-roto.
+      const convIdByClient = new Map<string, string>();
 
       for (const prop of newProperties as PropertyRow[]) {
         for (const client of clients as ClientRow[]) {
@@ -189,6 +192,9 @@ serve(async (req) => {
           }
           convId = newConv.id;
         }
+
+        // Capturar la conversación de este cliente para el deep-link del push.
+        convIdByClient.set(clientId, convId);
 
         // Build message content
         const lines: string[] = [
@@ -260,11 +266,17 @@ serve(async (req) => {
         // El push se dispara para clientes de CUALQUIER status (cold incluido: un match nuevo
         // es la excusa para revivir el lead). Solo ordenamos hot>warm>cold para que los 3
         // nombres truncados muestren primero los más calientes. Ver ticket 86aj1f13j.
-        const clientNames = [...clientMatches.values()]
-          .sort((a, b) => tempRank(a.client.status) - tempRank(b.client.status))
-          .map((m) => m.client.full_name)
-          .slice(0, 3);
+        const sortedMatches = [...clientMatches.values()]
+          .sort((a, b) => tempRank(a.client.status) - tempRank(b.client.status));
+        const clientNames = sortedMatches.map((m) => m.client.full_name).slice(0, 3);
         const extra = clientMatches.size > 3 ? ` y ${clientMatches.size - 3} más` : "";
+        // Deep-link a la conversación del cliente con match más caliente que tenga conv creada;
+        // fallback "/" (NUNCA "/chat": ruta inexistente → NotFound). Que el convId no sea null
+        // habilita además la supresión de isViewingConversation en el SW (push-visibility.ts).
+        const matchConvId = sortedMatches
+          .map((m) => convIdByClient.get(m.client.id))
+          .find((id): id is string => Boolean(id));
+        const matchUrl = matchConvId ? `/?c=${matchConvId}` : "/";
 
         try {
           await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
@@ -277,7 +289,7 @@ serve(async (req) => {
               user_id: userId,
               title: "🔔 Nuevos matches de propiedades",
               body: `Encontré propiedades para ${clientNames.join(", ")}${extra}`,
-              url: "/chat",
+              url: matchUrl,
             }),
           });
         } catch (pushErr) {
@@ -316,6 +328,8 @@ serve(async (req) => {
           );
 
           let sellerMatchCount = 0;
+          // {seller, convId} de los vendedores con match, para deep-linkear el push.
+          const matchedSellers: { seller: ClientRow; convId: string }[] = [];
 
           for (const seller of sellers as ClientRow[]) {
             const matchedBuyers: { buyer: ClientRow & { phone?: string; email?: string }; reasons: string[] }[] = [];
@@ -365,6 +379,9 @@ serve(async (req) => {
               }
               convId = newConv.id;
             }
+
+            // Capturar la conversación de este vendedor para el deep-link del push.
+            matchedSellers.push({ seller, convId });
 
             // Build seller match message
             const lines: string[] = [
@@ -419,6 +436,10 @@ serve(async (req) => {
               .map((s) => s.full_name)
               .slice(0, 3);
             const extra = sellerMatchCount > 3 ? ` y ${sellerMatchCount - 3} más` : "";
+            // Deep-link a la conversación del vendedor con match más caliente; fallback "/".
+            const topSeller = [...matchedSellers]
+              .sort((a, b) => tempRank(a.seller.status) - tempRank(b.seller.status))[0];
+            const matchUrl = topSeller ? `/?c=${topSeller.convId}` : "/";
 
             try {
               await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
@@ -431,7 +452,7 @@ serve(async (req) => {
                   user_id: userId,
                   title: "🔔 Compradores encontrados",
                   body: `Encontré compradores para ${sellerNames.join(", ")}${extra}`,
-                  url: "/chat",
+                  url: matchUrl,
                 }),
               });
             } catch (pushErr) {

@@ -31,7 +31,7 @@ export function isViewingConversation(
   clients: VisibilityClient[],
   convId: string | null,
 ): boolean {
-  // Un push sin conversación asociada (ej. morning-matches con url "/chat") es
+  // Un push sin conversación asociada (convId null, ej. un push genérico sin ?c=) es
   // proactivo, NO redundante: hay que mostrarlo aunque la app esté abierta.
   if (!convId) return false;
   return clients.some((c) => {
