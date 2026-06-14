@@ -207,8 +207,20 @@ serve(async (req) => {
           try {
             if (finalContent && conversationId) {
               const admin = createClient(supabaseUrl, supabaseServiceKey);
-              await admin.from("messages").insert({ conversation_id: conversationId, role: "assistant", content: finalContent });
-              await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+              // Defensa en profundidad (service_role bypassa RLS): el UPDATE scopeado por user_id
+              // solo afecta la conversación si es del agente. Persistimos el mensaje SOLO si afectó
+              // una fila, evitando escritura cross-tenant con un conversationId ajeno (viene crudo
+              // del body). messages no tiene user_id: su dueño es transitivo vía conversation_id. Ver 86aj1n1tf.
+              const { data: owned } = await admin
+                .from("conversations")
+                .update({ updated_at: new Date().toISOString() })
+                .eq("id", conversationId)
+                .eq("user_id", userId)
+                .select("id")
+                .maybeSingle();
+              if (owned) {
+                await admin.from("messages").insert({ conversation_id: conversationId, role: "assistant", content: finalContent });
+              }
             }
 
             if (conversationId && messages.length === 1 && userId && !streamFailed) {

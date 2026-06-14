@@ -351,6 +351,7 @@ export async function executeTool(
           .from("conversations")
           .select("id, title, conversation_type, updated_at")
           .eq("client_id", args.client_id)
+          .eq("user_id", userId)
           .order("updated_at", { ascending: false }),
         supabase
           .from("client_properties")
