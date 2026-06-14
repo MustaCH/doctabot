@@ -821,6 +821,7 @@ export type Database = {
       supervisor_logs: {
         Row: {
           alan_response: string
+          category: string | null
           conversation_id: string | null
           created_at: string | null
           id: string
@@ -834,6 +835,7 @@ export type Database = {
         }
         Insert: {
           alan_response: string
+          category?: string | null
           conversation_id?: string | null
           created_at?: string | null
           id?: string
@@ -847,6 +849,7 @@ export type Database = {
         }
         Update: {
           alan_response?: string
+          category?: string | null
           conversation_id?: string | null
           created_at?: string | null
           id?: string
