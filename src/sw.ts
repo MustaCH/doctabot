@@ -43,47 +43,37 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// ---- Push notifications (DIAGNOSTIC BUILD — bug 86aj18u6f, REVERTIR tras debug) ----
-// Temporal: siempre muestra una notificación con el contenido descifrado adentro,
-// sin supresión, para ver en qué paso muere el push real.
+// ---- Push notifications ----
 self.addEventListener("push", (event: PushEvent) => {
+  let data: { title?: string; body?: string; url?: string } = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data?.text() ?? "" };
+  }
+
+  const title = data.title || "Alan";
+  const targetUrl = data.url || "/";
+  const options: NotificationOptions = {
+    body: data.body || "",
+    icon: "/alan-192.png",
+    badge: "/alan-192.png",
+    data: { url: targetUrl },
+  };
+
   event.waitUntil(
     (async () => {
-      const dbg: Record<string, unknown> = {
-        perm: (self as unknown as { Notification?: { permission: string } }).Notification?.permission ?? "n/a",
-        hasData: !!event.data,
-      };
-      let data: { title?: string; body?: string; url?: string } = {};
-      try {
-        data = event.data ? event.data.json() : {};
-        dbg.parsed = data;
-      } catch (e) {
-        dbg.jsonErr = (e as Error)?.message ?? String(e);
-        try {
-          dbg.text = event.data?.text()?.slice(0, 80);
-        } catch (e2) {
-          dbg.textErr = (e2 as Error)?.message ?? String(e2);
-        }
-      }
-
-      const targetUrl = data.url || "/";
+      // Señal real de foco/visibilidad (en el momento de la entrega): si el usuario ya
+      // está mirando esta conversación, el push es redundante y no lo mostramos. Si la
+      // app está en background/lock o está en otra conversación, sí lo mostramos.
       const convId = conversationIdFromUrl(targetUrl);
       const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      dbg.convId = convId;
-      dbg.clients = clients.length;
-      dbg.viewing = isViewingConversation(
+      const viewing = isViewingConversation(
         clients.map((c) => ({ visibilityState: c.visibilityState, url: c.url })),
         convId,
       );
-
-      console.log("[push-dbg]", dbg);
-      try {
-        await self.registration.showNotification("DEBUG: " + (data.title ?? "sin-title"), {
-          body: JSON.stringify(dbg).slice(0, 250),
-        });
-      } catch (e) {
-        console.log("[push-dbg] showNotification ERROR:", (e as Error)?.message, dbg);
-      }
+      if (viewing) return;
+      await self.registration.showNotification(title, options);
     })()
   );
 });
