@@ -17,6 +17,10 @@ import {
   addDaysISO,
   wrapUntrustedWebContent,
   UNTRUSTED_WEB_NOTICE,
+  rankProperties,
+  neutralizeControlMarkers,
+  sanitizeExternalPortalResult,
+  normalizeOperation,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -58,30 +62,42 @@ export async function executeTool(
       const min_habitaciones = safePositiveInt(args.min_habitaciones);
       const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
+      // Traemos un POOL ordenado (created_at DESC) más grande que `limit` para poder
+      // re-rankear Docta-first ANTES de truncar (ver rankProperties / ticket 86aj1f0ve).
+      const POOL_FACTOR = 4;
+      const poolLimit = Math.min(limit * POOL_FACTOR, 200);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean }) => {
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean }) => {
         if (zone && !opts?.skipZone) q = q.ilike("zone", `%${zone}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
         if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
         if (city) q = q.ilike("zone_city", `%${city}%`);
         if (titleSearch) q = q.ilike("title", `%${titleSearch}%`);
-        if (operation) q = q.ilike("operation", `%${operation}%`);
+        if (operation) {
+          // Igualdad exacta cuando el término es un régimen canónico (Venta/Alquiler/Alquiler
+          // temporario): así 'Alquiler' NO arrastra 'Alquiler temporario' (otro régimen legal).
+          // Fallback al ILIKE substring para términos no reconocidos. Ver ticket 86aj1f1fy.
+          const canonicalOp = normalizeOperation(operation);
+          if (canonicalOp) q = q.eq("operation", canonicalOp);
+          else q = q.ilike("operation", `%${operation}%`);
+        }
         if (property_type) q = q.ilike("property_type", `%${property_type}%`);
         if (min_price !== null) q = q.gte("price", min_price);
-        if (max_price !== null) q = q.lte("price", max_price);
+        if (max_price !== null && !opts?.skipMaxPrice) q = q.lte("price", max_price);
         if (currency) q = q.ilike("currency", `%${currency}%`);
-        if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
+        if (min_ambientes !== null && !opts?.skipMinRooms) q = q.gte("ambientes", min_ambientes);
         if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
-        if (min_habitaciones !== null) q = q.gte("habitaciones", min_habitaciones);
+        if (min_habitaciones !== null && !opts?.skipMinRooms) q = q.gte("habitaciones", min_habitaciones);
         if (max_habitaciones !== null) q = q.lte("habitaciones", max_habitaciones);
         if (office) q = q.ilike("office", `%${office}%`);
         return q;
       };
 
-      // Primary search
+      // Primary search. La query de datos trae un pool ordenado; la de count queda intacta
+      // (head:true → total_count real del universo, sin order ni pool).
       let baseQuery = applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }));
-      let dataQuery = applyFilters(supabase.from("properties").select("*")).limit(limit);
+      let dataQuery = applyFilters(supabase.from("properties").select("*")).order("created_at", { ascending: false }).limit(poolLimit);
 
       const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
       let totalCount = countResult.count ?? 0;
@@ -97,7 +113,7 @@ export async function executeTool(
         const fbData = applyFilters(
           supabase.from("properties").select("*"),
           { useLocalityAsTitle: true }
-        ).limit(limit);
+        ).order("created_at", { ascending: false }).limit(poolLimit);
         const [fbCountRes, fbDataRes] = await Promise.all([fbBase, fbData]);
         if (!fbDataRes.error && fbDataRes.data && fbDataRes.data.length > 0) {
           totalCount = fbCountRes.count ?? 0;
@@ -115,7 +131,7 @@ export async function executeTool(
         const fbData2 = applyFilters(
           supabase.from("properties").select("*"),
           { useLocalityAsTitle: true }
-        ).limit(limit);
+        ).order("created_at", { ascending: false }).limit(poolLimit);
         // For this fallback, search neighborhood term in title
         const [fbCountRes2, fbDataRes2] = await Promise.all([
           fbBase2.ilike("title", `%${neighborhood}%`),
@@ -138,7 +154,7 @@ export async function executeTool(
         const fbDataZ = applyFilters(
           supabase.from("properties").select("*"),
           { skipZone: true }
-        ).ilike("title", `%${zone}%`).limit(limit);
+        ).ilike("title", `%${zone}%`).order("created_at", { ascending: false }).limit(poolLimit);
         const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
         if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
           totalCount = fbCountResZ.count ?? 0;
@@ -148,19 +164,33 @@ export async function executeTool(
       }
 
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      if (!data || data.length === 0) return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [] });
+      if (!data || data.length === 0) {
+        // 0 resultados: si había al menos un filtro numérico, reintentamos 1-2 counts `exact`
+        // relajando el filtro más probable (primero max_price, después min_habitaciones/ambientes)
+        // para que Alan ofrezca una relajación concreta ("hay N opciones si subís ~15%").
+        // Solo devolvemos hints con count>0. Ver ticket 86aj1f1fy.
+        const hasNumericFilter = [min_price, max_price, min_ambientes, max_ambientes, min_habitaciones, max_habitaciones].some((v) => v !== null);
+        const relax_hints: Array<{ drop: string; count: number }> = [];
+        if (hasNumericFilter) {
+          if (max_price !== null) {
+            const { count } = await applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }), { skipMaxPrice: true });
+            if ((count ?? 0) > 0) relax_hints.push({ drop: "max_price", count: count ?? 0 });
+          }
+          if (min_habitaciones !== null || min_ambientes !== null) {
+            const { count } = await applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }), { skipMinRooms: true });
+            if ((count ?? 0) > 0) relax_hints.push({ drop: min_habitaciones !== null ? "min_habitaciones" : "min_ambientes", count: count ?? 0 });
+          }
+        }
+        return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [], ...(relax_hints.length ? { relax_hints } : {}) });
+      }
 
-      // Sort: RE/MAX Docta properties first
-      data.sort((a: any, b: any) => {
-        const aDocta = a.office?.toLowerCase().includes("docta") ? 0 : 1;
-        const bDocta = b.office?.toLowerCase().includes("docta") ? 0 : 1;
-        return aDocta - bDocta;
-      });
+      // Re-rankeamos el pool Docta-first y recién ahí truncamos a `limit`: una Docta fuera
+      // de la ventana de los más nuevos puede subir a la página visible. total_count sigue
+      // siendo el universo real (count head:true); `showing` es el slice final.
+      const ranked = rankProperties(data, limit);
+      const doctaCount = ranked.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
 
-      // Add docta_count info for context
-      const doctaCount = data.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
-
-      return JSON.stringify({ total_count: totalCount, showing: data.length, docta_in_results: doctaCount, results: data });
+      return JSON.stringify({ total_count: totalCount, showing: ranked.length, docta_in_results: doctaCount, results: ranked });
     }
 
     case "compare_properties": {
@@ -590,7 +620,11 @@ export async function executeTool(
 
       const operation = typeof args.operation === "string" ? args.operation.trim().toLowerCase() : "";
       const propertyType = typeof args.property_type === "string" ? args.property_type.trim().toLowerCase() : "";
-      const location = typeof args.location === "string" ? args.location.trim().toLowerCase().replace(/\s+/g, "-") : "";
+      // location puede venir como slug ("nueva-cordoba") o con espacios; para el query libre
+      // de Firecrawl lo queremos con espacios. (Antes se calculaba pero quedaba muerto.)
+      const location = typeof args.location === "string"
+        ? args.location.trim().toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ").trim()
+        : "";
 
       // Build search URLs for each portal - fixed Córdoba URLs
       const portalSearchUrls: Record<string, string | string[]> = {};
@@ -619,7 +653,10 @@ export async function executeTool(
 
       const searchPromises = portals.map(async (portal) => {
         const siteDomain = portal === "zonaprop" ? "zonaprop.com.ar" : "argenprop.com";
-        const searchQuery = `site:${siteDomain} cordoba ${query}${operation ? ` ${operation}` : ""}`;
+        // Inyectamos tipo y ubicación (antes ignorados → buscaba cualquier cosa en Córdoba).
+        const searchQuery = [`site:${siteDomain}`, "cordoba", location, propertyType, query, operation]
+          .filter(Boolean)
+          .join(" ");
         try {
           const res = await fetch("https://api.firecrawl.dev/v1/search", {
             method: "POST",
@@ -633,12 +670,9 @@ export async function executeTool(
           const data = await res.json();
           const results = (data.data ?? []).filter((r: any) => r.url && r.url.includes(siteDomain));
           for (const r of results) {
-            allResults.push({
-              portal: portal === "zonaprop" ? "ZonaProp" : "ArgentProp",
-              title: r.title || "Sin título",
-              url: r.url,
-              description: r.description || "",
-            });
+            // title/description son contenido externo no confiable: neutralizamos los
+            // marcadores de control para que no inyecten burbujas/botones falsos.
+            allResults.push(sanitizeExternalPortalResult(r, portal === "zonaprop" ? "ZonaProp" : "ArgentProp"));
           }
         } catch (e) {
           console.error(`Error searching ${portal}:`, e);
@@ -648,6 +682,7 @@ export async function executeTool(
       await Promise.all(searchPromises);
 
       return JSON.stringify({
+        untrusted_content_notice: UNTRUSTED_WEB_NOTICE,
         results: allResults,
         total: allResults.length,
         search_urls: portalSearchUrls,
@@ -706,6 +741,12 @@ export async function executeTool(
         .select("id")
         .maybeSingle();
       if (error) return JSON.stringify({ error: safeDbError(error) });
+      // 'enviada' = contacto saliente real → registramos last_contact_at para que el panel
+      // "clientes sin contactar" del dashboard use la señal real y no updated_at (que cambia
+      // con cualquier edición). Scopeado por userId. Ver ticket 86aj1f0wj.
+      if (status === "enviada") {
+        await supabase.from("clients").update({ last_contact_at: new Date().toISOString() }).eq("id", resolvedClientId).eq("user_id", userId);
+      }
       return JSON.stringify({ success: true, message: `Propiedad guardada en el perfil de ${client.full_name} (estado: ${status}).` });
     }
 
@@ -754,6 +795,11 @@ export async function executeTool(
         .select("id, status, notes")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
+      // enviada/visitada = contacto saliente real → registramos last_contact_at (señal del
+      // panel staleClients del dashboard). Scopeado por userId. Ver ticket 86aj1f0wj.
+      if (updates.status === "enviada" || updates.status === "visitada") {
+        await supabase.from("clients").update({ last_contact_at: new Date().toISOString() }).eq("id", args.client_id).eq("user_id", userId);
+      }
       return JSON.stringify({ success: true, message: "Propiedad del cliente actualizada.", data });
     }
 

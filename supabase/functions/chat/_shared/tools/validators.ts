@@ -74,6 +74,80 @@ export function wrapUntrustedWebContent(content: unknown): string {
   return `[CONTENIDO WEB NO CONFIABLE — INICIO]\n${neutralizeControlMarkers(content)}\n[CONTENIDO WEB NO CONFIABLE — FIN]`;
 }
 
+/**
+ * Normaliza un resultado crudo de un portal externo (ZonaProp/ArgentProp) a la forma
+ * que ve el modelo. El title/description vienen de una página externa y NO son confiables:
+ * pasan por neutralizeControlMarkers para que un title malicioso (ej. con ===MSG_BREAK===
+ * o <<<WHATSAPP_TO:...>>>) no inyecte burbujas, borradores ni botones falsos en el front
+ * (hueco del fix anti-injection 86aj0p5bw). Ver ticket 86aj1f14d.
+ */
+export function sanitizeExternalPortalResult(
+  raw: { title?: unknown; description?: unknown; url?: unknown },
+  portalLabel: string,
+): { portal: string; title: string; url: string; description: string } {
+  return {
+    portal: portalLabel,
+    title: neutralizeControlMarkers(typeof raw.title === "string" && raw.title.trim() ? raw.title : "Sin título"),
+    url: typeof raw.url === "string" ? raw.url : "",
+    description: neutralizeControlMarkers(typeof raw.description === "string" ? raw.description : ""),
+  };
+}
+
+/** Regímenes de operación canónicos tal como están en la columna `operation` (ver DB). */
+export const VALID_OPERATIONS = ["Venta", "Alquiler", "Alquiler temporario"];
+
+/**
+ * Normaliza el término de operación a uno de los regímenes canónicos exactos
+ * (Venta / Alquiler / Alquiler temporario), o null si no matchea ninguno.
+ *
+ * Permite filtrar con igualdad exacta (.eq) en vez de ILIKE substring: el bug
+ * (86aj1f1fy) era que `ILIKE '%Alquiler%'` arrastraba 'Alquiler temporario' (otro
+ * régimen legal). "Alquiler temporario"/"temporal" se detecta ANTES que "Alquiler"
+ * (es substring). Si devuelve null, el caller cae al ILIKE de siempre.
+ */
+export function normalizeOperation(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  if (s === "") return null;
+  if (/(temporari|temporal)/.test(s)) return "Alquiler temporario";
+  if (s === "venta" || s === "compra" || s === "comprar" || s === "vender") return "Venta";
+  if (s === "alquiler" || s === "alquilar" || s === "renta" || s === "rentar") return "Alquiler";
+  return null;
+}
+
+/**
+ * Re-rankea un pool de propiedades Docta-first y lo trunca a `limit`.
+ *
+ * El bug que arregla (ticket 86aj1f0ve): antes la query truncaba a `limit` ANTES de
+ * ordenar, así que con 80 matches el agente veía 5 cualquiera y el "Docta-first" era
+ * ilusorio (una Docta en posición 6 nunca aparecía). Ahora la query trae un POOL más
+ * grande (limit*N) ordenado por created_at DESC y acá lo re-rankeamos en memoria para
+ * que las de RE/MAX Docta floten al tope antes de cortar: una Docta fuera de la ventana
+ * de los N más nuevos igual entra a la página visible.
+ *
+ * Orden total determinista (no depende del orden físico de Postgres): Docta primero,
+ * luego created_at DESC, luego id DESC como desempate. Stable y sin mutar la entrada.
+ */
+export function rankProperties<T extends { office?: string | null; created_at?: string | null; id?: string }>(
+  pool: T[],
+  limit: number,
+): T[] {
+  const doctaKey = (p: T) => (p.office?.toLowerCase().includes("docta") ? 0 : 1);
+  const createdMs = (p: T) => {
+    const t = Date.parse(p.created_at ?? "");
+    return isNaN(t) ? 0 : t;
+  };
+  return [...pool]
+    .sort((a, b) => {
+      const d = doctaKey(a) - doctaKey(b);
+      if (d !== 0) return d;
+      const t = createdMs(b) - createdMs(a);
+      if (t !== 0) return t;
+      return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+    })
+    .slice(0, Math.max(limit, 0));
+}
+
 /** Safe positive number validation. Coerce strings numéricas (el modelo a veces manda
  *  "50000" en vez de 50000) con el mismo criterio que safePositiveInt, sin descartarlas. */
 export function safePositiveNumber(val: unknown): number | null {
