@@ -55,6 +55,29 @@ export function truncationSuffix(content: string): string {
   return unbalancedDraftClose(content) + "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
 }
 
+// Máximo de re-prompts por turno cuando el modelo fuga un tool-call como texto (ver abajo).
+const MAX_REPROMPTS = 2;
+
+/**
+ * Detecta y remueve invocaciones de herramienta que el modelo "narró" como TEXTO en vez de usar el
+ * canal de tool_calls (ej. `call:link_conversation{client_id:...}`). Solo reconoce NOMBRES de tools
+ * reales (validToolNames) para no borrar texto legítimo que contenga "call:". Devuelve el texto
+ * limpio y los nombres fugados. Puro y testeable. Ver 86aj1nb0t / 86aj1nb16.
+ */
+export function stripLeakedToolCalls(
+  content: string,
+  validToolNames: string[],
+): { cleaned: string; leakedNames: string[] } {
+  const names = (validToolNames || []).filter((n) => typeof n === "string" && /^\w+$/.test(n));
+  if (!content || names.length === 0) return { cleaned: content, leakedNames: [] };
+  // Formato observado: `call:NAME{...}` (args hasta el primer '}', sin anidar).
+  const re = new RegExp(`call:(${names.join("|")})\\s*\\{[^{}]*\\}`, "gi");
+  const leakedNames: string[] = [];
+  const cleaned = content.replace(re, (_m, name) => { leakedNames.push(name); return ""; });
+  if (leakedNames.length === 0) return { cleaned: content, leakedNames: [] };
+  return { cleaned: cleaned.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim(), leakedNames };
+}
+
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
   const { resilientAIFetch, executeTool, toolCtx, toolDefinitions } = deps;
   const { messages, emit } = opts;
@@ -64,6 +87,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   let fullContent = "";
   let lastPreamble = "";     // contenido de la última ronda suprimida (tool_calls); fallback si el turno no llega a una ronda de texto final
   let emittedFinal = false;  // true cuando ya volcamos una ronda final (texto o length)
+  let repromptCount = 0;     // re-prompts gastados al recuperar tool-calls fugados como texto
 
   const safeEmit = (t: string) => { if (!t) return; try { emit(t); } catch { /* cliente desconectado: seguimos drenando */ } };
 
@@ -144,10 +168,29 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
-    // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Validación
-    // mínima de formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar (sin truncación),
-    // agregamos el cierre faltante para que el front no parsee un borrador a medias.
-    const flush = assistantContent + unbalancedDraftClose(assistantContent);
+    // Recuperación de tool-calls fugados como texto (86aj1nb0t / guardado fantasma 86aj1nb16): si el
+    // modelo "narró" una invocación (call:NAME{...}) en vez de usar el canal de herramientas, la
+    // acción NO se ejecutó. La strippeamos del texto y re-prompteamos para que la invoque de verdad
+    // (en vez de parsear el formato quirky de Gemini, frágil y con riesgo de escribir mal). El texto
+    // fugado NO se muestra: la acción todavía no ocurrió. Cap de re-prompts para no loopear.
+    const validToolNames = toolDefinitions.map((d: any) => d?.function?.name).filter(Boolean);
+    const { cleaned, leakedNames } = stripLeakedToolCalls(assistantContent, validToolNames);
+    if (leakedNames.length > 0 && repromptCount < MAX_REPROMPTS) {
+      repromptCount++;
+      messages.push({ role: "assistant", content: cleaned || null });
+      messages.push({
+        role: "user",
+        content: `[sistema] Escribiste como TEXTO una invocación de herramienta (call:${leakedNames.join(", ")}). Las herramientas NO se ejecutan escribiéndolas: invocá ${leakedNames.join(" y ")} ahora por el canal de herramientas si esa acción hace falta; si ya no, continuá SIN repetir ese texto.`,
+      });
+      lastPreamble = cleaned;
+      continue;
+    }
+
+    // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Si quedó un leak
+    // que no pudimos recuperar (cap agotado), va el texto ya strippeado. Validación mínima de
+    // formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar, agregamos el cierre faltante.
+    const finalText = leakedNames.length > 0 ? cleaned : assistantContent;
+    const flush = finalText + unbalancedDraftClose(finalText);
     fullContent += flush;
     safeEmit(flush);
     emittedFinal = true;

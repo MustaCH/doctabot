@@ -56,6 +56,46 @@ export function unactedReadVerdict(
   return null;
 }
 
+/**
+ * Afirmaciones de ESCRITURA en la RESPUESTA de Alan y las tools que las cumplen. Análogo a
+ * READ_INTENTS pero del lado del output: si Alan dice que guardó/vinculó/agendó/envió/creó algo y
+ * NINGUNA de las tools correspondientes corrió, es un "guardado fantasma" (tool emitida como texto
+ * o alucinada). Anclado en el pretérito 1ª persona ACENTUADO ("guardé", "vinculé") a propósito: así
+ * NO marca ofertas/subjuntivos ("¿querés que guarde…?"). Precisión > recall (el supervisor solo
+ * loguea; un falso positivo ensucia métricas). Ver 86aj1nb16.
+ */
+export const WRITE_CLAIMS: Array<{ test: RegExp; tools: string[]; label: string }> = [
+  { test: /\b(guardé|adjunté|agregué|sumé)[^.?!\n]{0,40}\b(propiedad|al perfil|a su perfil|al cliente)\b/i, tools: ["save_property_to_client"], label: "save_property_to_client" },
+  { test: /\b(vinculé|asocié)[^.?!\n]{0,40}\b(conversaci|cliente|perfil)/i, tools: ["link_conversation"], label: "link_conversation" },
+  { test: /\b(agendé|programé|reservé)[^.?!\n]{0,40}\b(visita|reuni[oó]n|evento|llamada|cita)\b/i, tools: ["create_calendar_event", "create_meet_event", "create_client_event"], label: "evento" },
+  { test: /\b(envié|mandé)[^.?!\n]{0,30}\b(email|mail|correo)\b/i, tools: ["send_email"], label: "send_email" },
+  { test: /\b(creé|registré)[^.?!\n]{0,30}\b(cliente|contacto)\b/i, tools: ["create_client"], label: "create_client" },
+];
+
+/**
+ * Si la respuesta de Alan afirma una acción de escritura y la tool correspondiente NO está en
+ * executedTools, devuelve un verdict `rejected` determinista (no necesita LLM). Detección post-hoc
+ * (el supervisor solo loguea): hace visible el guardado fantasma en supervisor_logs. Ver 86aj1nb16.
+ */
+export function unexecutedWriteVerdict(
+  assistantContent: string,
+  executedTools: string[],
+): { verdict: "rejected"; score: number; reason: string; category: string } | null {
+  const txt = assistantContent || "";
+  const tools = executedTools || [];
+  for (const claim of WRITE_CLAIMS) {
+    if (claim.test.test(txt) && !claim.tools.some((t) => tools.includes(t))) {
+      return {
+        verdict: "rejected",
+        score: 2,
+        reason: `Afirmó una acción de escritura (${claim.label}) que NO se ejecutó: posible "guardado fantasma" (tool emitida como texto o alucinada).`,
+        category: "accion_no_ejecutada",
+      };
+    }
+  }
+  return null;
+}
+
 /** Categorías canónicas de los veredictos del supervisor (loop de mejora agregable).
  *  Ver ticket 86aj1f1up. */
 export const SUPERVISOR_CATEGORIES = [

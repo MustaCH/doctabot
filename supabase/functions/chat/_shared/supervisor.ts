@@ -3,7 +3,7 @@
 // (EdgeRuntime.waitUntil) después de cerrar el stream.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ALAN_CONTEXT_FACTS } from "./alan-facts.ts";
-import { unactedReadVerdict, buildPriorContextBlock, SUPERVISOR_CATEGORIES } from "./supervisor-rules.ts";
+import { unactedReadVerdict, unexecutedWriteVerdict, buildPriorContextBlock, SUPERVISOR_CATEGORIES } from "./supervisor-rules.ts";
 
 export interface SupervisorResult {
   verdict: string;
@@ -26,10 +26,11 @@ export async function runSupervisorEval(params: {
   const priorBlock = buildPriorContextBlock(params.priorContext ?? null);
   const supervisorStart = Date.now();
 
-  // Chequeo determinista previo: si el agente pidió listar/buscar/ver datos y la tool de
-  // lectura correspondiente NO corrió en el turno, es un dato inventado/descripto → rechazo
-  // sin gastar una llamada al modelo. Ver ticket 86aj1f0x3.
-  const hardReject = unactedReadVerdict(userMessage, executedTools);
+  // Chequeo determinista previo: (a) si el agente pidió listar/buscar/ver datos y la tool de lectura
+  // NO corrió → dato inventado/descripto (86aj1f0x3); (b) si Alan AFIRMA una escritura (guardar/
+  // vincular/agendar/enviar/crear) y la tool de escritura NO corrió → guardado fantasma (86aj1nb16).
+  // Ambos son rechazo sin gastar una llamada al modelo.
+  const hardReject = unactedReadVerdict(userMessage, executedTools) ?? unexecutedWriteVerdict(content, executedTools);
   if (hardReject) {
     return { ...hardReject, retryCount: 0, latency: Date.now() - supervisorStart };
   }

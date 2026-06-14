@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { unactedReadVerdict, buildPriorContextBlock } from "./supervisor-rules";
+import { unactedReadVerdict, unexecutedWriteVerdict, buildPriorContextBlock } from "./supervisor-rules";
 
 describe("unactedReadVerdict", () => {
   it("pedido de listar clientes SIN ejecutar la tool → rejected con category accion_no_ejecutada", () => {
@@ -35,6 +35,33 @@ describe("unactedReadVerdict", () => {
     expect(unactedReadVerdict("redactá un email para María", [])).toBeNull();
     expect(unactedReadVerdict("hola, cómo va", [])).toBeNull();
     expect(unactedReadVerdict("gracias!", [])).toBeNull();
+  });
+});
+
+describe("unexecutedWriteVerdict", () => {
+  it("afirma guardar una propiedad SIN ejecutar save_property_to_client → rejected (guardado fantasma)", () => {
+    const v = unexecutedWriteVerdict("Listo, guardé la propiedad en el perfil de Armando.", []);
+    expect(v?.verdict).toBe("rejected");
+    expect(v?.category).toBe("accion_no_ejecutada");
+    expect(v?.reason).toMatch(/save_property_to_client/);
+  });
+
+  it("afirma guardar/vincular CON la tool ejecutada → null", () => {
+    expect(unexecutedWriteVerdict("Listo, guardé la propiedad al cliente.", ["save_property_to_client"])).toBeNull();
+    expect(unexecutedWriteVerdict("Ya vinculé la conversación a su perfil.", ["link_conversation"])).toBeNull();
+  });
+
+  it("afirma vincular / enviar email sin la tool → rejected", () => {
+    expect(unexecutedWriteVerdict("Ya vinculé la conversación a su perfil.", [])?.verdict).toBe("rejected");
+    expect(unexecutedWriteVerdict("Listo, envié el email al cliente.", [])?.verdict).toBe("rejected");
+  });
+
+  it("ofertas y respuestas informativas NO se marcan (precisión > recall)", () => {
+    // Subjuntivo/oferta, no afirmación de acción hecha.
+    expect(unexecutedWriteVerdict("¿Querés que guarde la propiedad en su perfil?", [])).toBeNull();
+    expect(unexecutedWriteVerdict("Puedo vincular la conversación si querés.", [])).toBeNull();
+    // Informativa pura.
+    expect(unexecutedWriteVerdict("Encontré 3 propiedades en Centro.", [])).toBeNull();
   });
 });
 
