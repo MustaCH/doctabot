@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildAIMessages, buildActiveClientBlock } from "./prompt";
+import { buildAIMessages, buildActiveClientBlock, SYSTEM_PROMPT } from "./prompt";
+import { ALAN_CONTEXT_FACTS } from "./alan-facts";
 
 describe("buildAIMessages", () => {
   it("mensaje de texto plano pasa sin cambios", () => {
@@ -82,5 +83,24 @@ describe("buildActiveClientBlock", () => {
   it("renderiza presupuesto como rango cuando hay min y max", () => {
     const block = buildActiveClientBlock({ full_name: "Ana", budget_min: 80000, budget_max: 120000, budget_currency: "USD" });
     expect(block).toMatch(/Presupuesto: USD 80\.000.120\.000/);
+  });
+});
+
+// Regresión del bug 86aj1n43n (Alan re-saluda en turnos multi-tool). El fix vive como
+// regla canónica en alan-facts.ts (la evalúa el supervisor) + prosa instruccional en el
+// system prompt (CLAUDE.md regla 3: una sola fuente para el "qué", prosa para el "cómo").
+// Estos tests fallan si se revierte cualquiera de las dos: blindan la PRESENCIA de la regla,
+// no el comportamiento del modelo (que es probabilístico — eso se valida con repro manual).
+describe("regla de continuidad en turnos multi-herramienta (no re-saludar)", () => {
+  it("el system prompt instruye a no volver a saludar tras ejecutar una herramienta", () => {
+    expect(SYSTEM_PROMPT).toContain("CONTINUIDAD DENTRO DE UN MISMO TURNO");
+    expect(SYSTEM_PROMPT).toMatch(/NUNCA vuelvas a saludar/i);
+    expect(SYSTEM_PROMPT).toMatch(/saludá una sola vez/i);
+  });
+
+  it("la regla canónica de continuidad está en alan-facts (la que evalúa el supervisor)", () => {
+    expect(ALAN_CONTEXT_FACTS).toMatch(/continuidad en turnos multi-herramienta/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/saluda una sola vez/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/nunca vuelve a saludar/i);
   });
 });
