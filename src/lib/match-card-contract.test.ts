@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { formatPropertyLine } from "../../supabase/functions/morning-matches/format";
 import type { PropertyRow } from "../../supabase/functions/morning-matches/matching";
-import { parsePropertyCard, parseMultiplePropertyCards } from "@/components/PropertyCard";
+import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
 
 function prop(o: Partial<PropertyRow>): PropertyRow {
   return {

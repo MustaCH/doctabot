@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PropertyCard, { parsePropertyCard, parseMultiplePropertyCards } from "@/components/PropertyCard";
+import PropertyCard from "@/components/PropertyCard";
+import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
