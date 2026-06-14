@@ -399,23 +399,7 @@ async function runCleanup(supabase: any, batchId: string, batchTimestamp: string
     await writeLog(supabase, batchId, `🗑️ ${deleted} propiedades obsoletas eliminadas`, deleted > 0 ? "warning" : "info");
   }
 
-  if (deleted > 0) {
-    const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
-    if (N8N_WEBHOOK_URL) {
-      fetch(N8N_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "stale_properties_deleted",
-          deleted_count: deleted,
-          batch_timestamp: batchTimestamp,
-          timestamp: new Date().toISOString(),
-        }),
-      }).catch(err => console.error("n8n webhook error:", err));
-    }
-  }
-
-  // Count total upserted from logs
+  // Count total upserted + hard errors logged for this batch
   const { data: upsertLogs } = await supabase
     .from("scraping_logs")
     .select("properties_count")
@@ -423,9 +407,50 @@ async function runCleanup(supabase: any, batchId: string, batchTimestamp: string
     .like("message", "%guardadas%");
   const totalUpserted = (upsertLogs ?? []).reduce((sum: number, l: any) => sum + (l.properties_count ?? 0), 0);
 
+  const { data: errorLogs } = await supabase
+    .from("scraping_logs")
+    .select("message")
+    .eq("batch_id", batchId)
+    .eq("level", "error")
+    .order("created_at", { ascending: true });
+  const errorCount = errorLogs?.length ?? 0;
+  const firstError = errorLogs?.[0]?.message ?? null;
+
+  // status:
+  //   error   → la corrida no produjo nada (VPS scraper caído / todas las páginas fallaron)
+  //   partial → guardó datos pero perdió alguna página (degradado, no caída total)
+  //   success → corrida limpia
+  const status = totalUpserted === 0 ? "error" : (errorCount > 0 ? "partial" : "success");
+  const durationSeconds = Math.max(
+    0,
+    Math.round((Date.now() - new Date(batchTimestamp).getTime()) / 1000),
+  );
+
   await writeLog(supabase, batchId, `🏁 Scraping finalizado — ${totalUpserted} actualizadas, ${deleted} eliminadas`, "success", {
     properties_count: totalUpserted,
   });
+
+  // ─── Aviso a n8n / Overlord — SIEMPRE al cerrar el batch (no solo si hubo borrados) ───
+  // N8N_WEBHOOK_URL es compartido con las alertas del supervisor del chat → diferenciar por `type`.
+  // Overlord rutea por `status`: success (ok), partial (informativo), error (alarma).
+  const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
+  if (N8N_WEBHOOK_URL) {
+    fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "scrape_completed",
+        status,
+        batch_timestamp: batchTimestamp,
+        upserted: totalUpserted,
+        deleted,
+        errors: errorCount,
+        first_error: firstError,
+        duration_seconds: durationSeconds,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(err => console.error("n8n webhook error:", err));
+  }
 
   // Clean up old logs (keep last 5 batches)
   const { data: recentBatches } = await supabase
