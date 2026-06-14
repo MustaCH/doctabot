@@ -46,10 +46,17 @@ self.addEventListener("activate", (event) => {
 // ---- Push notifications ----
 self.addEventListener("push", (event: PushEvent) => {
   let data: { title?: string; body?: string; url?: string } = {};
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch {
-    data = { body: event.data?.text() ?? "" };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      // Payload no-JSON (o indescifrable): intentar como texto, sin romper el handler.
+      try {
+        data = { body: event.data.text() };
+      } catch {
+        data = {};
+      }
+    }
   }
 
   const title = data.title || "Alan";
@@ -73,7 +80,11 @@ self.addEventListener("push", (event: PushEvent) => {
         convId,
       );
       if (viewing) return;
-      await self.registration.showNotification(title, options);
+      try {
+        await self.registration.showNotification(title, options);
+      } catch (err) {
+        console.error("[sw] showNotification falló:", err);
+      }
     })()
   );
 });

@@ -119,15 +119,10 @@ async function persistSubscription(userId: string, sub: PushSubscription) {
   const json = sub.toJSON();
   const endpoint = json.endpoint!;
 
-  // Clean up any stale subscriptions for this user that have a different endpoint
-  // This prevents orphaned endpoints from receiving pushes nobody can handle
-  await supabase
-    .from("push_subscriptions")
-    .delete()
-    .eq("user_id", userId)
-    .neq("endpoint", endpoint);
-
-  await supabase.from("push_subscriptions").upsert(
+  // Multi-dispositivo: NO borramos las subs de otros endpoints del mismo user
+  // (cada device tiene su propia sub). Las subs muertas se prunean server-side
+  // cuando el push service responde 404/410.
+  const { error } = await supabase.from("push_subscriptions").upsert(
     {
       user_id: userId,
       endpoint,
@@ -141,6 +136,10 @@ async function persistSubscription(userId: string, sub: PushSubscription) {
     },
     { onConflict: "endpoint" }
   );
+
+  // No tragar el error en silencio: si el upsert falla (ej. RLS), la UI no debe
+  // quedar mostrando "activado" con la DB sin la sub.
+  if (error) throw new Error(`No se pudo guardar la subscription: ${error.message}`);
 }
 
 // Get the unified service-worker registration. The SW is registered by
@@ -184,14 +183,20 @@ export function usePushNotifications() {
           const sub = reg ? await reg.pushManager.getSubscription() : null;
           if (sub) {
             setEnabled(true);
-            await persistSubscription(user.id, sub);
+            // Re-sync best-effort: el browser ya tiene la sub; si el persist
+            // falla (RLS/red) lo logueamos pero no rompemos el init.
+            try {
+              await persistSubscription(user.id, sub);
+            } catch (e) {
+              console.warn("[push] no se pudo re-sincronizar la subscription:", e);
+            }
           } else {
             // Permission granted but no subscription — re-create silently
             console.warn("[push] permission=granted but no subscription, re-subscribing…");
             try {
               const vapidKey = await getVapidPublicKey();
               const r = reg ?? (await navigator.serviceWorker.register("/sw.js"));
-              await r.update();
+              await r.update().catch(() => {}); // update flaky no debe abortar el subscribe
               const newSub = await r.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(vapidKey),
@@ -204,8 +209,8 @@ export function usePushNotifications() {
             }
           }
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.warn("[push] error al inicializar notificaciones:", e);
       }
       setLoading(false);
     })();
@@ -225,7 +230,7 @@ export function usePushNotifications() {
 
       // Clean any stale subscription on the active worker first
       const reg = (await getActiveRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
-      await reg.update();
+      await reg.update().catch(() => {}); // update flaky no debe abortar el subscribe
 
       const existing = await reg.pushManager.getSubscription();
       if (existing) {

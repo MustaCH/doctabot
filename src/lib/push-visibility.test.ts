@@ -46,8 +46,13 @@ describe("isViewingConversation (supresión de push redundante)", () => {
     expect(isViewingConversation(clients, conv)).toBe(true);
   });
 
-  it("con app en foco y push sin conversación, lo trata como redundante", () => {
+  it("NO suprime un push sin conversación (proactivo, ej. morning-matches) aunque la app esté en foco", () => {
     const clients = [{ visibilityState: "visible", url: "/" }];
-    expect(isViewingConversation(clients, null)).toBe(true);
+    expect(isViewingConversation(clients, null)).toBe(false);
+  });
+
+  it("NO suprime un push sin conversación aunque la app esté en una conversación", () => {
+    const clients = [{ visibilityState: "visible", url: "/?c=conv-9" }];
+    expect(isViewingConversation(clients, null)).toBe(false);
   });
 });

@@ -31,10 +31,11 @@ export function isViewingConversation(
   clients: VisibilityClient[],
   convId: string | null,
 ): boolean {
+  // Un push sin conversación asociada (ej. morning-matches con url "/chat") es
+  // proactivo, NO redundante: hay que mostrarlo aunque la app esté abierta.
+  if (!convId) return false;
   return clients.some((c) => {
     if (c.visibilityState !== "visible") return false;
-    // App en foco pero sin conversación asociada al push → lo tratamos como redundante.
-    if (!convId) return true;
     return conversationIdFromUrl(c.url) === convId;
   });
 }
