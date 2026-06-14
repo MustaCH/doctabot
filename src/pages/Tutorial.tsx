@@ -198,14 +198,14 @@ const Tutorial = () => {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 overflow-hidden">
+    <div className="relative flex min-h-[var(--app-height,100dvh)] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 overflow-hidden safe-top safe-bottom">
       {/* Skip */}
       <motion.button
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
         onClick={finish}
-        className="absolute right-4 top-4 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors z-10"
+        className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)] flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors z-10"
       >
         Omitir <X className="h-3.5 w-3.5" />
       </motion.button>

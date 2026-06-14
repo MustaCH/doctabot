@@ -139,8 +139,10 @@
   .safe-top {
     padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
   }
+  /* Resta el alto del teclado (--keyboard-inset) al safe-area para no dejar
+     "padding fantasma" debajo del input cuando el teclado ya cubre esa zona. */
   .safe-bottom {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+    padding-bottom: calc(max(env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px), 0px) + 0.5rem);
   }
   /* Margin-based variants for when base padding must be preserved */
   .safe-top-m {

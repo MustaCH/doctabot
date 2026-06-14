@@ -184,7 +184,7 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6">
+    <div className="flex min-h-[var(--app-height,100dvh)] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 safe-top safe-bottom">
       <div className="w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="space-y-3 text-center">
