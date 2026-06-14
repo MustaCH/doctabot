@@ -21,7 +21,7 @@ import { buildContextualPrompt, buildAIMessages } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
 import { executeTool } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
-import { generateTitle } from "./_shared/title.ts";
+import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
@@ -152,10 +152,12 @@ serve(async (req) => {
         };
 
         let finalContent = "";
+        let executedTools: string[] = [];
         let streamFailed = false;
         try {
           const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes });
           finalContent = result.content;
+          executedTools = result.executedTools;
         } catch (err) {
           console.error("streamTurn error:", err);
           // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
@@ -178,7 +180,23 @@ serve(async (req) => {
             }
 
             if (conversationId && messages.length === 1 && userId && !streamFailed) {
-              generateTitle(messages, finalContent, conversationId, supabase, GEMINI_API_KEY);
+              generateTitle(messages, finalContent, conversationId, userId, supabase, GEMINI_API_KEY);
+            } else if (conversationId && userId && !streamFailed && finalContent && messages.length > 1) {
+              // Re-titulado (una sola vez, cap por title_locked): cuando la conversación cambió
+              // de foco — al vincular un cliente (hito semántico) o al acumular ~6 mensajes —,
+              // regeneramos el título con contexto acumulado. No pisa renames manuales. Ver 86aj1f24c.
+              const linkedThisTurn = executedTools.includes("link_conversation");
+              if (linkedThisTurn || messages.length >= 6) {
+                const { data: conv } = await supabase
+                  .from("conversations")
+                  .select("client_id, clients(full_name)")
+                  .eq("id", conversationId)
+                  .eq("user_id", userId)
+                  .maybeSingle();
+                const clientName = (conv as any)?.clients?.full_name ?? null;
+                const recentMessages = [...messages.slice(-5), { role: "assistant", content: finalContent }];
+                regenerateTitle({ conversationId, userId, supabase, apiKey: GEMINI_API_KEY, recentMessages, clientName });
+              }
             }
 
             if (streamFailed) {

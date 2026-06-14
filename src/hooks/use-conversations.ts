@@ -112,7 +112,8 @@ export function useConversations(userId: string | undefined, activeConvIdRef?: (
 
   const handleRenameConversation = useCallback(
     async (id: string, title: string) => {
-      await supabase.from("conversations").update({ title }).eq("id", id);
+      // title_locked: true → frena el re-titulado automático para no pisar el rename manual (ticket 86aj1f24c).
+      await supabase.from("conversations").update({ title, title_locked: true }).eq("id", id);
       loadConversations();
     },
     [loadConversations]

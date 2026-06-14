@@ -304,6 +304,7 @@ export type Database = {
           id: string
           last_read_at: string | null
           title: string
+          title_locked: boolean
           updated_at: string
           user_id: string
         }
@@ -314,6 +315,7 @@ export type Database = {
           id?: string
           last_read_at?: string | null
           title?: string
+          title_locked?: boolean
           updated_at?: string
           user_id: string
         }
@@ -324,6 +326,7 @@ export type Database = {
           id?: string
           last_read_at?: string | null
           title?: string
+          title_locked?: boolean
           updated_at?: string
           user_id?: string
         }
