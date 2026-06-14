@@ -12,6 +12,10 @@ import {
   MessageSquare,
   Users,
   CalendarCheck,
+  Link2,
+  BellRing,
+  Mail,
+  MessageCircle,
   Lightbulb,
   Rocket,
   ChevronRight,
@@ -97,6 +101,40 @@ const steps: TutorialStep[] = [
     tips: [
       "Podés vincular conversaciones a clientes específicos.",
       "Usá las notas para recordar preferencias de cada cliente.",
+    ],
+  },
+  {
+    icon: (
+      <div className="flex gap-3">
+        <Link2 className="h-10 w-10 text-primary" />
+        <BellRing className="h-10 w-10 text-accent" />
+      </div>
+    ),
+    title: "Alan conecta propiedades con clientes 🔔",
+    subtitle: "Vos vinculás, Alan vigila y te avisa",
+    description:
+      "Vinculá una propiedad con un cliente —o contale a Alan qué busca cada uno— y dejá de revisar el portal a mano. Cuando entra una propiedad que encaja con lo que alguien busca, Alan te abre una conversación nueva con el match 🔔.",
+    example: '"Vinculá el depto de Nueva Córdoba con Juan Pérez"',
+    tips: [
+      "Las conversaciones marcadas con 🔔 son matches que Alan encontró por vos.",
+      "Cuanto mejor cargás qué busca cada cliente, más afilados son los avisos.",
+    ],
+  },
+  {
+    icon: (
+      <div className="flex gap-3">
+        <Mail className="h-10 w-10 text-primary" />
+        <MessageCircle className="h-10 w-10 text-accent" />
+      </div>
+    ),
+    title: "Alan redacta y manda por vos ✍️",
+    subtitle: "El mensaje al cliente, listo y enviado",
+    description:
+      "Pedile el mensaje y Alan lo escribe por vos. Si es un email, lo manda directo (te pide confirmar antes). Si es un WhatsApp, te deja un botón para abrir el chat con el texto ya cargado y enviarlo desde tu número.",
+    example: '"Escribile un WhatsApp a María avisándole que bajó el precio del PH"',
+    tips: [
+      "Email: Alan lo envía (siempre confirmás antes de que salga).",
+      "WhatsApp: Alan prepara el texto y vos tocás “Enviar por WhatsApp”.",
     ],
   },
   {

@@ -8,7 +8,7 @@ import ChatInput from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, UserCircle, ChevronDown, Loader2, Search, CalendarDays, Users } from "lucide-react";
+import { Menu, UserCircle, ChevronDown, Loader2, Search, PenLine, CalendarPlus, Sparkles, LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useSwUpdate } from "@/hooks/use-sw-update";
@@ -174,8 +174,18 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
+            className="h-8 w-8"
+            onClick={() => navigate("/dashboard")}
+            aria-label="Centro de control"
+          >
+            <LayoutDashboard className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
             className="h-8 w-8 relative"
             onClick={() => navigate("/profile")}
+            aria-label="Perfil"
           >
             <UserCircle className="h-5 w-5" />
             {updateAvailable && (
@@ -194,13 +204,14 @@ const Chat = () => {
               <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />
               <h2 className="text-lg font-semibold">¡Hola! Soy Alan 👋</h2>
               <p className="max-w-xs text-sm text-muted-foreground">
-                Tu asistente de RE/MAX Docta. Puedo buscar propiedades, compararlas, guardar favoritos y generar fichas. ¡Preguntame lo que necesites!
+                Soy tu mano derecha en RE/MAX Docta. Agendo visitas, redacto los mensajes a tus clientes, conecto propiedades con quien las busca y te aviso de cada match. También busco propiedades, obvio 😉
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-sm">
                 {[
                   { label: "Buscar departamentos en Nueva Córdoba", icon: Search },
-                  { label: "Ver mi agenda de hoy", icon: CalendarDays },
-                  { label: "Listar mis clientes", icon: Users },
+                  { label: "Redactá un WhatsApp para un cliente", icon: PenLine },
+                  { label: "Agendá una visita para esta semana", icon: CalendarPlus },
+                  { label: "¿Qué podés hacer por mí?", icon: Sparkles },
                 ].map(({ label, icon: Icon }) => (
                   <button
                     key={label}

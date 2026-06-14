@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, Search, Heart, Users, MessageSquare, CalendarDays,
+  ArrowLeft, Search, Zap, Users, MessageSquare, CalendarDays,
   AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -46,7 +46,7 @@ interface PendingNote {
 interface DashboardData {
   totalProperties: number;
   totalClients: number;
-  totalFavorites: number;
+  weeklyActions: number;
   totalConversations: number;
   clients: Client[];
   events: ClientEvent[];
@@ -88,25 +88,33 @@ const Dashboard = () => {
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
-    const [propsRes, clientsRes, favsRes, convsRes, allClientsRes, eventsRes, notesRes] = await Promise.all([
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const [
+      propsRes, clientsRes, convsRes, allClientsRes, eventsRes, notesRes,
+      sentPropsRes, weekEventsRes, doneActionsRes,
+    ] = await Promise.all([
       supabase.from("properties").select("id", { count: "exact", head: true }),
       supabase.from("clients").select("id", { count: "exact", head: true }),
-      supabase.from("favorites").select("id", { count: "exact", head: true }),
       supabase.from("conversations").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(5),
       supabase.from("clients").select("id, full_name, status, phone, email, last_contact_at, updated_at, is_client").eq("user_id", user.id).order("updated_at", { ascending: false }),
       supabase.from("client_events").select("id, client_id, event_type, title, event_date, recurrence, notes, clients(full_name)").eq("user_id", user.id).order("event_date", { ascending: true }),
       supabase.from("client_notes").select("id, content, is_done, created_at, client_id").eq("user_id", user.id).eq("is_action", true).eq("is_done", false).order("created_at", { ascending: false }).limit(20),
+      // Acciones de valor de los últimos 7 días (North Star): propiedades enviadas + eventos agendados + tareas-acción completadas
+      supabase.from("client_properties").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "enviada").gte("updated_at", sevenDaysAgo),
+      supabase.from("client_events").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", sevenDaysAgo),
+      supabase.from("client_notes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_action", true).eq("is_done", true).gte("created_at", sevenDaysAgo),
     ]);
     const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
     const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
       ...n,
       client_name: clientMap.get(n.client_id) ?? "Cliente",
     }));
+    const weeklyActions = (sentPropsRes.count ?? 0) + (weekEventsRes.count ?? 0) + (doneActionsRes.count ?? 0);
 
     setData({
       totalProperties: propsRes.count ?? 0,
       totalClients: clientsRes.count ?? 0,
-      totalFavorites: favsRes.count ?? 0,
+      weeklyActions,
       totalConversations: convsRes.data?.length ?? 0,
       clients: (allClientsRes.data as Client[]) ?? [],
       events: (eventsRes.data as unknown as ClientEvent[]) ?? [],
@@ -209,9 +217,9 @@ const Dashboard = () => {
   };
 
   const metricCards = data ? [
+    { label: "Acciones (7d)", value: data.weeklyActions, icon: Zap, color: "text-orange-500" },
     { label: "Propiedades", value: data.totalProperties, icon: Search, color: "text-primary" },
     { label: "Contactos", value: data.totalClients, icon: Users, color: "text-emerald-600" },
-    { label: "Favoritos", value: data.totalFavorites, icon: Heart, color: "text-accent" },
     { label: "Conversaciones", value: data.totalConversations, icon: MessageSquare, color: "text-violet-500" },
   ] : [];
 
@@ -221,7 +229,7 @@ const Dashboard = () => {
     <div className="flex min-h-[100dvh] flex-col bg-background">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/profile")}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <TrendingUp className="h-5 w-5 text-primary" />
