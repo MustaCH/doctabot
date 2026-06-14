@@ -47,6 +47,7 @@ const Chat = () => {
   const {
     messages,
     isStreaming,
+    isWorking,
     isProcessingPdf,
     isTranscribing,
     quotedText,
@@ -202,7 +203,7 @@ const Chat = () => {
 
         {/* Messages */}
         <div className="relative flex-1 overflow-hidden">
-          <div className={`aurora-bg ${isStreaming && messages[messages.length - 1]?.role !== "assistant" ? "aurora-active" : "aurora-idle"}`} />
+          <div className={`aurora-bg ${isWorking ? "aurora-active" : "aurora-idle"}`} />
           <div ref={scrollRef} className="relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom">
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
@@ -246,15 +247,18 @@ const Chat = () => {
               onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
             />
           ))}
-          {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
+          {/* "Alan trabajando": al inicio del turno y en los gaps del tool-loop (ticket 86aj1naw2).
+              Aparece debajo de la última burbuja y se va apenas entra texto nuevo o termina el turno. */}
+          {isWorking && (
             <div className="flex gap-2.5 px-4 py-1.5">
               <img src={alanAvatar} alt="Alan" className="h-7 w-7 rounded-full mt-1" />
-              <div className="rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
+              <div className="flex items-center gap-2 rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
                 <div className="flex gap-1">
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:0ms]" />
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
                   <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
                 </div>
+                <span className="text-xs text-muted-foreground">Alan está trabajando…</span>
               </div>
             </div>
           )}

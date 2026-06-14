@@ -83,6 +83,12 @@ export function useChatMessages(
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  // "Alan trabajando": el turno sigue activo pero no hay texto entrando ahora mismo —
+  // al inicio del turno (antes del primer token) y en los gaps del tool-loop (tras un
+  // ===MSG_BREAK===, mientras corren tools antes de la continuación). Ticket 86aj1naw2.
+  // workingRef evita re-renders redundantes (sólo conmutamos el state al cruzar el flanco).
+  const [isWorking, setIsWorking] = useState(false);
+  const workingRef = useRef(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -94,6 +100,13 @@ export function useChatMessages(
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
+  }, []);
+
+  // Conmuta el indicador "Alan trabajando" sólo en el flanco, sincronizando ref + state.
+  const setWorking = useCallback((value: boolean) => {
+    if (workingRef.current === value) return;
+    workingRef.current = value;
+    if (mountedRef.current) setIsWorking(value);
   }, []);
 
   // Reusable function to reload messages from DB
@@ -183,6 +196,7 @@ export function useChatMessages(
       setIsStreaming(false);
       setIsTranscribing(false);
     }
+    setWorking(false);
     if (isBackgroundNetworkError(err)) {
       streamInterruptedRef.current = true;
       // If already visible, reload immediately
@@ -268,6 +282,7 @@ export function useChatMessages(
     const newMessages = [...messages, displayMsg];
     setMessages(newMessages);
     setIsStreaming(true);
+    setWorking(true); // turno arrancando: indicador hasta el primer token
 
     // Subimos los adjuntos a Storage para poder reconstruirlos al recargar.
     const { data: { session } } = await supabase.auth.getSession();
@@ -289,6 +304,7 @@ export function useChatMessages(
       console.error("Error guardando mensaje del usuario:", userInsertError);
       toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
       if (mountedRef.current) setIsStreaming(false);
+      setWorking(false);
       return;
     }
 
@@ -306,6 +322,8 @@ export function useChatMessages(
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          // Entró texto: el turno está produciendo salida → ocultar "Alan trabajando".
+          setWorking(false);
           if (!mountedRef.current) return;
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
@@ -321,6 +339,8 @@ export function useChatMessages(
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           assistantContent = "";
           needsNewBubble = true;
+          // Boundary del tool-loop (===MSG_BREAK===): pausa antes de la continuación → mostrar indicador.
+          setWorking(true);
           if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
@@ -330,6 +350,7 @@ export function useChatMessages(
         },
         onDone: async () => {
           if (mountedRef.current) setIsStreaming(false);
+          setWorking(false);
           feedbackReceive();
           // Message is already saved to DB by the edge function
           // Just update local state and mark as read
@@ -389,6 +410,7 @@ export function useChatMessages(
 
       const msgsForAI: Msg[] = [...historyForAI(messages), { role: "user", content: transcript }];
       setIsStreaming(true);
+      setWorking(true); // turno arrancando: indicador hasta el primer token
 
       let assistantContent = "";
       let allAssistantMessages: string[] = [];
@@ -402,6 +424,8 @@ export function useChatMessages(
         signal: controller.signal,
         onDelta: (chunk) => {
           assistantContent += chunk;
+          // Entró texto: el turno está produciendo salida → ocultar "Alan trabajando".
+          setWorking(false);
           if (!mountedRef.current) return;
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
@@ -417,6 +441,8 @@ export function useChatMessages(
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
           assistantContent = "";
           needsNewBubble = true;
+          // Boundary del tool-loop (===MSG_BREAK===): pausa antes de la continuación → mostrar indicador.
+          setWorking(true);
           if (!mountedRef.current) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
@@ -426,6 +452,7 @@ export function useChatMessages(
         },
         onDone: async () => {
           if (mountedRef.current) setIsStreaming(false);
+          setWorking(false);
           feedbackReceive();
           // Message is already saved to DB by the edge function
           if (markAsRead) await markAsRead(convId!);
@@ -440,6 +467,7 @@ export function useChatMessages(
   return {
     messages,
     isStreaming,
+    isWorking,
     isProcessingPdf,
     isTranscribing,
     quotedText,
