@@ -113,7 +113,7 @@ const Chat = () => {
   const userName = user?.user_metadata?.full_name;
 
   return (
-    <div className="flex h-[calc(100dvh-var(--keyboard-inset,0px))] w-full overflow-hidden">
+    <div className="flex h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] w-full overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden w-72 shrink-0 border-r border-border md:block">
         <ConversationList

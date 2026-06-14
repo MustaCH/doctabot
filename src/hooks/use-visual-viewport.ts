@@ -7,29 +7,41 @@ function isEditable(el: Element | null): boolean {
 }
 
 /**
- * Expone el alto del teclado virtual como CSS var `--keyboard-inset` en :root,
- * usando la VisualViewport API. El layout usa `calc(100dvh - var(--keyboard-inset))`.
+ * Sincroniza dos CSS vars en :root para el shell de la app:
  *
- * Clave anti "franja gris": el teclado SOLO puede estar visible si hay un
- * elemento editable enfocado. Si no lo hay, forzamos el inset a 0 — así nunca
- * queda "pegado" un valor residual cuando iOS standalone no dispara un resize
- * limpio al cerrar el teclado (lo que dejaba el safe-area inferior sin pintar y
- * asomaba el fondo del body como una franja gris).
+ *  --app-height     → alto total de la pantalla en px (window.innerHeight).
+ *                     Reemplaza a 100dvh, que en iOS standalone queda "stuck" en
+ *                     un valor incorrecto tras abrir/cerrar el teclado y deja una
+ *                     franja gris abajo hasta que un reflow (cambio de ruta) lo
+ *                     recalcula. El valor en px no sufre ese bug.
+ *  --keyboard-inset → px que el teclado le come al viewport (0 si está cerrado).
  *
- * Sin VisualViewport (navegadores viejos) la var queda en su fallback (0px).
+ * El layout usa `calc(var(--app-height) - var(--keyboard-inset))`.
+ *
+ * El teclado SOLO puede estar visible si hay un elemento editable enfocado: si no
+ * lo hay, recapturamos el alto real y forzamos el inset a 0 (no dependemos de que
+ * iOS dispare un resize limpio al cerrar). Mientras el teclado está abierto NO
+ * tocamos --app-height (guardamos el último alto "sin teclado" como base estable).
+ *
  * Montar una sola vez, a nivel app.
  */
 export function useVisualViewport() {
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
     const root = document.documentElement;
+    const vv = window.visualViewport;
+    let base = window.innerHeight; // alto full-screen estable (sin teclado)
+
     const update = () => {
-      const keyboard = isEditable(document.activeElement)
-        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-        : 0;
-      root.style.setProperty("--keyboard-inset", `${Math.round(keyboard)}px`);
+      if (!isEditable(document.activeElement)) {
+        base = window.innerHeight;
+        root.style.setProperty("--app-height", `${base}px`);
+        root.style.setProperty("--keyboard-inset", "0px");
+        return;
+      }
+      if (vv) {
+        const kb = Math.max(0, base - vv.height - vv.offsetTop);
+        root.style.setProperty("--keyboard-inset", `${Math.round(kb)}px`);
+      }
     };
 
     const onFocusOut = () => {
@@ -42,13 +54,17 @@ export function useVisualViewport() {
     };
 
     update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
     window.addEventListener("focusin", update);
     window.addEventListener("focusout", onFocusOut);
     return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
       window.removeEventListener("focusin", update);
       window.removeEventListener("focusout", onFocusOut);
     };

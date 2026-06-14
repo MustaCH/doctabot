@@ -184,7 +184,7 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-var(--keyboard-inset,0px))] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 safe-top safe-bottom">
+    <div className="flex min-h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 safe-top safe-bottom">
       <div className="w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="space-y-3 text-center">
