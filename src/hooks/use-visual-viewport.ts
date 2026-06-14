@@ -1,17 +1,18 @@
 import { useEffect } from "react";
 
 /**
- * Sincroniza dos CSS custom properties en :root con la VisualViewport API:
+ * Expone el alto del teclado virtual como CSS var `--keyboard-inset` en :root,
+ * usando la VisualViewport API.
  *
- *  --app-height     → altura del área visible (excluye el teclado). Usar en vez de
- *                     100dvh para que el layout se achique en tiempo real cuando
- *                     se abre el teclado en iOS (donde dvh NO se actualiza).
- *  --keyboard-inset → cuántos px del bottom tapa el teclado. Permite colapsar el
- *                     safe-area-inset-bottom cuando el teclado ya cubre esa zona
- *                     (evita el "padding fantasma" debajo del input).
+ * Se calcula como innerHeight - visualViewport.height - offsetTop: ambos son
+ * medidas del mismo origen, así que la resta da el alto que el teclado le come
+ * al viewport (0 si está cerrado). NO atamos la altura del layout a
+ * visualViewport.height porque en iOS standalone puede excluir el safe-area
+ * inferior y dejar una franja sin pintar; en cambio el layout sigue usando
+ * 100dvh (que cubre toda la pantalla) y le RESTA --keyboard-inset por calc().
  *
- * Sin VisualViewport (navegadores viejos) las vars quedan sin setear y el CSS cae
- * al fallback (100dvh / inset normal). Montar una sola vez, a nivel app.
+ * Sin VisualViewport (navegadores viejos) la var queda sin setear y el CSS cae
+ * al fallback (0px). Montar una sola vez, a nivel app.
  */
 export function useVisualViewport() {
   useEffect(() => {
@@ -20,7 +21,6 @@ export function useVisualViewport() {
 
     const root = document.documentElement;
     const update = () => {
-      root.style.setProperty("--app-height", `${Math.round(vv.height)}px`);
       const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       root.style.setProperty("--keyboard-inset", `${Math.round(keyboard)}px`);
     };

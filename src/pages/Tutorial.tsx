@@ -198,7 +198,7 @@ const Tutorial = () => {
   };
 
   return (
-    <div className="relative flex min-h-[var(--app-height,100dvh)] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 overflow-hidden safe-top safe-bottom">
+    <div className="relative flex min-h-[calc(100dvh-var(--keyboard-inset,0px))] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 overflow-hidden safe-top safe-bottom">
       {/* Skip */}
       <motion.button
         initial={{ opacity: 0 }}
