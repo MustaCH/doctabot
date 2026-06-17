@@ -104,3 +104,43 @@ describe("regla de continuidad en turnos multi-herramienta (no re-saludar)", () 
     expect(ALAN_CONTEXT_FACTS).toMatch(/nunca vuelve a saludar/i);
   });
 });
+
+// Regresión del bug 86aj1pd8g (Alan pide datos del cliente sin verificar contactos primero).
+// En una conversación nueva ("buscá para Armando") la conversación todavía NO está vinculada,
+// así que el bloque CLIENTE ACTIVO no se inyecta y el modelo debe hacer el lookup él mismo y
+// REUTILIZAR los criterios guardados del cliente como base de la búsqueda. Blindan la presencia
+// de la regla (qué), no el comportamiento del modelo (probabilístico → repro manual).
+describe("regla de apertura 'para [cliente]': reutilizar criterios guardados (86aj1pd8g)", () => {
+  it("la regla canónica de reutilización de criterios está en alan-facts", () => {
+    expect(ALAN_CONTEXT_FACTS).toMatch(/reutiliza.*criterios guardados/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/preferred_zones/);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/solo pide los criterios que realmente faltan/i);
+  });
+
+  it("el system prompt instruye a reutilizar los criterios del cliente y pedir solo lo que falta", () => {
+    expect(SYSTEM_PROMPT).toMatch(/reutiliz[aá].*criterios guardados/i);
+    expect(SYSTEM_PROMPT).toMatch(/ped[ií] solo lo que falte/i);
+  });
+});
+
+// Regresión del bug 86aj1pd9z (mensaje huérfano: Alan narra el ida y vuelta interno de las
+// herramientas — ambigüedad de save_property_to_client, reintentos — como si fuera un intercambio
+// que el usuario vio). Con la supresión de preámbulos (86aj1n43n) el usuario solo ve la ronda
+// final, que referencia pasos ocultos. La regla manda no narrar ese proceso interno y guardar por
+// property_id exacto tras una búsqueda (evita la rama de ambigüedad).
+describe("regla de proceso interno de herramientas: no narrarlo al usuario (86aj1pd9z)", () => {
+  it("la regla canónica de no narrar el proceso interno está en alan-facts", () => {
+    expect(ALAN_CONTEXT_FACTS).toMatch(/proceso de trabajo interno/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/el sistema me pidió que especifique/i); // anti-ejemplo explícito
+    expect(ALAN_CONTEXT_FACTS).toMatch(/property_id exacto/i);
+  });
+
+  it("el system prompt instruye a no narrar el ida y vuelta interno", () => {
+    expect(SYSTEM_PROMPT).toMatch(/proceso de trabajo interno/i);
+    expect(SYSTEM_PROMPT).toMatch(/el sistema me pidió que especifique/i);
+  });
+
+  it("el system prompt instruye a guardar por property_id exacto tras una búsqueda", () => {
+    expect(SYSTEM_PROMPT).toMatch(/property_id exacto/i);
+  });
+});
