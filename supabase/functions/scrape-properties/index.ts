@@ -383,7 +383,7 @@ serve(async (req) => {
   }
 });
 
-/** Run after all operations complete: delete stale props, clean old logs, notify n8n */
+/** Run after all operations complete: delete stale props, clean old logs, notify OVERLORD */
 async function runCleanup(supabase: any, batchId: string, batchTimestamp: string) {
   await writeLog(supabase, batchId, `🧹 Limpiando propiedades obsoletas...`, "info");
 
@@ -432,26 +432,44 @@ async function runCleanup(supabase: any, batchId: string, batchTimestamp: string
     properties_count: totalUpserted,
   });
 
-  // ─── Aviso a n8n / Overlord — SIEMPRE al cerrar el batch (no solo si hubo borrados) ───
-  // N8N_WEBHOOK_URL es compartido con las alertas del supervisor del chat → diferenciar por `type`.
-  // Overlord rutea por `status`: success (ok), partial (informativo), error (alarma).
-  const N8N_WEBHOOK_URL = Deno.env.get("N8N_WEBHOOK_URL");
-  if (N8N_WEBHOOK_URL) {
-    fetch(N8N_WEBHOOK_URL, {
+  // ─── Aviso a OVERLORD vía endpoint de Intake — SIEMPRE al cerrar el batch ───
+  // Contrato canónico (OVERLORD/INSTRUCTIONS.md §7): success → ping info (sin ticket),
+  // partial → ping info con detalle, error → ticket + ping.
+  // El scraper devuelve 200 aun cuando falla (errores resilientes), así que el Monitor de
+  // OVERLORD NO lo detecta por 5xx → reportarlo acá no duplica el ticket del Monitor.
+  const OVERLORD_TOKEN = Deno.env.get("OVERLORD_TOKEN");
+  if (OVERLORD_TOKEN) {
+    const durTxt = `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`;
+    const intake =
+      status === "error"
+        ? {
+            title: "Scraper diario FALLÓ — 0 propiedades guardadas",
+            message: `La corrida ${batchTimestamp} no guardó ninguna propiedad (probable caída del scraper del VPS). ${errorCount} errores. Primer error: ${firstError ?? "n/d"}.`,
+            severity: "high",
+            type: "error",
+            ticket: true,
+          }
+        : status === "partial"
+        ? {
+            title: "Scraper diario degradado",
+            message: `Corrida ${batchTimestamp}: ${totalUpserted} actualizadas, ${deleted} eliminadas en ${durTxt}, pero con ${errorCount} errores de página (se perdieron datos). Primer error: ${firstError ?? "n/d"}.`,
+            type: "info",
+          }
+        : {
+            title: "Scraper diario OK",
+            message: `Corrida ${batchTimestamp}: ${totalUpserted} propiedades actualizadas, ${deleted} eliminadas en ${durTxt}. Sin errores.`,
+            type: "info",
+          };
+    fetch("https://n8n.ignaciopoletti.dev/webhook/overlord-intake", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "scrape_completed",
-        status,
-        batch_timestamp: batchTimestamp,
-        upserted: totalUpserted,
-        deleted,
-        errors: errorCount,
-        first_error: firstError,
-        duration_seconds: durationSeconds,
-        timestamp: new Date().toISOString(),
-      }),
-    }).catch(err => console.error("n8n webhook error:", err));
+      headers: {
+        "Content-Type": "application/json",
+        "X-Overlord-Token": OVERLORD_TOKEN,
+      },
+      body: JSON.stringify({ project: "doctabot", ...intake }),
+    }).catch(err => console.error("OVERLORD intake error:", err));
+  } else {
+    console.warn("OVERLORD_TOKEN no seteado — se omite el aviso a OVERLORD");
   }
 
   // Clean up old logs (keep last 5 batches)
