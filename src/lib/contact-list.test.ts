@@ -33,19 +33,36 @@ describe("groupContacts", () => {
 
 describe("filterContacts", () => {
   const list = [
-    c({ id: "1", full_name: "Ana Gómez", phone: "351111", is_client: true, status: "hot" }),
+    c({ id: "1", full_name: "Ana Gómez", phone: "351111", is_client: true, status: "hot", client_type: "buyer" }),
     c({ id: "2", full_name: "Bruno López", email: "bruno@mail.com", is_client: false }),
+    c({ id: "3", full_name: "Carla Vende", is_client: true, status: "warm", client_type: "seller" }),
+    c({ id: "4", full_name: "Diego Ambos", is_client: true, status: "warm", client_type: "both" }),
   ];
+  const ids = (items: ContactListItem[]) => items.map((x) => x.id).sort();
+
+  it("Compradores: clientes con client_type buyer o both", () => {
+    expect(ids(filterContacts(list, { query: "", kind: "buyer", status: "all" }))).toEqual(["1", "4"]);
+  });
+  it("Vendedores: clientes con client_type seller o both", () => {
+    expect(ids(filterContacts(list, { query: "", kind: "seller", status: "all" }))).toEqual(["3", "4"]);
+  });
+  it("Contactos: solo is_client = false", () => {
+    expect(ids(filterContacts(list, { query: "", kind: "contact", status: "all" }))).toEqual(["2"]);
+  });
+  it("un contacto both aparece tanto en Compradores como en Vendedores", () => {
+    expect(filterContacts(list, { query: "", kind: "buyer", status: "all" }).some((x) => x.id === "4")).toBe(true);
+    expect(filterContacts(list, { query: "", kind: "seller", status: "all" }).some((x) => x.id === "4")).toBe(true);
+  });
+  it("un contacto (is_client = false) no aparece en Compradores ni Vendedores", () => {
+    expect(filterContacts(list, { query: "", kind: "buyer", status: "all" }).some((x) => x.id === "2")).toBe(false);
+    expect(filterContacts(list, { query: "", kind: "seller", status: "all" }).some((x) => x.id === "2")).toBe(false);
+  });
   it("filtra por texto en nombre/teléfono/email", () => {
-    expect(filterContacts(list, { query: "gómez", kind: "all", status: "all" })).toHaveLength(1);
-    expect(filterContacts(list, { query: "bruno@mail", kind: "all", status: "all" })).toHaveLength(1);
+    expect(filterContacts(list, { query: "gómez", kind: "buyer", status: "all" })).toHaveLength(1);
+    expect(filterContacts(list, { query: "bruno@mail", kind: "contact", status: "all" })).toHaveLength(1);
   });
-  it("filtra por tipo cliente/contacto", () => {
-    expect(filterContacts(list, { query: "", kind: "client", status: "all" })).toHaveLength(1);
-    expect(filterContacts(list, { query: "", kind: "contact", status: "all" })).toHaveLength(1);
-  });
-  it("filtra por estado solo entre clientes", () => {
-    expect(filterContacts(list, { query: "", kind: "all", status: "hot" })).toHaveLength(1);
-    expect(filterContacts(list, { query: "", kind: "all", status: "cold" })).toHaveLength(0);
+  it("filtra por estado dentro del tipo seleccionado", () => {
+    expect(filterContacts(list, { query: "", kind: "buyer", status: "hot" })).toHaveLength(1);
+    expect(filterContacts(list, { query: "", kind: "buyer", status: "cold" })).toHaveLength(0);
   });
 });

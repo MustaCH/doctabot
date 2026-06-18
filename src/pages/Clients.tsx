@@ -45,7 +45,7 @@ const Clients = () => {
   const navigate = useNavigate();
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [kind, setKind] = useState<ContactKind>("all");
+  const [kind, setKind] = useState<ContactKind>("buyer");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -100,8 +100,8 @@ const Clients = () => {
   };
 
   const filterButtons: { key: ContactKind; label: string }[] = [
-    { key: "all", label: "Todos" },
-    { key: "client", label: "Clientes" },
+    { key: "buyer", label: "Compradores" },
+    { key: "seller", label: "Vendedores" },
     { key: "contact", label: "Contactos" },
   ];
 

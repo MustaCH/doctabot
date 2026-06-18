@@ -8,7 +8,7 @@ export interface ContactListItem {
   client_type: string;
 }
 
-export type ContactKind = "all" | "client" | "contact";
+export type ContactKind = "buyer" | "seller" | "contact";
 export type StatusFilter = "all" | "hot" | "warm" | "cold";
 
 export interface ContactFilters {
@@ -55,7 +55,9 @@ export function groupContacts(contacts: ContactListItem[]): ContactGroup[] {
 /** Filtra por texto (nombre/teléfono/email), tipo y estado. */
 export function filterContacts(contacts: ContactListItem[], f: ContactFilters): ContactListItem[] {
   let result = contacts;
-  if (f.kind === "client") result = result.filter((c) => c.is_client);
+  // Compradores/Vendedores: clientes según client_type (both cuenta en ambos). Contactos: no clientes.
+  if (f.kind === "buyer") result = result.filter((c) => c.is_client && (c.client_type === "buyer" || c.client_type === "both"));
+  else if (f.kind === "seller") result = result.filter((c) => c.is_client && (c.client_type === "seller" || c.client_type === "both"));
   else if (f.kind === "contact") result = result.filter((c) => !c.is_client);
 
   if (f.status !== "all") result = result.filter((c) => c.is_client && c.status === f.status);
