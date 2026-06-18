@@ -42,3 +42,28 @@ describe("PropertyCard — botón compartir por WhatsApp", () => {
     ).toBeNull();
   });
 });
+
+describe("PropertyCard — guardarraíl de disponibilidad (ticket 86aj42b7t)", () => {
+  it("con foto que carga OK muestra 'Ver propiedad' y no marca no disponible", () => {
+    render(<PropertyCard {...baseProps} photo="https://cdn.test/foto.webp" />);
+    expect(screen.getByRole("link", { name: /ver propiedad/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no disponible/i)).toBeNull();
+  });
+
+  it("si la foto falla (listing dado de baja) oculta 'Ver propiedad' y muestra 'Propiedad no disponible'", () => {
+    render(<PropertyCard {...baseProps} photo="https://cdn.test/foto-muerta.webp" />);
+    // Simular el 404 de la imagen del CDN
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.queryByRole("link", { name: /ver propiedad/i })).toBeNull();
+    expect(screen.getByText(/propiedad no disponible/i)).toBeInTheDocument();
+  });
+
+  it("al darse de baja tampoco ofrece compartir un link a la home (WhatsApp oculto)", () => {
+    render(
+      <PropertyCard {...baseProps} photo="https://cdn.test/foto-muerta.webp" whatsappPhone="+54 9 351 123-4567" />
+    );
+    expect(screen.getByRole("button", { name: /compartir por whatsapp/i })).toBeInTheDocument();
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.queryByRole("button", { name: /compartir por whatsapp/i })).toBeNull();
+  });
+});

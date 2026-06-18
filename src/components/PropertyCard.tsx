@@ -23,6 +23,11 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
   const [copied, setCopied] = useState(false);
   const [imgError, setImgError] = useState(false);
+  // Guardarraíl de disponibilidad: las fotos viven en el CDN de RE/MAX bajo el id del
+  // listing; cuando una propiedad se da de baja, la imagen 404ea (imgError) y su URL
+  // pública redirige a la home. Usamos el fallo de imagen como proxy de "baja" y NO
+  // ofrecemos "Ver propiedad" (que llevaría a la home). Ver ticket 86aj42b7t.
+  const unavailable = imgError;
   const { isFavorite, toggle, loading: favLoading, canFavorite } = useFavorite(url);
 
   const handleCopy = async () => {
@@ -123,7 +128,13 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             {line}
           </div>
         ))}
-        {finalUrl && (
+        {finalUrl && unavailable && (
+          <div className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+            <span aria-hidden>⚠️</span>
+            <span>Propiedad no disponible</span>
+          </div>
+        )}
+        {finalUrl && !unavailable && (
           <div className="flex gap-2 pt-1">
             <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
               <Button size="sm" variant="outline" className="w-full gap-2">
