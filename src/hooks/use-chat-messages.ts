@@ -14,8 +14,8 @@ const ATTACHMENTS_BUCKET = "chat-attachments";
 const SIGNED_URL_TTL = 60 * 60 * 24; // 24h: cubre display + re-envío dentro de la sesión
 
 type StoredAttachmentRef = {
-  type: "image" | "file";
-  path?: string;        // solo imágenes (objeto en Storage)
+  type: "image" | "file" | "audio";
+  path?: string;        // imágenes y notas de voz (objeto en Storage)
   mimeType: string;
   fileName?: string;
 };
@@ -52,11 +52,38 @@ async function persistAttachments(
   return refs.length > 0 ? refs : null;
 }
 
-/** Reconstruye MsgAttachment[] desde lo persistido, firmando URLs de las imágenes. */
-async function reconstructAttachments(stored: unknown): Promise<MsgAttachment[] | undefined> {
-  if (!Array.isArray(stored) || stored.length === 0) return undefined;
+/** Sube el blob de una nota de voz a Storage y devuelve un ref serializable para messages.attachments. */
+async function persistAudio(
+  userId: string,
+  convId: string,
+  blob: Blob,
+): Promise<StoredAttachmentRef[] | null> {
+  const mimeType = blob.type || "audio/webm";
+  // blob.type suele venir como "audio/webm;codecs=opus" → nos quedamos con la extensión limpia.
+  const ext = (mimeType.split("/")[1]?.split(";")[0] || "webm").replace(/[^a-z0-9]/gi, "");
+  const path = `${userId}/${convId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from(ATTACHMENTS_BUCKET)
+    .upload(path, blob, { contentType: mimeType, upsert: false });
+  if (error) { console.error("Error subiendo nota de voz:", error); return null; }
+  return [{ type: "audio", path, mimeType }];
+}
+
+/** Reconstruye adjuntos (imágenes) + audioUrl de la nota de voz desde lo persistido, firmando URLs de Storage. */
+async function reconstructAttachments(stored: unknown): Promise<{ attachments?: MsgAttachment[]; audioUrl?: string }> {
+  if (!Array.isArray(stored) || stored.length === 0) return {};
   const out: MsgAttachment[] = [];
+  let audioUrl: string | undefined;
   for (const a of stored as StoredAttachmentRef[]) {
+    if (a.type === "audio") {
+      if (a.path) {
+        const { data: signed } = await supabase.storage
+          .from(ATTACHMENTS_BUCKET)
+          .createSignedUrl(a.path, SIGNED_URL_TTL);
+        if (signed?.signedUrl) audioUrl = signed.signedUrl;
+      }
+      continue;
+    }
     if (a.type === "image" && a.path) {
       const { data: signed } = await supabase.storage
         .from(ATTACHMENTS_BUCKET)
@@ -66,7 +93,7 @@ async function reconstructAttachments(stored: unknown): Promise<MsgAttachment[] 
       out.push({ type: a.type, mimeType: a.mimeType, fileName: a.fileName });
     }
   }
-  return out;
+  return { attachments: out.length > 0 ? out : undefined, audioUrl };
 }
 
 /** Mapea el historial para que la IA reciba el contenido enriquecido (PDF/cita) cuando existe. */
@@ -133,8 +160,9 @@ export function useChatMessages(
           // desde Storage) + ai_content (PDF/[REFERENCIA]) para que Alan no lo pierda al recargar.
           const m: Msg = { role: msg.role as Msg["role"], content: msg.content };
           if (msg.ai_content) m.aiContent = msg.ai_content;
-          const atts = await reconstructAttachments(msg.attachments);
-          if (atts) m.attachments = atts;
+          const { attachments, audioUrl } = await reconstructAttachments(msg.attachments);
+          if (attachments) m.attachments = attachments;
+          if (audioUrl) m.audioUrl = audioUrl;
           expanded.push(m);
         }
       }
@@ -400,8 +428,15 @@ export function useChatMessages(
       );
       setIsTranscribing(false);
 
-      // content = lo que se muestra ("🎙️ …"); ai_content = lo que ve la IA (transcript limpio).
-      const { error: userInsertError } = await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent, ai_content: transcript });
+      // Subimos el audio a Storage para reconstruir el reproductor al recargar (mismo patrón que imágenes).
+      const { data: { session } } = await supabase.auth.getSession();
+      const audioRefs = session?.user.id
+        ? await persistAudio(session.user.id, convId!, blob)
+        : null;
+
+      // content = lo que se muestra ("🎙️ …"); ai_content = lo que ve la IA (transcript limpio);
+      // attachments = ref del audio en Storage para rehidratar el audioUrl firmado al recargar.
+      const { error: userInsertError } = await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent, ai_content: transcript, attachments: (audioRefs as Json) ?? null });
       if (userInsertError) {
         console.error("Error guardando mensaje de voz del usuario:", userInsertError);
         toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
