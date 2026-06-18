@@ -6,13 +6,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Upload, Loader2, FileSpreadsheet, CheckCircle, AlertTriangle, SkipForward, X } from "lucide-react";
+import { Upload, Loader2, FileSpreadsheet, CheckCircle, AlertTriangle, SkipForward, RefreshCw, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
 import {
-  ColumnMapping, ParsedClient, ParsedRow, RowState,
-  computeRows, friendlyReason, ROW_ORDER,
+  ColumnMapping, ParsedClient, ParsedRow, RowState, ExistingContact,
+  computeRows, friendlyReason, buildUpdatePayload, ROW_ORDER,
+  normalizePhone, normalizeEmail,
 } from "@/lib/import-contacts";
 
 interface ImportClientsDialogProps {
@@ -27,7 +28,13 @@ interface FailedRow {
   name: string;
   reason: string;
   data: ParsedClient;
+  existingId: string | null;
+  isUpdate: boolean;
 }
+
+// Columnas que traemos de los contactos existentes para dedup + merge "rellenar vacíos".
+const EXISTING_SELECT =
+  "id, phone, email, notes, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, property_type_interest, source";
 
 type Destination = "contact" | "client";
 type Step = "upload" | "mapping" | "preview" | "importing" | "done";
@@ -50,13 +57,14 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
-  const [existing, setExisting] = useState<{ phones: Set<string>; emails: Set<string> }>({ phones: new Set(), emails: new Set() });
+  const [existing, setExisting] = useState<{ phones: Map<string, string>; emails: Map<string, string> }>({ phones: new Map(), emails: new Map() });
+  const [existingById, setExistingById] = useState<Map<string, ExistingContact>>(new Map());
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
-  const [includeDuplicates, setIncludeDuplicates] = useState(false);
+  const [updateDuplicates, setUpdateDuplicates] = useState(false);
   const [destination, setDestination] = useState<Destination>("contact");
   const [clientStatus, setClientStatus] = useState("cold");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [importResult, setImportResult] = useState({ success: 0, skipped: 0, invalid: 0, failed: [] as FailedRow[] });
+  const [importResult, setImportResult] = useState({ success: 0, updated: 0, skipped: 0, invalid: 0, failed: [] as FailedRow[] });
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -67,13 +75,14 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     setHeaders([]);
     setRows([]);
     setMapping(null);
-    setExisting({ phones: new Set(), emails: new Set() });
+    setExisting({ phones: new Map(), emails: new Map() });
+    setExistingById(new Map());
     setParsedRows([]);
-    setIncludeDuplicates(false);
+    setUpdateDuplicates(false);
     setDestination("contact");
     setClientStatus("cold");
     setProgress({ done: 0, total: 0 });
-    setImportResult({ success: 0, skipped: 0, invalid: 0, failed: [] });
+    setImportResult({ success: 0, updated: 0, skipped: 0, invalid: 0, failed: [] });
   };
 
   const handleClose = (next: boolean) => {
@@ -137,15 +146,18 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
 
       const { mapping: aiMapping } = await res.json() as { mapping: ColumnMapping };
 
-      // Traer contactos existentes para detectar duplicados (scopeado por userId).
-      const existingKeys = { phones: new Set<string>(), emails: new Set<string>() };
+      // Traer contactos existentes para detectar duplicados y poder actualizarlos
+      // (scopeado por userId). Las claves mapean a id para resolver qué registro mergear.
+      const existingKeys = { phones: new Map<string, string>(), emails: new Map<string, string>() };
+      const byId = new Map<string, ExistingContact>();
       try {
-        const { data } = await supabase.from("clients").select("phone, email").eq("user_id", userId);
+        const { data } = await supabase.from("clients").select(EXISTING_SELECT).eq("user_id", userId);
         (data ?? []).forEach(c => {
+          byId.set(c.id, c as ExistingContact);
           const p = normalizePhone(c.phone);
-          if (p) existingKeys.phones.add(p);
+          if (p && !existingKeys.phones.has(p)) existingKeys.phones.set(p, c.id);
           const e = normalizeEmail(c.email);
-          if (e) existingKeys.emails.add(e);
+          if (e && !existingKeys.emails.has(e)) existingKeys.emails.set(e, c.id);
         });
       } catch {
         // Si falla, seguimos con detección intra-archivo solamente.
@@ -153,6 +165,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
 
       setMapping(aiMapping);
       setExisting(existingKeys);
+      setExistingById(byId);
       setParsedRows(computeRows(fileHeaders, fileRows, aiMapping, existingKeys, false));
       setStep("preview");
     } catch (err) {
@@ -165,18 +178,23 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     if (!mapping) return;
     const next = { ...mapping, [field]: value } as ColumnMapping;
     setMapping(next);
-    setParsedRows(computeRows(headers, rows, next, existing, includeDuplicates));
+    setParsedRows(computeRows(headers, rows, next, existing, updateDuplicates));
   };
 
-  const toggleIncludeDuplicates = () => {
-    const next = !includeDuplicates;
-    setIncludeDuplicates(next);
-    setParsedRows(prev => prev.map(r => r.state === "duplicate" ? { ...r, included: next } : r));
+  // Solo los duplicados-contra-DB (con existingId) se pueden actualizar; los
+  // intra-archivo no tienen registro previo para mergear.
+  const isUpdatable = (r: ParsedRow) => r.state === "duplicate" && !!r.existingId;
+  const canToggle = (r: ParsedRow) => r.state === "new" || isUpdatable(r);
+
+  const toggleUpdateDuplicates = () => {
+    const next = !updateDuplicates;
+    setUpdateDuplicates(next);
+    setParsedRows(prev => prev.map(r => isUpdatable(r) ? { ...r, included: next } : r));
   };
 
   const toggleRow = (rowIndex: number) => {
     setParsedRows(prev => prev.map(r =>
-      r.rowIndex === rowIndex && r.state !== "invalid" ? { ...r, included: !r.included } : r,
+      r.rowIndex === rowIndex && canToggle(r) ? { ...r, included: !r.included } : r,
     ));
   };
 
@@ -198,7 +216,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
         // Aislamiento: reintentar fila por fila para saber exactamente cuál falló.
         for (const r of slice) {
           const { error: rowErr } = await supabase.from("clients").insert(toPayload(r.data));
-          if (rowErr) failed.push({ rowIndex: r.rowIndex, name: r.data.full_name, reason: friendlyReason(rowErr.message), data: r.data });
+          if (rowErr) failed.push({ rowIndex: r.rowIndex, name: r.data.full_name, reason: friendlyReason(rowErr.message), data: r.data, existingId: null, isUpdate: false });
           else success++;
           setProgress(p => ({ ...p, done: p.done + 1 }));
         }
@@ -210,39 +228,80 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     return { success, failed };
   };
 
+  // Actualiza contactos existentes con merge "rellenar vacíos" (no pisa datos).
+  // Va fila por fila: cada update es contra un id distinto, no se puede batchear.
+  const runUpdate = async (toUpdate: ParsedRow[]) => {
+    const failed: FailedRow[] = [];
+    let success = 0;
+    for (const r of toUpdate) {
+      if (!r.existingId) { setProgress(p => ({ ...p, done: p.done + 1 })); continue; }
+      const current = existingById.get(r.existingId);
+      const payload = current ? buildUpdatePayload(current, r.data) : {};
+      // Si no hay nada para rellenar, no hace falta tocar la DB (igual cuenta como procesado).
+      if (Object.keys(payload).length > 0) {
+        const { error } = await supabase.from("clients").update(payload).eq("id", r.existingId).eq("user_id", userId);
+        if (error) {
+          failed.push({ rowIndex: r.rowIndex, name: r.data.full_name, reason: friendlyReason(error.message), data: r.data, existingId: r.existingId, isUpdate: true });
+          setProgress(p => ({ ...p, done: p.done + 1 }));
+          continue;
+        }
+      }
+      success++;
+      setProgress(p => ({ ...p, done: p.done + 1 }));
+    }
+    return { success, failed };
+  };
+
   const handleImport = async () => {
-    const toImport = parsedRows.filter(r => r.included && r.state !== "invalid");
+    const toInsert = parsedRows.filter(r => r.included && r.state === "new");
+    const toUpdate = parsedRows.filter(r => r.included && isUpdatable(r));
     const skipped = parsedRows.filter(r => r.state === "duplicate" && !r.included).length;
     const invalid = parsedRows.filter(r => r.state === "invalid").length;
 
     setStep("importing");
-    setProgress({ done: 0, total: toImport.length });
+    setProgress({ done: 0, total: toInsert.length + toUpdate.length });
 
-    const { success, failed } = await runInsert(toImport);
+    const ins = await runInsert(toInsert);
+    const upd = await runUpdate(toUpdate);
 
-    setImportResult({ success, skipped, invalid, failed });
+    setImportResult({ success: ins.success, updated: upd.success, skipped, invalid, failed: [...ins.failed, ...upd.failed] });
     setStep("done");
-    if (success > 0) onImported();
+    if (ins.success + upd.success > 0) onImported();
   };
 
   const handleRetryFailed = async () => {
-    const retry: ParsedRow[] = importResult.failed.map(f => ({ data: f.data, rowIndex: f.rowIndex, state: "new", included: true }));
+    const retryInserts: ParsedRow[] = importResult.failed
+      .filter(f => !f.isUpdate)
+      .map(f => ({ data: f.data, rowIndex: f.rowIndex, state: "new", included: true, existingId: null }));
+    const retryUpdates: ParsedRow[] = importResult.failed
+      .filter(f => f.isUpdate)
+      .map(f => ({ data: f.data, rowIndex: f.rowIndex, state: "duplicate", included: true, existingId: f.existingId }));
+
     setStep("importing");
-    setProgress({ done: 0, total: retry.length });
+    setProgress({ done: 0, total: retryInserts.length + retryUpdates.length });
 
-    const { success, failed } = await runInsert(retry);
+    const ins = await runInsert(retryInserts);
+    const upd = await runUpdate(retryUpdates);
 
-    setImportResult(res => ({ ...res, success: res.success + success, failed }));
+    setImportResult(res => ({
+      ...res,
+      success: res.success + ins.success,
+      updated: res.updated + upd.success,
+      failed: [...ins.failed, ...upd.failed],
+    }));
     setStep("done");
-    if (success > 0) onImported();
+    if (ins.success + upd.success > 0) onImported();
   };
 
   // ---- Derivados para el render ----
   const columnOptions = headers.map((h, i) => ({ value: String(i), label: h || `Columna ${i + 1}` }));
   const newCount = parsedRows.filter(r => r.state === "new").length;
   const dupCount = parsedRows.filter(r => r.state === "duplicate").length;
+  const updatableCount = parsedRows.filter(isUpdatable).length;
   const invalidCount = parsedRows.filter(r => r.state === "invalid").length;
-  const includedCount = parsedRows.filter(r => r.included && r.state !== "invalid").length;
+  const insertCount = parsedRows.filter(r => r.included && r.state === "new").length;
+  const updateCount = parsedRows.filter(r => r.included && isUpdatable(r)).length;
+  const includedCount = insertCount + updateCount;
   const nameUnmapped = !mapping || mapping.name_column < 0;
   const destinationNoun = destination === "client" ? "clientes" : "contactos";
   const sortedRows = [...parsedRows].sort((a, b) => ROW_ORDER[a.state] - ROW_ORDER[b.state]);
@@ -397,10 +456,14 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                 )}
                 {dupCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                    <SkipForward className="h-3.5 w-3.5" /> {dupCount} ya existen{!includeDuplicates && " (excluidos)"}
-                    <button onClick={toggleIncludeDuplicates} className="text-primary hover:underline ml-1">
-                      {includeDuplicates ? "Excluir" : "Incluir igual"}
-                    </button>
+                    {updateDuplicates && updateCount > 0
+                      ? <><RefreshCw className="h-3.5 w-3.5" /> {dupCount} ya existen ({updateCount} se actualizan)</>
+                      : <><SkipForward className="h-3.5 w-3.5" /> {dupCount} ya existen (se omiten)</>}
+                    {updatableCount > 0 && (
+                      <button onClick={toggleUpdateDuplicates} className="text-primary hover:underline ml-1">
+                        {updateDuplicates ? "Omitir" : "Actualizar"}
+                      </button>
+                    )}
                   </span>
                 )}
                 {invalidCount > 0 && (
@@ -430,7 +493,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                           <TableCell className="py-1.5">
                             <Checkbox
                               checked={r.included}
-                              disabled={r.state === "invalid"}
+                              disabled={!canToggle(r)}
                               onCheckedChange={() => toggleRow(r.rowIndex)}
                               aria-label={`Incluir fila ${r.rowIndex}`}
                             />
@@ -447,7 +510,11 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                           <TableCell className="text-xs max-w-[120px] truncate hidden md:table-cell">{r.data.phone ?? "—"}</TableCell>
                           <TableCell className="text-xs">
                             {r.state === "new" && <span className="inline-flex items-center gap-1 text-success"><CheckCircle className="h-3.5 w-3.5" /> Nuevo</span>}
-                            {r.state === "duplicate" && <span className="inline-flex items-center gap-1 text-muted-foreground"><SkipForward className="h-3.5 w-3.5" /> Duplicado</span>}
+                            {r.state === "duplicate" && (
+                              r.included && r.existingId
+                                ? <span className="inline-flex items-center gap-1 text-primary"><RefreshCw className="h-3.5 w-3.5" /> Actualizar</span>
+                                : <span className="inline-flex items-center gap-1 text-muted-foreground"><SkipForward className="h-3.5 w-3.5" /> {r.existingId ? "Ya existe" : "Repetido"}</span>
+                            )}
                             {r.state === "invalid" && <span className="inline-flex items-center gap-1 text-warning"><AlertTriangle className="h-3.5 w-3.5" /> Sin nombre</span>}
                           </TableCell>
                         </TableRow>
@@ -476,7 +543,12 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
           {step === "done" && (
             <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
               <CheckCircle className="h-12 w-12 text-success" />
-              <p className="text-lg font-semibold">{importResult.success} {destinationNoun} importados</p>
+              <p className="text-lg font-semibold">
+                {importResult.success > 0 && `${importResult.success} ${destinationNoun} importados`}
+                {importResult.success > 0 && importResult.updated > 0 && " · "}
+                {importResult.updated > 0 && `${importResult.updated} actualizados`}
+                {importResult.success === 0 && importResult.updated === 0 && "Importación finalizada"}
+              </p>
               <div className="space-y-1.5 text-sm">
                 {importResult.skipped > 0 && (
                   <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
@@ -515,7 +587,11 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                 <X className="h-3.5 w-3.5 mr-1.5" /> Cancelar
               </Button>
               <Button onClick={handleImport} disabled={includedCount === 0 || nameUnmapped}>
-                {includedCount === 0 ? "No hay nuevos para importar" : `Importar ${includedCount} ${destinationNoun}`}
+                {includedCount === 0
+                  ? "No hay nada para importar"
+                  : updateCount > 0
+                    ? `Importar ${insertCount} · actualizar ${updateCount}`
+                    : `Importar ${insertCount} ${destinationNoun}`}
               </Button>
             </>
           )}

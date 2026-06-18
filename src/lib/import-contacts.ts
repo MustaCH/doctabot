@@ -37,11 +37,20 @@ export interface ParsedClient {
 
 export type RowState = "new" | "duplicate" | "invalid";
 
+/** Contacto existente en la DB (subset de columnas que nos importan para dedup/merge). */
+export type ExistingContact = Partial<ParsedClient> & { id: string };
+
 export interface ParsedRow {
   data: ParsedClient;
   rowIndex: number; // 1-based, posición original en el archivo
   state: RowState;
   included: boolean;
+  /**
+   * id del contacto existente que matchea (solo en duplicados contra la DB).
+   * `null` cuando el duplicado es intra-archivo (repetido más arriba en el mismo
+   * archivo): no hay registro previo para actualizar, solo se puede omitir.
+   */
+  existingId: string | null;
 }
 
 export const ROW_ORDER: Record<RowState, number> = { invalid: 0, duplicate: 1, new: 2 };
@@ -145,13 +154,20 @@ export function mapRow(hdrs: string[], row: string[], m: ColumnMapping): ParsedC
   };
 }
 
-/** Mapea todas las filas + decide estado (nuevo/duplicado/inválido). */
+/**
+ * Mapea todas las filas + decide estado (nuevo/duplicado/inválido).
+ *
+ * `existing` mapea clave normalizada (teléfono/email) → id del contacto en la DB,
+ * para poder resolver a qué registro actualizar. `updateDuplicates` decide si los
+ * duplicados-contra-DB arrancan tildados para actualizar (los intra-archivo nunca
+ * se incluyen: no hay registro previo para mergear).
+ */
 export function computeRows(
   hdrs: string[],
   rows: string[][],
   m: ColumnMapping,
-  existing: { phones: Set<string>; emails: Set<string> },
-  includeDuplicates: boolean,
+  existing: { phones: Map<string, string>; emails: Map<string, string> },
+  updateDuplicates: boolean,
 ): ParsedRow[] {
   const seenPhones = new Set<string>();
   const seenEmails = new Set<string>();
@@ -159,22 +175,69 @@ export function computeRows(
   return rows.map((row, i) => {
     const data = mapRow(hdrs, row, m);
     let state: RowState;
+    let existingId: string | null = null;
 
     if (!data.full_name) {
       state = "invalid";
     } else {
       const p = normalizePhone(data.phone);
       const e = normalizeEmail(data.email);
-      const dupExisting = (!!p && existing.phones.has(p)) || (!!e && existing.emails.has(e));
+      const matchId = (p && existing.phones.get(p)) || (e && existing.emails.get(e)) || null;
       const dupInFile = (!!p && seenPhones.has(p)) || (!!e && seenEmails.has(e));
-      state = dupExisting || dupInFile ? "duplicate" : "new";
+      if (matchId || dupInFile) {
+        state = "duplicate";
+        existingId = matchId;
+      } else {
+        state = "new";
+      }
       if (p) seenPhones.add(p);
       if (e) seenEmails.add(e);
     }
 
-    const included = state === "new" || (state === "duplicate" && includeDuplicates);
-    return { data, rowIndex: i + 1, state, included };
+    const included =
+      state === "new" || (state === "duplicate" && !!existingId && updateDuplicates);
+    return { data, rowIndex: i + 1, state, included, existingId };
   });
+}
+
+/** Campos que un update puede rellenar (full_name/notes se tratan aparte). */
+const FILLABLE_FIELDS: (keyof ParsedClient)[] = [
+  "phone", "email", "client_type", "birthday", "company",
+  "address", "preferred_zones", "budget_min", "budget_max",
+  "property_type_interest", "source",
+];
+
+const isEmpty = (v: unknown): boolean => v === null || v === undefined || v === "";
+
+/**
+ * Construye el payload de actualización con semántica "rellenar vacíos": solo
+ * setea campos que en la DB están vacíos y que el archivo trae con valor; nunca
+ * pisa un dato existente. Las notas nuevas se anexan a las viejas (no las pisan).
+ * Devuelve `{}` si no hay nada para aportar (update sería no-op).
+ */
+export function buildUpdatePayload(
+  existing: ExistingContact,
+  incoming: ParsedClient,
+): Partial<ParsedClient> {
+  const out: Partial<ParsedClient> = {};
+
+  for (const key of FILLABLE_FIELDS) {
+    const incomingVal = incoming[key];
+    if (isEmpty(incomingVal)) continue;
+    if (isEmpty(existing[key])) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (out as any)[key] = incomingVal;
+    }
+  }
+
+  const newNotes = (incoming.notes ?? "").trim();
+  if (newNotes) {
+    const curNotes = (existing.notes ?? "").trim();
+    if (!curNotes) out.notes = newNotes;
+    else if (!curNotes.includes(newNotes)) out.notes = `${curNotes}\n${newNotes}`;
+  }
+
+  return out;
 }
 
 export function friendlyReason(msg: string): string {

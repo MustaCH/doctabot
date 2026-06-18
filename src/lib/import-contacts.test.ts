@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizePhone, normalizeEmail, normalizeBirthday, detectClientType,
-  parseBudget, mapRow, computeRows, friendlyReason,
-  type ColumnMapping,
+  parseBudget, mapRow, computeRows, friendlyReason, buildUpdatePayload,
+  type ColumnMapping, type ParsedClient,
 } from "./import-contacts";
 
 /** Mapping con todo en -1; override lo que el test necesite. */
@@ -16,7 +16,7 @@ function mapping(partial: Partial<ColumnMapping> = {}): ColumnMapping {
   };
 }
 
-const noExisting = { phones: new Set<string>(), emails: new Set<string>() };
+const noExisting = { phones: new Map<string, string>(), emails: new Map<string, string>() };
 
 describe("normalizePhone", () => {
   it("deja solo dígitos", () => {
@@ -128,19 +128,30 @@ describe("computeRows — estados y dedup", () => {
     expect(out[1].state).toBe("duplicate");
   });
 
-  it("marca duplicate por email contra contactos existentes", () => {
+  it("marca duplicate por email contra contactos existentes y resuelve el id", () => {
     const rows = [["Ana", "", "ANA@mail.com"]];
-    const existing = { phones: new Set<string>(), emails: new Set(["ana@mail.com"]) };
-    expect(computeRows(hdrs, rows, m, existing, false)[0].state).toBe("duplicate");
+    const existing = { phones: new Map<string, string>(), emails: new Map([["ana@mail.com", "client-1"]]) };
+    const out = computeRows(hdrs, rows, m, existing, false)[0];
+    expect(out.state).toBe("duplicate");
+    expect(out.existingId).toBe("client-1");
   });
 
-  it("excluye duplicados por default; includeDuplicates los incluye", () => {
+  it("duplicado-contra-DB: se excluye por default, se incluye (para actualizar) con updateDuplicates", () => {
+    const rows = [["Ana", "3515551234", ""]];
+    const existing = { phones: new Map([["3515551234", "client-1"]]), emails: new Map<string, string>() };
+    expect(computeRows(hdrs, rows, m, existing, false)[0].included).toBe(false);
+    expect(computeRows(hdrs, rows, m, existing, true)[0].included).toBe(true);
+  });
+
+  it("duplicado intra-archivo nunca se incluye (no hay registro previo para actualizar)", () => {
     const rows = [
       ["Ana", "3515551234", ""],
       ["Ana", "3515551234", ""],
     ];
-    expect(computeRows(hdrs, rows, m, noExisting, false)[1].included).toBe(false);
-    expect(computeRows(hdrs, rows, m, noExisting, true)[1].included).toBe(true);
+    const fileDup = computeRows(hdrs, rows, m, noExisting, true)[1];
+    expect(fileDup.state).toBe("duplicate");
+    expect(fileDup.existingId).toBeNull();
+    expect(fileDup.included).toBe(false);
   });
 
   it("las filas nuevas vienen incluidas; las inválidas no", () => {
@@ -169,5 +180,46 @@ describe("friendlyReason", () => {
     expect(friendlyReason('invalid input syntax for type numeric')).toBe("Monto inválido");
     expect(friendlyReason('duplicate key value violates unique constraint')).toBe("Ya existe en el sistema");
     expect(friendlyReason('something weird')).toBe("No se pudo guardar");
+  });
+});
+
+describe("buildUpdatePayload — rellenar vacíos", () => {
+  const incoming: ParsedClient = {
+    full_name: "Ana Gómez", phone: "3515551234", email: "ana@mail.com",
+    notes: "le interesa zona norte", client_type: "buyer", company: "Acme",
+    budget_max: 120000, preferred_zones: null, birthday: null,
+    address: null, budget_min: null, property_type_interest: null, source: null,
+  };
+
+  it("solo rellena campos vacíos en la DB; nunca pisa datos existentes", () => {
+    const existing = { id: "c1", phone: "3510000000", email: null, company: null, notes: null };
+    const out = buildUpdatePayload(existing, incoming);
+    expect(out.phone).toBeUndefined();        // ya tenía teléfono → no se toca
+    expect(out.email).toBe("ana@mail.com");    // estaba vacío → se rellena
+    expect(out.company).toBe("Acme");          // estaba vacío → se rellena
+    expect(out.budget_max).toBe(120000);       // estaba ausente → se rellena
+  });
+
+  it("anexa las notas nuevas a las viejas en vez de pisarlas", () => {
+    const existing = { id: "c1", notes: "cliente viejo" };
+    expect(buildUpdatePayload(existing, incoming).notes).toBe("cliente viejo\nle interesa zona norte");
+  });
+
+  it("no duplica notas ya presentes", () => {
+    const existing = { id: "c1", notes: "le interesa zona norte" };
+    expect(buildUpdatePayload(existing, incoming).notes).toBeUndefined();
+  });
+
+  it("rellena notas cuando la DB no tenía", () => {
+    const existing = { id: "c1" };
+    expect(buildUpdatePayload(existing, incoming).notes).toBe("le interesa zona norte");
+  });
+
+  it("devuelve {} cuando no hay nada para aportar (no-op)", () => {
+    const existing = {
+      id: "c1", phone: "3515551234", email: "ana@mail.com", notes: "le interesa zona norte",
+      client_type: "seller", company: "Otra", budget_max: 999,
+    };
+    expect(buildUpdatePayload(existing, incoming)).toEqual({});
   });
 });
