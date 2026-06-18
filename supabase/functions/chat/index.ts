@@ -201,6 +201,19 @@ serve(async (req) => {
           console.error("streamTurn error:", err);
           // Guardamos el error real para mandarlo al webhook (observabilidad — ver 86aj1ncj4).
           streamErrorMessage = err instanceof Error ? err.message : String(err);
+          // Instrumentación (86aj4276y): el catch del turno NO escribía en error_logs (solo pingeaba
+          // n8n), dejando ciego el fallo más común del chat. Lo registramos con contexto para
+          // diagnosticar el throw determinista del tool-loop tras search_properties.
+          reportEdgeErrorBg({
+            context: "chat-streamTurn",
+            error: err,
+            userId,
+            metadata: {
+              conversationId: conversationId ?? null,
+              userMessage: typeof userMessage === "string" ? userMessage.slice(0, 300) : null,
+              messagesLen: Array.isArray(messages) ? messages.length : null,
+            },
+          });
           // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
           finalContent = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
           emit(finalContent);

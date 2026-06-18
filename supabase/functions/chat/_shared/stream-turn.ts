@@ -10,10 +10,12 @@ import { executeToolCalls, AccumulatedToolCall } from "./tools/execute-round.ts"
 
 export class AIError extends Error {
   status: number;
-  constructor(status: number) {
-    super(`AI error: ${status}`);
+  body?: string;
+  constructor(status: number, body?: string) {
+    super(`AI error: ${status}${body ? ` — ${body}` : ""}`);
     this.name = "AIError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -98,7 +100,14 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     } else {
       res = await resilientAIFetch({ messages, tools: toolDefinitions, stream: true });
     }
-    if (!res.ok) throw new AIError(res.status);
+    if (!res.ok) {
+      // Capturamos el cuerpo del error de Gemini para diagnóstico (86aj4276y): el status solo
+      // no alcanza para saber POR QUÉ rechazó una continuación del tool-loop. No se streamea, así
+      // que leer el body acá es seguro.
+      let errBody = "";
+      try { errBody = (await res.text()).slice(0, 1500); } catch { /* cuerpo ilegible */ }
+      throw new AIError(res.status, errBody);
+    }
     if (!res.body) throw new AIError(res.status || 500);
 
     const reader = res.body.getReader();
@@ -106,7 +115,15 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     let buf = "";
     let finishReason: string | null = null;
     let assistantContent = "";
-    const toolAccum = new Map<number, AccumulatedToolCall>();
+    // Tool calls acumulados keyeados por ID del call. Gemini (OpenAI-compat) emite tool calls
+    // PARALELOS en una misma ronda como deltas completos (id+name+args) a veces con el MISMO index
+    // (o sin index) → keyear por index los FUSIONABA en uno (name pisado, args concatenados
+    // `{...}{...}`): el JSON.parse reventaba y la continuación mandaba 1 function_call donde Gemini
+    // generó 2 → 400 INVALID_ARGUMENT (bug 86aj4276y). Keyeamos por id (único por call); los
+    // fragmentos de args sin id (streaming incremental estilo OpenAI) continúan el último slot
+    // abierto en ese index.
+    const toolAccum = new Map<string, AccumulatedToolCall>();
+    const lastKeyByIndex = new Map<number, string>();
 
     const applyDelta = (d: { contentDelta?: string; toolCallDeltas?: any[]; finishReason?: string | null }) => {
       if (d.contentDelta) {
@@ -116,11 +133,20 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       }
       if (d.toolCallDeltas) {
         for (const tcd of d.toolCallDeltas) {
-          const cur = toolAccum.get(tcd.index) ?? { id: "", name: "", arguments: "" };
+          // Un delta con id es el inicio de un tool call nuevo (slot propio por id); uno sin id es
+          // la continuación de los args del último call abierto en ese index.
+          let key: string;
+          if (tcd.id) {
+            key = tcd.id;
+            lastKeyByIndex.set(tcd.index, key);
+          } else {
+            key = lastKeyByIndex.get(tcd.index) ?? `idx-${tcd.index}`;
+          }
+          const cur = toolAccum.get(key) ?? { id: "", name: "", arguments: "" };
           if (tcd.id) cur.id = tcd.id;
           if (tcd.name) cur.name = tcd.name;
           if (tcd.argsFragment) cur.arguments += tcd.argsFragment;
-          toolAccum.set(tcd.index, cur);
+          toolAccum.set(key, cur);
         }
       }
       if (d.finishReason) finishReason = d.finishReason;

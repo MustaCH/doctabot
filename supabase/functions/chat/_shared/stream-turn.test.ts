@@ -294,6 +294,43 @@ describe("streamTurn", () => {
     expect(executeTool).toHaveBeenCalledWith("send_email", { to: "cliente@mail.com", subject: "Hola", body: "Cuerpo" }, {});
   });
 
+  // Regresión del bug 86aj4276y: Gemini (OpenAI-compat) emite tool calls PARALELOS en una misma
+  // ronda como deltas completos (id+name+args) a veces con el MISMO index. El acumulador keyeaba por
+  // index → fusionaba los dos en uno (name pisado, args concatenados `{...}{...}`). Eso rompía el
+  // JSON.parse (tool no corría) Y la continuación mandaba 1 function_call donde Gemini generó 2 →
+  // 400 INVALID_ARGUMENT → "Lo siento, hubo un problema". El flujo "buscá para [cliente]"
+  // (link_conversation + search_properties en paralelo) caía SIEMPRE.
+  it("dos tool calls en paralelo en la misma ronda (Gemini, mismo index) NO se fusionan", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([
+        toolChunk(0, "id-link", "link_conversation", '{"conversation_type":"search","client_id":"abc"}'),
+        toolChunk(0, "id-search", "search_properties", '{"zone":"Nueva Cordoba"}', "tool_calls"),
+        DONE,
+      ]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Encontré 2 dúplex.", "stop"), DONE]));
+    const executeTool = vi.fn(async (name: string) => JSON.stringify({ ok: name }));
+    const messages: any[] = [{ role: "user", content: "buscá para Armando" }];
+    const defs = [
+      { type: "function", function: { name: "link_conversation" } },
+      { type: "function", function: { name: "search_properties" } },
+    ];
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions: defs },
+      { messages, emit: () => {} },
+    );
+
+    // Cada tool corre con SUS argumentos (no concatenados ni pisados).
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(executeTool).toHaveBeenCalledWith("link_conversation", { conversation_type: "search", client_id: "abc" }, {});
+    expect(executeTool).toHaveBeenCalledWith("search_properties", { zone: "Nueva Cordoba" }, {});
+    // Dos tool-messages con ids distintos para que la continuación matchee los 2 function_call de Gemini.
+    const toolMsgs = messages.filter((m) => m.role === "tool");
+    expect(toolMsgs.length).toBe(2);
+    expect(new Set(toolMsgs.map((m) => m.tool_call_id))).toEqual(new Set(["id-link", "id-search"]));
+    expect(res.content).toBe("Encontré 2 dúplex.");
+  });
+
   it("recupera un tool-call fugado como texto: lo strippea, re-promptea y lo ejecuta de verdad (86aj1nb0t)", async () => {
     const resilientAIFetch = vi.fn()
       // iter 0: el modelo "narra" la tool como texto (leak) y termina en stop.
