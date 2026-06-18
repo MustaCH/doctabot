@@ -102,7 +102,7 @@ const Dashboard = () => {
       // Acciones de valor de los últimos 7 días (North Star): propiedades enviadas + eventos agendados + tareas-acción completadas
       supabase.from("client_properties").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "enviada").gte("updated_at", sevenDaysAgo),
       supabase.from("client_events").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", sevenDaysAgo),
-      supabase.from("client_notes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_action", true).eq("is_done", true).gte("created_at", sevenDaysAgo),
+      supabase.from("client_notes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_action", true).eq("is_done", true).gte("completed_at", sevenDaysAgo),
     ]);
     const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
     const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
