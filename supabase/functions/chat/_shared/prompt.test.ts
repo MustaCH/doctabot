@@ -144,3 +144,19 @@ describe("regla de proceso interno de herramientas: no narrarlo al usuario (86aj
     expect(SYSTEM_PROMPT).toMatch(/property_id exacto/i);
   });
 });
+
+// Regresión del bug 86aj42cb2 (Alan narra "vinculé esta búsqueda al perfil para que quede
+// registrada" pero solo corre link_conversation y NO guarda ninguna propiedad → claim de guardado
+// ≠ realidad). El fix separa explícitamente link_conversation (vincula la CONVERSACIÓN) de
+// save_property_to_client (guarda propiedades) como regla canónica + prosa. Blinda la presencia de
+// la regla (qué), no el comportamiento del modelo (probabilístico → repro manual).
+describe("regla guardar≠vincular: link_conversation no guarda propiedades (86aj42cb2)", () => {
+  it("la regla canónica de separación está en alan-facts", () => {
+    expect(ALAN_CONTEXT_FACTS).toMatch(/link_conversation vincula la CONVERSACIÓN/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/save_property_to_client/);
+  });
+
+  it("el system prompt separa vincular la conversación de guardar propiedades", () => {
+    expect(SYSTEM_PROMPT).toMatch(/link_conversation.*no guarda propiedades/i);
+  });
+});

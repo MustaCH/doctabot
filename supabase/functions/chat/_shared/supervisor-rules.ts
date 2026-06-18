@@ -66,6 +66,14 @@ export function unactedReadVerdict(
  */
 export const WRITE_CLAIMS: Array<{ test: RegExp; tools: string[]; label: string }> = [
   { test: /\b(guardé|adjunté|agregué|sumé)[^.?!\n]{0,40}\b(propiedad|al perfil|a su perfil|al cliente)\b/i, tools: ["save_property_to_client"], label: "save_property_to_client" },
+  // Claim engañoso (86aj42cb2): Alan dice que una BÚSQUEDA/propiedades "quedaron registradas/guardadas
+  // al perfil" pero solo corrió link_conversation (que vincula la CONVERSACIÓN, no guarda propiedades).
+  // El claim de link_conversation es literalmente cierto pero el agente entiende que las propiedades
+  // quedaron en el perfil — y no quedó ninguna. Exige save_property_to_client. La condición de objeto
+  // (búsqueda/opciones/propiedad/tarjetas) lo separa del claim honesto "vinculé la conversación".
+  // Verbos en pretérito 1ª persona ACENTUADO (vinculé, registré…) a propósito: NO marca subjuntivos/
+  // ofertas ("¿querés que guarde…?"). Mismo criterio de precisión que los demás WRITE_CLAIMS.
+  { test: /\b(vinculé|registré|guardé|sumé|asocié|anoté)[^.?!\n]{0,40}\b(b[uú]squeda|opciones|propiedad(?:es)?|tarjetas?)\b[^.?!\n]{0,40}\bperfil\b/i, tools: ["save_property_to_client"], label: "save_property_to_client (propiedades/búsqueda al perfil)" },
   { test: /\b(vinculé|asocié)[^.?!\n]{0,40}\b(conversaci|cliente|perfil)/i, tools: ["link_conversation"], label: "link_conversation" },
   { test: /\b(agendé|programé|reservé)[^.?!\n]{0,40}\b(visita|reuni[oó]n|evento|llamada|cita)\b/i, tools: ["create_calendar_event", "create_meet_event", "create_client_event"], label: "evento" },
   { test: /\b(envié|mandé)[^.?!\n]{0,30}\b(email|mail|correo)\b/i, tools: ["send_email"], label: "send_email" },

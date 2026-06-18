@@ -63,6 +63,33 @@ describe("unexecutedWriteVerdict", () => {
     // Informativa pura.
     expect(unexecutedWriteVerdict("Encontré 3 propiedades en Centro.", [])).toBeNull();
   });
+
+  // Regresión 86aj42cb2: Alan dice que una BÚSQUEDA/propiedades "quedaron registradas al perfil"
+  // pero solo corrió link_conversation (que vincula la CONVERSACIÓN, no guarda propiedades). El
+  // claim de link_conversation es literalmente cierto pero engañoso. Requiere save_property_to_client.
+  it("afirma que la búsqueda/propiedades quedaron en el perfil pero solo vinculó la conversación → rejected (save_property_to_client)", () => {
+    const v = unexecutedWriteVerdict(
+      "Listo, vinculé esta búsqueda al perfil de Armando para que quede registrada 👤",
+      ["link_conversation"],
+    );
+    expect(v?.verdict).toBe("rejected");
+    expect(v?.reason).toMatch(/save_property_to_client/);
+  });
+
+  it("la misma afirmación CON save_property_to_client ejecutada → null", () => {
+    expect(
+      unexecutedWriteVerdict(
+        "Listo, guardé estas propiedades en el perfil de Armando 👤",
+        ["link_conversation", "save_property_to_client"],
+      ),
+    ).toBeNull();
+  });
+
+  it("vincular la CONVERSACIÓN (no propiedades) sigue satisfecho por link_conversation → null (precisión)", () => {
+    expect(
+      unexecutedWriteVerdict("Listo, vinculé esta conversación al perfil de Armando 👤", ["link_conversation"]),
+    ).toBeNull();
+  });
 });
 
 describe("buildPriorContextBlock", () => {
