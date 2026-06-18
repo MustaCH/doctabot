@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleOptions } from "../_shared/cors.ts";
 import { errorResponse, safeError } from "../_shared/http.ts";
 import { reportEdgeErrorBg } from "../_shared/observability.ts";
+import { dedupeByExternalId } from "./dedupe.ts";
 
 const SCRAPE_BASE_URL = "http://remaxdocta-scrapingdocta-zos1k5-a90019-31-97-164-164.sslip.io/api/scrape";
 
@@ -311,9 +312,17 @@ serve(async (req) => {
     }
 
     // Upsert
-    const records = allProperties
+    const rawRecords = allProperties
       .map(prop => ({ ...buildRecord(prop), last_seen_at: batchTimestamp }))
       .filter(r => r.external_id);
+
+    // Dedup por external_id: el scraper puede traer la misma propiedad en páginas
+    // distintas y Postgres rechaza un ON CONFLICT que toca la misma fila dos veces
+    // (PG 21000 → HTTP 500). Ver dedupe.ts.
+    const { deduped: records, dropped: dupes } = dedupeByExternalId(rawRecords);
+    if (dupes > 0) {
+      await writeLog(supabase, batchId, `🔁 ${opLabel}: ${dupes} duplicados por external_id descartados antes del upsert`, "info");
+    }
 
     let upserted = 0;
     let errors = 0;
