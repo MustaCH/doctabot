@@ -166,7 +166,22 @@ async function processBuyerSlice(
     await admin.from("messages").insert({ conversation_id: convId, role: "assistant", content: lines.join("\n") });
     await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
 
-    const shown = matchedProps.slice(0, 5);
+    let shown = matchedProps.slice(0, 5);
+
+    // Validar que las propiedades sigan existiendo: scrape-properties puede borrar
+    // propiedades obsoletas entre el SELECT del worker y este insert; si una ya no
+    // existe, el FK property_id (notified_matches / client_properties) tira PG 23503
+    // y se perdería el registro del resto del grupo. Filtramos las inexistentes.
+    const shownIds = shown.map(({ prop }) => prop.id);
+    const { data: liveProps } = await admin
+      .from("properties").select("id").in("id", shownIds);
+    const liveIds = new Set((liveProps || []).map((p: any) => p.id));
+    if (liveIds.size < shownIds.length) {
+      console.warn(`Match buyer ${clientId}: ${shownIds.length - liveIds.size} propiedad(es) ya no existen, se omiten del registro`);
+      shown = shown.filter(({ prop }) => liveIds.has(prop.id));
+    }
+    if (shown.length === 0) { groups++; continue; }
+
     await Promise.all([
       admin.from("notified_matches").upsert(
         shown.map(({ prop }) => ({ user_id: userId, client_id: clientId, property_id: prop.id })),
@@ -198,9 +213,12 @@ async function processSellerSlice(
 ): Promise<number> {
   if (sellerSlice.length === 0 || buyers.length === 0) return 0;
 
+  // Dedup de pares seller→buyer. Viven en notified_seller_matches (FK a clients),
+  // NO en notified_matches (cuyo property_id tiene FK a properties). Ver migración
+  // 20260618130000 y docs/adrs/0003.
   const { data: sellerNotified } = await admin
-    .from("notified_matches").select("client_id, property_id").eq("user_id", userId);
-  const sellerNotifiedSet = new Set((sellerNotified || []).map((r: any) => `${r.client_id}:${r.property_id}`));
+    .from("notified_seller_matches").select("seller_client_id, buyer_client_id").eq("user_id", userId);
+  const sellerNotifiedSet = new Set((sellerNotified || []).map((r: any) => `${r.seller_client_id}:${r.buyer_client_id}`));
 
   let groups = 0;
   for (const seller of sellerSlice) {
@@ -244,9 +262,9 @@ async function processSellerSlice(
 
     await admin.from("messages").insert({ conversation_id: convId, role: "assistant", content: lines.join("\n") });
     await admin.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
-    await admin.from("notified_matches").upsert(
-      matchedBuyers.slice(0, 5).map(({ buyer }) => ({ user_id: userId, client_id: seller.id, property_id: buyer.id })),
-      { onConflict: "user_id,client_id,property_id", ignoreDuplicates: true },
+    await admin.from("notified_seller_matches").upsert(
+      matchedBuyers.slice(0, 5).map(({ buyer }) => ({ user_id: userId, seller_client_id: seller.id, buyer_client_id: buyer.id })),
+      { onConflict: "user_id,seller_client_id,buyer_client_id", ignoreDuplicates: true },
     );
     groups++;
   }
@@ -255,9 +273,10 @@ async function processSellerSlice(
 
 /**
  * FASE DE PUSH (corre una vez, al cerrar la corrida): manda UN push por usuario con matches nuevos
- * de ESTA corrida. Reconstruye desde notified_matches creados en la ventana de la corrida; el
- * client_type del cliente notificado distingue buyer (push "Nuevos matches") de seller ("Compradores
- * encontrados"). Desacoplar el push de los workers permite acotar el CPU de cada worker. Ver 86aj1pgvb.
+ * de ESTA corrida. Los matches buyer→propiedad viven en notified_matches (push "Nuevos matches") y
+ * los seller→buyer en notified_seller_matches (push "Compradores encontrados"), ambos filtrados por
+ * la ventana de la corrida. Desacoplar el push de los workers permite acotar el CPU de cada worker.
+ * Ver 86aj1pgvb y docs/adrs/0003.
  */
 async function sendRunPushes(
   admin: any,
@@ -265,26 +284,50 @@ async function sendRunPushes(
   supabaseUrl: string,
   serviceKey: string,
 ): Promise<void> {
-  const { data: rows } = await admin
-    .from("notified_matches")
-    .select("user_id, client_id, created_at, clients!inner(full_name, status, client_type)")
-    .gte("created_at", startedAtISO);
-  if (!rows || rows.length === 0) return;
-
   // Agrupar por (user, tipo de push) → lista de {client_id, full_name, status}
   type Match = { client_id: string; full_name: string; status: string | null };
   const buyerByUser = new Map<string, Match[]>();
   const sellerByUser = new Map<string, Match[]>();
-  for (const r of rows as any[]) {
+
+  // Buyer matches: notified_matches (client_id = comprador notificado).
+  const { data: buyerRows } = await admin
+    .from("notified_matches")
+    .select("user_id, client_id, clients!inner(full_name, status)")
+    .gte("created_at", startedAtISO);
+  for (const r of (buyerRows as any[]) ?? []) {
     const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
     if (!c) continue;
-    const bucket = c.client_type === "seller" ? sellerByUser : buyerByUser;
-    const arr = bucket.get(r.user_id) ?? [];
+    const arr = buyerByUser.get(r.user_id) ?? [];
     if (!arr.some((m) => m.client_id === r.client_id)) {
       arr.push({ client_id: r.client_id, full_name: c.full_name, status: c.status });
     }
-    bucket.set(r.user_id, arr);
+    buyerByUser.set(r.user_id, arr);
   }
+
+  // Seller matches: notified_seller_matches (seller_client_id = vendedor notificado).
+  // Dos pasos (en vez de embed) porque la tabla tiene dos FKs a clients y el join
+  // embebido sería ambiguo.
+  const { data: sellerRows } = await admin
+    .from("notified_seller_matches")
+    .select("user_id, seller_client_id")
+    .gte("created_at", startedAtISO);
+  const sellerIds = [...new Set(((sellerRows as any[]) ?? []).map((r) => r.seller_client_id))];
+  const sellerClientById = new Map<string, any>();
+  if (sellerIds.length) {
+    const { data: sc } = await admin.from("clients").select("id, full_name, status").in("id", sellerIds);
+    for (const c of (sc as any[]) ?? []) sellerClientById.set(c.id, c);
+  }
+  for (const r of (sellerRows as any[]) ?? []) {
+    const c = sellerClientById.get(r.seller_client_id);
+    if (!c) continue;
+    const arr = sellerByUser.get(r.user_id) ?? [];
+    if (!arr.some((m) => m.client_id === r.seller_client_id)) {
+      arr.push({ client_id: r.seller_client_id, full_name: c.full_name, status: c.status });
+    }
+    sellerByUser.set(r.user_id, arr);
+  }
+
+  if (buyerByUser.size === 0 && sellerByUser.size === 0) return;
 
   const deepLink = async (userId: string, clientId: string): Promise<string> => {
     const { data: conv } = await admin
