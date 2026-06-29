@@ -14,6 +14,7 @@ dist-ssr
 
 # docs/ = memoria operativa del equipo (runbooks, ADRs, specs con refs/URLs
 # internos). Se mantiene fuera del repo a propósito; vive en disco/OneDrive.
+/docs/
 
 # Editor directories and files
 .vscode/*
