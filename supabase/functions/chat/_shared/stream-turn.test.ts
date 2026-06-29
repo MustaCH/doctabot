@@ -355,4 +355,33 @@ describe("streamTurn", () => {
     expect(executeTool).toHaveBeenCalledWith("link_conversation", { client_id: "abc-123" }, {});
     expect(res.content).toBe("Listo, vinculé la conversación al cliente.");
   });
+
+  // Guardarraíl de links inventados: la ronda final se bufferiza, así que sanitizeFinal corre
+  // sobre el texto completo ANTES de volcarlo. Lo que ve el cliente == lo que se persiste.
+  it("sanitizeFinal transforma la ronda de texto final antes de emitir/persistir", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("link inventado", "stop"), DONE]));
+    const emitted: string[] = [];
+    const sanitizeFinal = vi.fn(async (t: string) => t.replace("inventado", "[neutralizado]"));
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: (t) => emitted.push(t), sanitizeFinal },
+    );
+
+    expect(sanitizeFinal).toHaveBeenCalledOnce();
+    expect(res.content).toBe("link [neutralizado]");
+    expect(emitted.join("")).toBe("link [neutralizado]"); // live == persistido
+  });
+
+  it("sanitizeFinal que tira NO rompe el turno: se usa el texto original (fail-open)", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("texto original", "stop"), DONE]));
+    const sanitizeFinal = vi.fn(async () => { throw new Error("db down"); });
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {}, sanitizeFinal },
+    );
+
+    expect(res.content).toBe("texto original");
+  });
 });

@@ -24,6 +24,8 @@ import { getValidCalendarToken } from "./_shared/tools/google.ts";
 import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
+import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
+import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
 import { reportEdgeErrorBg } from "../_shared/observability.ts";
@@ -151,6 +153,35 @@ serve(async (req) => {
 
     const toolLoopDeps = { resilientAIFetch, executeTool, toolCtx, toolDefinitions };
 
+    // Guardarraíl de integridad de links: la ronda de texto final se bufferiza, así que antes de
+    // volcarla validamos los listings de remax contra la tabla `properties` (única fuente de un
+    // listing real — Alan solo los obtiene vía las tools que leen esa tabla). Un slug que no existe
+    // en la DB lo fabricó el modelo → lo neutralizamos para no mandarle un link muerto al cliente
+    // (remax redirige los listings inexistentes a la home). Fail-open: cualquier error deja el texto
+    // intacto. Es la red determinista que respalda la regla de prompt "copiá el url exacto".
+    const sanitizeFinal = async (text: string): Promise<string> => {
+      try {
+        const slugs = extractListingSlugs(text);
+        if (slugs.length === 0) return text;
+        const candidateUrls = slugs.map((s) => `https://www.remax.com.ar/listings/${s}`);
+        const { data, error } = await supabase.from("properties").select("url").in("url", candidateUrls);
+        if (error) return text; // no validable → no rompemos ni recortamos el turno
+        const valid = new Set<string>();
+        for (const row of (data ?? []) as Array<{ url: string | null }>) {
+          const m = String(row.url ?? "").match(/\/listings\/([a-z0-9-]+)/i);
+          if (m) valid.add(m[1].toLowerCase());
+        }
+        const { text: cleaned, removed } = neutralizeFabricatedListings(text, valid);
+        if (removed.length === 0) return text;
+        console.warn("link-guardrail: listings inexistentes neutralizados", { count: removed.length, slugs: removed });
+        const n = removed.length;
+        const aviso = `${MSG_BREAK}⚠️ Quité ${n} ${n === 1 ? "enlace" : "enlaces"} de propiedad que no pude verificar en el sistema (apuntaban a una página inexistente). Volvé a pedirme esas propiedades o usá las tarjetas de búsqueda, que traen el link correcto.`;
+        return cleaned + aviso;
+      } catch {
+        return text;
+      }
+    };
+
     // Primera llamada con stream:true. Validamos el status ANTES de abrir el stream al
     // cliente para preservar el contrato 429/402 que el front espera por HTTP status.
     const firstRes = await resilientAIFetch({ messages: currentMessages, tools: toolDefinitions, stream: true });
@@ -194,7 +225,7 @@ serve(async (req) => {
         let streamFailed = false;
         let streamErrorMessage = "";
         try {
-          const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes });
+          const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes, sanitizeFinal });
           finalContent = result.content;
           executedTools = result.executedTools;
         } catch (err) {

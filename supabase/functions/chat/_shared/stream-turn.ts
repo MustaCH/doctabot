@@ -31,6 +31,11 @@ export interface StreamTurnOptions {
   emit: (text: string) => void;    // recibe cada token de content para reenviar al cliente
   firstResponse?: Response;        // respuesta ya fetcheada para la iteración 0 (status ya validado)
   maxIterations?: number;          // default 5
+  // Saneador opcional de la ronda de texto FINAL antes de volcarla al cliente. La ronda final se
+  // bufferiza (no se streamea token a token), así que es el punto natural para una validación
+  // determinista del contenido (ej. neutralizar links de propiedad inventados — ver link-guardrail.ts).
+  // Recibe el texto final y devuelve el texto a emitir/persistir. Fail-open: si tira, se usa el original.
+  sanitizeFinal?: (text: string) => Promise<string> | string;
 }
 
 export interface StreamTurnResult {
@@ -92,6 +97,11 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   let repromptCount = 0;     // re-prompts gastados al recuperar tool-calls fugados como texto
 
   const safeEmit = (t: string) => { if (!t) return; try { emit(t); } catch { /* cliente desconectado: seguimos drenando */ } };
+  // Aplica el saneador de la ronda final si fue provisto. Fail-open: cualquier error deja el texto intacto.
+  const finalize = async (t: string): Promise<string> => {
+    if (!opts.sanitizeFinal) return t;
+    try { return await opts.sanitizeFinal(t); } catch { return t; }
+  };
 
   for (let iter = 0; iter < maxIterations; iter++) {
     let res: Response;
@@ -169,7 +179,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     if (finishReason === "length") {
       // Ronda final truncada por límite de tokens: volcamos el contenido bufferizado + cierre de
       // marcadores abiertos + aviso, en vez de persistir/mostrar un borrador o tarjeta a medias.
-      const flush = assistantContent + truncationSuffix(assistantContent);
+      const flush = await finalize(assistantContent + truncationSuffix(assistantContent));
       fullContent += flush;
       safeEmit(flush);
       emittedFinal = true;
@@ -216,7 +226,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     // que no pudimos recuperar (cap agotado), va el texto ya strippeado. Validación mínima de
     // formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar, agregamos el cierre faltante.
     const finalText = leakedNames.length > 0 ? cleaned : assistantContent;
-    const flush = finalText + unbalancedDraftClose(finalText);
+    const flush = await finalize(finalText + unbalancedDraftClose(finalText));
     fullContent += flush;
     safeEmit(flush);
     emittedFinal = true;
@@ -226,8 +236,9 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   // El turno agotó las iteraciones sin una ronda de texto final (todas terminaron en tool_calls).
   // Para no dejar la pantalla muda, volcamos el último preámbulo que habíamos suprimido.
   if (!emittedFinal && lastPreamble) {
-    fullContent += lastPreamble;
-    safeEmit(lastPreamble);
+    const safe = await finalize(lastPreamble);
+    fullContent += safe;
+    safeEmit(safe);
   }
 
   return { content: fullContent, executedTools };

@@ -160,3 +160,22 @@ describe("regla guardar≠vincular: link_conversation no guarda propiedades (86a
     expect(SYSTEM_PROMPT).toMatch(/link_conversation.*no guarda propiedades/i);
   });
 });
+
+// Regresión del incidente de links inventados: Alan mandó 3 links de remax que redirigían a la
+// home porque fabricó el slug (uno difería de una propiedad real por una sola letra: "dpto" vs
+// "depto"). El fix de prompt vive como regla canónica en alan-facts (la evalúa el supervisor) +
+// prosa de fidelidad en el system prompt. La red determinista vive en link-guardrail.ts. Blindan la
+// PRESENCIA de la regla, no el comportamiento del modelo (probabilístico → repro manual + guardarraíl).
+describe("regla de FIDELIDAD de URLs: copiar el url exacto, nunca inventar", () => {
+  it("la regla canónica de fidelidad de URLs está en alan-facts", () => {
+    expect(ALAN_CONTEXT_FACTS).toMatch(/FIDELIDAD de URLs/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/COPIA TAL CUAL/i);
+    expect(ALAN_CONTEXT_FACTS).toMatch(/NUNCA escribe, completa, adivina ni reconstruye/i);
+  });
+
+  it("el system prompt instruye a copiar el url exacto y no inventar slugs", () => {
+    expect(SYSTEM_PROMPT).toMatch(/COPIA EXACTA del campo "url"/i);
+    expect(SYSTEM_PROMPT).toMatch(/NUNCA inventes, adivines ni modifiques una URL/i);
+    expect(SYSTEM_PROMPT).toMatch(/un slug inventado/i);
+  });
+});
