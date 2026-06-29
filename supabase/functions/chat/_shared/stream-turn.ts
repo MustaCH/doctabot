@@ -85,6 +85,44 @@ export function stripLeakedToolCalls(
   return { cleaned: cleaned.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim(), leakedNames };
 }
 
+/**
+ * Limpieza COSMÉTICA del texto final: remueve artefactos del PROCESO INTERNO que el modelo a veces
+ * filtra al canal de contenido y que se MOSTRARÍAN al agente (distinto de stripLeakedToolCalls, que
+ * recupera un `call:NAME{}` no ejecutado vía re-prompt; esto barre lo que igual quedaría visible).
+ * Cubre las formas observadas en prod: el header "🧠 … está pensando", la sintaxis de invocación
+ * ("Executing function call: list_clients{…}", "search_properties(…)"), el marcador 🛠️ con sus
+ * parámetros, y `call:NAME{…}` residual. Anclado a marcadores inequívocos (🧠/🛠️/"function call:")
+ * y a nombres de herramientas REALES para NO tocar prosa legítima. Puro y testeable.
+ */
+export function stripLeakedInternals(content: string, validToolNames: string[]): string {
+  if (!content) return content;
+  const names = (validToolNames || []).filter((n) => typeof n === "string" && /^\w+$/.test(n));
+  let out = content;
+
+  // 1) Header de "pensamiento": línea que arranca con 🧠 (con o sin #) y narra que está pensando/analizando.
+  out = out.replace(/^[^\S\n]*#*[^\S\n]*🧠[^\n]*$/gim, (m) =>
+    /pensando|thinking|analizando|an[áa]lisis/i.test(m) ? "" : m);
+
+  // 2) Marcador 🛠️ "llama a la herramienta … con los siguientes parámetros:" + sus líneas `key: value`.
+  out = out.replace(/🛠️[^\n]*\n(?:[^\S\n]*[a-z_]+:[^\n]*\n?)*/gi, "");
+
+  // 3) Sintaxis de invocación: "(executing )?function call: NAME{…}" o "…(…)".
+  out = out.replace(/(?:executing\s+)?function[ _]call:\s*[a-z_]+\s*[{(][^\n})]*[)}]\.{0,3}/gi, "");
+
+  // 4) `call:NAME{…}` residual (la vía principal lo recupera vía re-prompt; esto barre lo que quede).
+  out = out.replace(/call:\s*[a-z_]+\s*\{[^\n}]*\}/gi, "");
+
+  // 5) Invocación anclada a un nombre de tool REAL seguido de (…) o {…}: search_properties(…), list_clients{…}.
+  if (names.length > 0) {
+    const re = new RegExp(`\\b(?:${names.join("|")})\\s*[{(][^\\n})]*[)}]`, "gi");
+    out = out.replace(re, "");
+  }
+
+  if (out === content) return content;
+  // Tidy: colapsar espacios horizontales y líneas vacías que dejó la limpieza (sin tocar el formato real).
+  return out.replace(/[^\S\n]{2,}/g, " ").replace(/[^\S\n]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
   const { resilientAIFetch, executeTool, toolCtx, toolDefinitions } = deps;
   const { messages, emit } = opts;
@@ -225,7 +263,10 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Si quedó un leak
     // que no pudimos recuperar (cap agotado), va el texto ya strippeado. Validación mínima de
     // formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar, agregamos el cierre faltante.
-    const finalText = leakedNames.length > 0 ? cleaned : assistantContent;
+    const finalText0 = leakedNames.length > 0 ? cleaned : assistantContent;
+    // Barrido cosmético del proceso interno filtrado (header "🧠 …", sintaxis de invocación, etc.)
+    // que stripLeakedToolCalls no recupera y que igual se mostraría. Ver stripLeakedInternals.
+    const finalText = stripLeakedInternals(finalText0, validToolNames);
     const flush = await finalize(finalText + unbalancedDraftClose(finalText));
     fullContent += flush;
     safeEmit(flush);

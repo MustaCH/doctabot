@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError, truncationSuffix, unbalancedDraftClose, stripLeakedToolCalls } from "./stream-turn";
+import { streamTurn, AIError, truncationSuffix, unbalancedDraftClose, stripLeakedToolCalls, stripLeakedInternals } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -69,6 +69,57 @@ describe("stripLeakedToolCalls", () => {
     const out = stripLeakedToolCalls("mirá esta call:funcion_inventada{x:1}", names);
     expect(out.leakedNames).toEqual([]);
     expect(out.cleaned).toContain("funcion_inventada");
+  });
+});
+
+describe("stripLeakedInternals (proceso interno filtrado al texto final)", () => {
+  const names = ["search_properties", "list_clients", "save_property_to_client", "get_client", "link_conversation"];
+
+  it("quita la sintaxis 'Executing function call: NAME{...}' dejando la frase del usuario", () => {
+    const out = stripLeakedInternals(
+      "Empiezo por los que están \"Calientes\". Dame un segundo.\nExecuting function call: list_clients{limit:1000,status:hot}",
+      names,
+    );
+    expect(out).not.toMatch(/function call/i);
+    expect(out).not.toContain("list_clients{");
+    expect(out).toContain("Dame un segundo");
+  });
+
+  it("quita una invocación pegada al texto (NAME(...)): search_properties(...)", () => {
+    const out = stripLeakedInternals(
+      "Voy a buscar propiedades con esos criterios. Dame un momento... search_properties(currency:USD,max_price:325000,property_type:Duplex,zone:Nueva Córdoba)",
+      names,
+    );
+    expect(out).not.toContain("search_properties(");
+    expect(out).toContain("Dame un momento");
+  });
+
+  it("quita el header '🧠 … está pensando'", () => {
+    const out = stripLeakedInternals("# 🧠 Alan, el asistente de IA, está pensando...\n¡Listo! Acá va la respuesta.", names);
+    expect(out).not.toMatch(/está pensando/);
+    expect(out).not.toContain("🧠");
+    expect(out).toContain("Acá va la respuesta");
+  });
+
+  it("quita el marcador 🛠️ con sus parámetros key: value", () => {
+    const out = stripLeakedInternals(
+      "Hago una búsqueda amplia.🛠️llama a la herramienta search_properties con los siguientes parámetros:\noperation: Alquiler\nproperty_type: Departamento\nListo, acá tenés.",
+      names,
+    );
+    expect(out).not.toContain("🛠️");
+    expect(out).not.toMatch(/operation: Alquiler/);
+    expect(out).toContain("Listo, acá tenés");
+  });
+
+  it("NO toca prosa legítima ni menciones sin sintaxis de invocación", () => {
+    const legit = "Te paso 3 deptos en Centro. Si querés, después coordinamos una visita. 😉";
+    expect(stripLeakedInternals(legit, names)).toBe(legit);
+    // 🧠 usado como emoji legítimo (sin "pensando") no se toca
+    const emoji = "Buen dato 🧠 para tener en cuenta.";
+    expect(stripLeakedInternals(emoji, names)).toBe(emoji);
+    // nombre de tool mencionado en prosa pero SIN (..)/{..} (ej. entre paréntesis) no se borra
+    const mention = "Usé la búsqueda interna (search_properties) y encontré 3.";
+    expect(stripLeakedInternals(mention, names)).toBe(mention);
   });
 });
 
