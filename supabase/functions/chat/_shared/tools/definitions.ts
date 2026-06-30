@@ -98,6 +98,7 @@ export const toolDefinitions = [
           notes: { type: "string", description: "Perfil descriptivo ESTABLE del cliente (ej. 'matrimonio con 2 hijos, médico'). NO usar para tareas/recordatorios ni cosas a retomar — eso va a create_client_note." },
           status: { type: "string", description: "Estado: hot (caliente/interesado, default), warm (tibio/en seguimiento), cold (frío/sin actividad)" },
           client_type: { type: "string", description: "Tipo: buyer (compra/alquila, default), seller (vende/alquila su propiedad), both" },
+          is_client: { type: "boolean", description: "true (default) = CLIENTE (con datos comerciales y matching de propiedades). false = CONTACTO común (solo agenda, sin matching). Usá false solo si el agente aclara que es un contacto, no un cliente." },
           birthday: { type: "string", description: "Fecha de cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
           address: { type: "string", description: "Dirección actual del cliente" },
@@ -128,6 +129,7 @@ export const toolDefinitions = [
           notes: { type: "string", description: "Perfil descriptivo ESTABLE del cliente. NO usar para tareas/recordatorios ni cosas a retomar — eso va a create_client_note." },
           status: { type: "string", description: "Nuevo estado: hot (caliente), warm (tibio), cold (frío)" },
           client_type: { type: "string", description: "Tipo: buyer, seller, both" },
+          is_client: { type: "boolean", description: "Mover entre CLIENTE y CONTACTO. true = cliente (datos comerciales + matching), false = contacto común (solo agenda). NUNCA confundir con el status 'cold': un contacto NO es un cliente frío. Mover NO borra ningún dato cargado." },
           birthday: { type: "string", description: "Cumpleaños formato YYYY-MM-DD" },
           company: { type: "string", description: "Empresa u ocupación" },
           address: { type: "string", description: "Dirección actual" },
@@ -147,12 +149,13 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "list_clients",
-      description: "Listar los clientes del agente. Permite filtrar por estado o buscar por nombre parcial.",
+      description: "Listar los clientes y/o contactos del agente. Permite filtrar por categoría (cliente/contacto), por estado, o buscar por nombre parcial.",
       parameters: {
         type: "object",
         properties: {
-          search: { type: "string", description: "Búsqueda parcial por nombre del cliente" },
-          status: { type: "string", description: "Filtrar por estado: hot, warm, cold" },
+          search: { type: "string", description: "Búsqueda parcial por nombre" },
+          status: { type: "string", description: "Filtrar por estado: hot, warm, cold (solo aplica a clientes)" },
+          kind: { type: "string", description: "Qué categoría listar: 'client' (clientes, default), 'contact' (contactos comunes), 'all' (ambos). Usá 'contact' o 'all' cuando el agente pregunte por sus contactos." },
           limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
         },
         additionalProperties: false,
@@ -530,6 +533,39 @@ export const toolDefinitions = [
           is_done: { type: "boolean", description: "true para marcar como completada, false para pendiente" },
         },
         required: ["note_id", "is_done"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_client",
+      description: "Eliminar UN cliente o contacto del agente, con TODO lo asociado (notas, tareas, propiedades vinculadas, eventos). Es IRREVERSIBLE: usar solo a pedido explícito del agente y tras confirmar. Podés pasar client_id o client_name (si hay varios con ese nombre, devuelve la lista para que elijas, no borra nada).",
+      parameters: {
+        type: "object",
+        properties: {
+          client_id: { type: "string", description: "ID del cliente/contacto a borrar (opcional si pasás client_name)" },
+          client_name: { type: "string", description: "Nombre del cliente/contacto para resolver su ID automáticamente" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_all_clients",
+      description: "Borrado MASIVO: elimina TODOS los clientes y/o contactos del agente (para 'empezar de cero'), con todo lo asociado. Es IRREVERSIBLE y no se puede deshacer. FLUJO OBLIGATORIO: llamala PRIMERO sin confirm (o confirm=false) para obtener el conteo (would_delete), avisale al agente cuántos se van a borrar, y SOLO cuando el agente confirme explícitamente volvé a llamarla con confirm=true. NUNCA pases confirm=true sin esa confirmación.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: { type: "string", description: "Qué borrar: 'client' (solo clientes), 'contact' (solo contactos), 'all' (clientes y contactos, default)" },
+          status: { type: "string", description: "Opcional: borrar solo los de un estado (hot, warm, cold). Útil para 'borrá mis clientes fríos'." },
+          confirm: { type: "boolean", description: "Debe ser true para ejecutar el borrado. Sin esto (o en false) la herramienta solo devuelve el conteo de lo que se borraría, sin borrar nada. Pasá true SOLO tras la confirmación explícita del agente." },
+        },
+        required: [],
         additionalProperties: false,
       },
     },

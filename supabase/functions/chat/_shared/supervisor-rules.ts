@@ -78,6 +78,9 @@ export const WRITE_CLAIMS: Array<{ test: RegExp; tools: string[]; label: string 
   { test: /\b(agendé|programé|reservé)[^.?!\n]{0,40}\b(visita|reuni[oó]n|evento|llamada|cita)\b/i, tools: ["create_calendar_event", "create_meet_event", "create_client_event"], label: "evento" },
   { test: /\b(envié|mandé)[^.?!\n]{0,30}\b(email|mail|correo)\b/i, tools: ["send_email"], label: "send_email" },
   { test: /\b(creé|registré)[^.?!\n]{0,30}\b(cliente|contacto)\b/i, tools: ["create_client"], label: "create_client" },
+  // Borrado fantasma: Alan dice que borró/eliminó un cliente/contacto pero no corrió ninguna
+  // tool de borrado. Pretérito 1ª persona acentuado (borré/eliminé) → no marca ofertas ("¿lo borro?").
+  { test: /\b(borré|eliminé)[^.?!\n]{0,40}\b(cliente|contacto|clientes|contactos)\b/i, tools: ["delete_client", "delete_all_clients"], label: "delete_client/delete_all_clients" },
 ];
 
 /**

@@ -264,6 +264,7 @@ export async function executeTool(
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       const status = resolveClientStatusForCreate(args.status);
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
+      const is_client = typeof args.is_client === "boolean" ? args.is_client : true;
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
       const address = typeof args.address === "string" ? args.address.trim().slice(0, 200) : null;
@@ -275,11 +276,11 @@ export async function executeTool(
       const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
       const { data, error } = await supabase
         .from("clients")
-        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, is_client: true })
-        .select("id, full_name, status, client_type")
+        .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, is_client })
+        .select("id, full_name, status, client_type, is_client")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ success: true, client: data, message: `Cliente "${full_name}" creado correctamente.` });
+      return JSON.stringify({ success: true, client: data, message: `${is_client ? "Cliente" : "Contacto"} "${full_name}" creado correctamente.` });
     }
 
     case "update_client": {
@@ -292,6 +293,7 @@ export async function executeTool(
       const normalizedStatus = normalizeClientStatus(args.status);
       if (normalizedStatus) updates.status = normalizedStatus;
       if (VALID_CLIENT_TYPES.includes(args.client_type)) updates.client_type = args.client_type;
+      if (typeof args.is_client === "boolean") updates.is_client = args.is_client;
       if (typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday)) updates.birthday = args.birthday;
       if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
       if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
@@ -309,28 +311,35 @@ export async function executeTool(
         .update(updates)
         .eq("id", args.client_id)
         .eq("user_id", userId)
-        .select("id, full_name, status, client_type")
+        .select("id, full_name, status, client_type, is_client")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.` });
+      // Mensaje que refleja un movimiento de categoría cuando lo hubo (cliente↔contacto).
+      const moveMsg = typeof args.is_client === "boolean"
+        ? (args.is_client ? ` Lo moví a Clientes.` : ` Lo moví a Contactos.`)
+        : "";
+      return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.${moveMsg}` });
     }
 
     case "list_clients": {
       const search = sanitizePattern(args.search);
       const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : null;
+      // kind: 'client' (default, is_client=true) | 'contact' (is_client=false) | 'all' (sin filtro).
+      const kind = ["client", "contact", "all"].includes(args.kind) ? args.kind : "client";
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
       let query = supabase
         .from("clients")
-        .select("id, full_name, phone, email, status, client_type, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
+        .select("id, full_name, phone, email, status, client_type, is_client, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
         .eq("user_id", userId)
-        .eq("is_client", true)
         .order("updated_at", { ascending: false })
         .limit(limit);
+      if (kind === "client") query = query.eq("is_client", true);
+      else if (kind === "contact") query = query.eq("is_client", false);
       if (search) query = query.ilike("full_name", `%${search}%`);
       if (status) query = query.eq("status", status);
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0 });
+      return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0, kind });
     }
 
     case "get_client": {
@@ -340,7 +349,6 @@ export async function executeTool(
         .select("*")
         .eq("id", args.client_id)
         .eq("user_id", userId)
-        .eq("is_client", true)
         .single();
       if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
       // Ficha 360: además de conversaciones y propiedades, traemos tareas pendientes y
@@ -1073,6 +1081,74 @@ export async function executeTool(
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, note: data, message: isDone ? `Tarea completada ✅` : `Tarea marcada como pendiente` });
+    }
+
+    // ---- Borrado de clientes / contactos ----
+    case "delete_client": {
+      // Resuelve por client_id directo o por nombre (NO filtra is_client: se puede borrar
+      // tanto un cliente como un contacto). Si el nombre matchea varios, devuelve la lista
+      // para desambiguar y NO borra nada. Scoping por user_id en cada query.
+      let resolvedClientId = args.client_id;
+      let resolvedName: string | null = null;
+      if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) {
+        if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente/contacto a borrar." });
+        const searchName = sanitizePattern(args.client_name);
+        const { data: matches } = await supabase
+          .from("clients")
+          .select("id, full_name, is_client")
+          .eq("user_id", userId)
+          .ilike("full_name", `%${searchName}%`)
+          .limit(10);
+        if (!matches || matches.length === 0) return JSON.stringify({ error: `No encontré ningún cliente ni contacto con el nombre "${args.client_name}".` });
+        if (matches.length > 1) return JSON.stringify({ error: `Encontré ${matches.length} coincidencias: ${matches.map((c) => c.full_name).join(", ")}. ¿Cuál querés borrar?`, matches });
+        resolvedClientId = matches[0].id;
+        resolvedName = matches[0].full_name;
+      }
+      if (!resolvedName) {
+        const { data: c } = await supabase.from("clients").select("full_name").eq("id", resolvedClientId).eq("user_id", userId).maybeSingle();
+        if (!c) return JSON.stringify({ error: "Cliente/contacto no encontrado o no te pertenece." });
+        resolvedName = c.full_name;
+      }
+      // El ON DELETE CASCADE de la DB limpia notas, tareas, propiedades vinculadas y eventos.
+      // Las conversaciones quedan (client_id pasa a NULL por ON DELETE SET NULL).
+      const { error } = await supabase.from("clients").delete().eq("id", resolvedClientId).eq("user_id", userId);
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, message: `"${resolvedName}" y todos sus datos asociados fueron eliminados.` });
+    }
+
+    case "delete_all_clients": {
+      // Borrado masivo "empezar de cero". Doble barrera: el prompt exige confirmación verbal
+      // del agente Y la tool exige confirm===true. Sin confirm devuelve solo el conteo (no borra).
+      // SIEMPRE scopeado por user_id → nunca toca data de otros agentes.
+      const kind = ["client", "contact", "all"].includes(args.kind) ? args.kind : "all";
+      const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : null;
+      const applyFilter = (q: any) => {
+        q = q.eq("user_id", userId);
+        if (kind === "client") q = q.eq("is_client", true);
+        else if (kind === "contact") q = q.eq("is_client", false);
+        if (status) q = q.eq("status", status);
+        return q;
+      };
+      const label = kind === "contact" ? "contactos" : kind === "client" ? "clientes" : "clientes y contactos";
+      const statusLabel = status ? ` en estado ${status}` : "";
+
+      // Conteo real (head:true → sin traer filas).
+      const { count, error: countError } = await applyFilter(supabase.from("clients").select("*", { count: "exact", head: true }));
+      if (countError) return JSON.stringify({ error: safeDbError(countError) });
+      const total = count ?? 0;
+      if (total === 0) return JSON.stringify({ success: true, deleted_count: 0, message: `No tenés ${label}${statusLabel} para borrar.` });
+
+      if (args.confirm !== true) {
+        return JSON.stringify({
+          pending_confirmation: true,
+          would_delete: total,
+          message: `⚠️ Esto va a borrar ${total} ${label}${statusLabel} y NO se puede deshacer. Avisale al agente cuántos son y pedí confirmación EXPLÍCITA antes de volver a llamar la herramienta con confirm=true.`,
+        });
+      }
+
+      const { error } = await applyFilter(supabase.from("clients").delete());
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      return JSON.stringify({ success: true, deleted_count: total, message: `Listo, borré ${total} ${label}${statusLabel}. Empezás de cero.` });
     }
 
     default:
