@@ -30,6 +30,20 @@ import {
   buildMimeEmail,
 } from "./google.ts";
 import { CLIENT_EVENT_TYPES, CLIENT_EVENT_RECURRENCES } from "../alan-facts.ts";
+import { normalizePhone } from "../whatsapp-guardrail.ts";
+
+/**
+ * Registra un cliente (name + teléfono canónico) en el registro por-turno que usa el guardarraíl de
+ * WhatsApp para corregir números inventados. Se llena en list_clients/get_client. Skip si el teléfono
+ * no normaliza (no sirve para un botón de WhatsApp). Ver whatsapp-guardrail.ts / 86ajb5g8d.
+ */
+function registerContact(ctx: any, fullName: unknown, rawPhone: unknown): void {
+  const phone = normalizePhone(typeof rawPhone === "string" ? rawPhone : null);
+  const name = typeof fullName === "string" ? fullName.trim() : "";
+  if (!phone || !name) return;
+  if (!ctx.clientRegistry) ctx.clientRegistry = [];
+  ctx.clientRegistry.push({ name, phone });
+}
 
 /**
  * Registra una propiedad en la lista ORDENADA de tarjetas del turno y devuelve un "stub" para el
@@ -59,6 +73,8 @@ export async function executeTool(
     // consume el expansor de <<<PROPERTIES>>> en index.ts (sanitizeFinal), por posición. Opcional
     // para no romper callers/tests.
     cardResults?: any[];
+    // Registro por-turno de contactos (name + teléfono canónico) para el guardarraíl de WhatsApp.
+    clientRegistry?: Array<{ name: string; phone: string }>;
   }
 ): Promise<string> {
   const { supabase, userId, conversationId, getCalendarToken } = ctx;
@@ -379,6 +395,8 @@ export async function executeTool(
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
       const clients = data ?? [];
+      // Registro por-turno para el guardarraíl de WhatsApp (corrección de números inventados).
+      for (const c of clients as any[]) registerContact(ctx, c.full_name, c.phone);
 
       // Marcado de campaña (opt-in): estampar last_contact_at=now() en el batch devuelto. Así el mismo
       // pedido con order=least_contacted devuelve gente DISTINTA la próxima vez → rotación sin repetir,
@@ -414,6 +432,7 @@ export async function executeTool(
         .eq("user_id", userId)
         .single();
       if (clientError) return JSON.stringify({ error: safeDbError(clientError) });
+      registerContact(ctx, (client as any)?.full_name, (client as any)?.phone);
       // Ficha 360: además de conversaciones y propiedades, traemos tareas pendientes y
       // próximos eventos para que afloren sin encadenar tool-calls. Todo scopeado por user_id.
       // Ver ticket 86aj1f0y3.

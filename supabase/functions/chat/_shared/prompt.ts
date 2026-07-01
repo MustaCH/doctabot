@@ -343,6 +343,7 @@ REGLAS ESPECIALES PARA WHATSAPP:
 - **CRITERIO DE CANAL:** ante "mandale/escribile/avisale" sin canal explícito, o si el cliente tiene teléfono guardado pero NO email, preferí WhatsApp e incluí SIEMPRE el marcador <<<WHATSAPP_TO:teléfono>>> antes del <<<DRAFT_START>>>. Reservá el email para cuando lo pidan explícitamente o el contenido sea formal/largo.
 - Si el agente pide redactar un mensaje de WhatsApp y tenés el teléfono del cliente (porque lo obtuviste de list_clients, get_client, o el agente lo mencionó), agregá el marcador <<<WHATSAPP_TO:número>>> ANTES del <<<DRAFT_START>>>.
 - El número se COPIA EXACTO del campo "phone" que devolvió list_clients / get_client — carácter por carácter, NUNCA de memoria ni inventado (un número inventado le manda el mensaje a un desconocido). Solo lo reformateás a internacional sin espacios ni guiones (ej: +5493511234567). Si el cliente NO tiene teléfono cargado, NO pongas el marcador WHATSAPP_TO ni inventes un número: decí que no tenés su teléfono.
+- El sistema VALIDA el número contra tus clientes reales: si no lo puede verificar, quita el botón automáticamente (para no mandarle el mensaje a un desconocido). Para que pueda ubicar al destinatario correcto, saludá SIEMPRE al cliente por su NOMBRE COMPLETO al inicio del cuerpo del mensaje (ej: "Hola María González,").
 - Los mensajes de WhatsApp NUNCA llevan firma (no pongas "Saludos, Nombre" ni "Atentamente" al final). Son mensajes directos y conversacionales.
 - Ejemplo:
 <<<WHATSAPP_TO:+5493511234567>>>

@@ -26,6 +26,7 @@ import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts"
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
 import { expandCards, collapseEmptyBubbles, renderPropertyCard } from "./_shared/card-render.ts";
+import { normalizePhone, validateAndCorrectWhatsapp, whatsappNeutralizedNotice } from "./_shared/whatsapp-guardrail.ts";
 import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
@@ -98,11 +99,16 @@ serve(async (req) => {
     // la consume el expansor de <<<PROPERTIES>>> en sanitizeFinal, por POSICIÓN (no por ningún id que
     // emita el modelo). Per-turno: se recrea en cada request. Ver 86ajangkb.
     const cardResults: any[] = [];
+    // Registro por-turno de contactos surgidos vía list_clients/get_client (name + teléfono canónico).
+    // Lo usa el guardarraíl de WhatsApp para CORREGIR un número inventado cuando el borrador nombra
+    // sin ambigüedad al cliente. Se siembra con el cliente vinculado a la conversación (abajo). Ver 86ajb5g8d.
+    const clientRegistry: Array<{ name: string; phone: string }> = [];
     const toolCtx = {
       supabase,
       userId,
       conversationId,
       cardResults,
+      clientRegistry,
       getCalendarToken: () => getValidCalendarToken(supabase, userId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
     };
 
@@ -121,6 +127,11 @@ serve(async (req) => {
           .maybeSingle();
         if (conv?.client_id && conv.clients) {
           activeClientBlock = buildActiveClientBlock(conv.clients as any);
+          // Sembrar el registro para el guardarraíl de WhatsApp: cubre "mandale un WhatsApp a este
+          // cliente" sin que Alan haya llamado list_clients/get_client en el turno.
+          const c = conv.clients as any;
+          const seedPhone = normalizePhone(c.phone);
+          if (c.full_name && seedPhone) clientRegistry.push({ name: c.full_name, phone: seedPhone });
         }
       } catch (e) {
         console.error("active client lookup error:", e);
@@ -191,27 +202,60 @@ serve(async (req) => {
 
       // 2) Backstop de links inventados FUERA de tarjeta (borradores/fichas donde el modelo aún
       //    escribe la URL a mano). Valida los listings de remax contra la tabla `properties` y
-      //    neutraliza los slugs inexistentes. Fail-open: cualquier error deja el texto intacto.
+      //    neutraliza los slugs inexistentes. Fail-open: cualquier error deja `working` intacto.
       try {
         const slugs = extractListingSlugs(working);
-        if (slugs.length === 0) return working;
-        const candidateUrls = slugs.map((s) => `https://www.remax.com.ar/listings/${s}`);
-        const { data, error } = await supabase.from("properties").select("url").in("url", candidateUrls);
-        if (error) return working; // no validable → no rompemos ni recortamos el turno
-        const valid = new Set<string>();
-        for (const row of (data ?? []) as Array<{ url: string | null }>) {
-          const m = String(row.url ?? "").match(/\/listings\/([a-z0-9-]+)/i);
-          if (m) valid.add(m[1].toLowerCase());
+        if (slugs.length > 0) {
+          const candidateUrls = slugs.map((s) => `https://www.remax.com.ar/listings/${s}`);
+          const { data, error } = await supabase.from("properties").select("url").in("url", candidateUrls);
+          if (!error) {
+            const valid = new Set<string>();
+            for (const row of (data ?? []) as Array<{ url: string | null }>) {
+              const m = String(row.url ?? "").match(/\/listings\/([a-z0-9-]+)/i);
+              if (m) valid.add(m[1].toLowerCase());
+            }
+            const { text: cleaned, removed } = neutralizeFabricatedListings(working, valid);
+            if (removed.length > 0) {
+              console.warn("link-guardrail: listings inexistentes neutralizados", { count: removed.length, slugs: removed });
+              const n = removed.length;
+              working = `${cleaned}${MSG_BREAK}⚠️ Quité ${n} ${n === 1 ? "enlace" : "enlaces"} de propiedad que no pude verificar en el sistema (apuntaban a una página inexistente). Volvé a pedirme esas propiedades o usá las tarjetas de búsqueda, que traen el link correcto.`;
+            }
+          }
         }
-        const { text: cleaned, removed } = neutralizeFabricatedListings(working, valid);
-        if (removed.length === 0) return working;
-        console.warn("link-guardrail: listings inexistentes neutralizados", { count: removed.length, slugs: removed });
-        const n = removed.length;
-        const aviso = `${MSG_BREAK}⚠️ Quité ${n} ${n === 1 ? "enlace" : "enlaces"} de propiedad que no pude verificar en el sistema (apuntaban a una página inexistente). Volvé a pedirme esas propiedades o usá las tarjetas de búsqueda, que traen el link correcto.`;
-        return cleaned + aviso;
-      } catch {
-        return working;
+      } catch (e) {
+        console.error("link-guardrail error:", e);
       }
+
+      // 3) Guardarraíl de teléfonos de WhatsApp: valida cada <<<WHATSAPP_TO:número>>> contra los
+      //    teléfonos REALES del agente (sus clientes + los que tipeó en el turno). Un número inventado
+      //    se CORRIGE (si el borrador nombra sin ambigüedad al cliente, vía clientRegistry) o se
+      //    NEUTRALIZA (se quita el botón) — nunca un botón a un desconocido (86ajb5g8d). Fail-open.
+      try {
+        if (working.includes("<<<WHATSAPP_TO:")) {
+          const validPhones = new Set<string>();
+          // (a) Teléfonos que el agente tipeó en el turno (leads nuevos que no están en el CRM).
+          for (const m of (Array.isArray(messages) ? messages : [])) {
+            if (m?.role !== "user" || typeof m.content !== "string") continue;
+            for (const tok of m.content.match(/[\d(+][\d\s()+-]{6,}\d/g) ?? []) {
+              const canon = normalizePhone(tok);
+              if (canon) validPhones.add(canon);
+            }
+          }
+          // (b) Teléfonos reales del CRM del agente (scopeado por user_id).
+          const { data: phoneRows } = await supabase.from("clients").select("phone").eq("user_id", userId);
+          for (const row of (phoneRows ?? []) as Array<{ phone: string | null }>) {
+            const canon = normalizePhone(row.phone);
+            if (canon) validPhones.add(canon);
+          }
+          const { text: waText, neutralized, corrected } = validateAndCorrectWhatsapp(working, validPhones, clientRegistry);
+          if (neutralized > 0 || corrected > 0) console.warn("whatsapp-guardrail", { neutralized, corrected });
+          working = waText + whatsappNeutralizedNotice(neutralized);
+        }
+      } catch (e) {
+        console.error("whatsapp-guardrail error:", e);
+      }
+
+      return working;
     };
 
     // Primera llamada con stream:true. Validamos el status ANTES de abrir el stream al
