@@ -351,20 +351,58 @@ export async function executeTool(
       const status = VALID_CLIENT_STATUSES.includes(args.status) ? args.status : null;
       // kind: 'client' (default, is_client=true) | 'contact' (is_client=false) | 'all' (sin filtro).
       const kind = ["client", "contact", "all"].includes(args.kind) ? args.kind : "client";
+      // client_type: buyer|seller|both. Un 'both' es comprador Y vendedor: "vendedores" = seller+both,
+      // "compradores" = buyer+both. Sin esto Alan no podía pedir "dame vendedores" (86ajb5g6g).
+      const clientTypeArg = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : null;
+      // order: 'recent' (updated_at desc, default) | 'least_contacted' (last_contact_at asc, NULLs
+      // —nunca contactados— primero). Base de las campañas de recontacto sin repetir.
+      const order = args.order === "least_contacted" ? "least_contacted" : "recent";
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
+      const offset = Math.max(0, safePositiveInt(args.offset) ?? 0);
+      const markContacted = args.mark_contacted === true;
+
       let query = supabase
         .from("clients")
-        .select("id, full_name, phone, email, status, client_type, is_client, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, created_at, updated_at")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(limit);
+        .select("id, full_name, phone, email, status, client_type, is_client, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, last_contact_at, created_at, updated_at")
+        .eq("user_id", userId);
       if (kind === "client") query = query.eq("is_client", true);
       else if (kind === "contact") query = query.eq("is_client", false);
+      if (clientTypeArg === "buyer") query = query.in("client_type", ["buyer", "both"]);
+      else if (clientTypeArg === "seller") query = query.in("client_type", ["seller", "both"]);
+      else if (clientTypeArg === "both") query = query.eq("client_type", "both");
       if (search) query = query.ilike("full_name", `%${search}%`);
       if (status) query = query.eq("status", status);
+      if (order === "least_contacted") query = query.order("last_contact_at", { ascending: true, nullsFirst: true });
+      else query = query.order("updated_at", { ascending: false });
+      query = query.range(offset, offset + limit - 1);
+
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ clients: data ?? [], total: data?.length ?? 0, kind });
+      const clients = data ?? [];
+
+      // Marcado de campaña (opt-in): estampar last_contact_at=now() en el batch devuelto. Así el mismo
+      // pedido con order=least_contacted devuelve gente DISTINTA la próxima vez → rotación sin repetir,
+      // sin que el modelo tenga que "recordar" a quién dio (86ajb5g6g). Scopeado por user_id.
+      let marked_contacted = 0;
+      if (markContacted && clients.length > 0) {
+        const ids = clients.map((c: any) => c.id);
+        const { error: mErr } = await supabase
+          .from("clients")
+          .update({ last_contact_at: new Date().toISOString() })
+          .in("id", ids)
+          .eq("user_id", userId);
+        if (!mErr) marked_contacted = ids.length;
+      }
+
+      return JSON.stringify({
+        clients,
+        total: clients.length,
+        kind,
+        order,
+        offset,
+        ...(clientTypeArg ? { client_type: clientTypeArg } : {}),
+        ...(markContacted ? { marked_contacted } : {}),
+      });
     }
 
     case "get_client": {

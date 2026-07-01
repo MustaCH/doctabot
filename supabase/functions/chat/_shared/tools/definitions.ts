@@ -149,14 +149,18 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "list_clients",
-      description: "Listar los clientes y/o contactos del agente. Permite filtrar por categoría (cliente/contacto), por estado, o buscar por nombre parcial.",
+      description: "Listar los clientes y/o contactos del agente. Permite filtrar por categoría (cliente/contacto), por tipo (comprador/vendedor), por estado, buscar por nombre, ordenar por último contacto y paginar. Base de las campañas de recontacto.",
       parameters: {
         type: "object",
         properties: {
           search: { type: "string", description: "Búsqueda parcial por nombre" },
           status: { type: "string", description: "Filtrar por estado: hot, warm, cold (solo aplica a clientes)" },
           kind: { type: "string", description: "Qué categoría listar: 'client' (clientes, default), 'contact' (contactos comunes), 'all' (ambos). Usá 'contact' o 'all' cuando el agente pregunte por sus contactos." },
-          limit: { type: "integer", description: "Cantidad máxima de resultados (default 20)" },
+          client_type: { type: "string", description: "Filtrar por tipo: 'buyer' (compradores), 'seller' (vendedores), 'both'. Un cliente 'both' aparece tanto en compradores como en vendedores. Usalo cuando el agente pide 'vendedores'/'compradores'." },
+          order: { type: "string", description: "Orden: 'recent' (default, últimos actualizados) o 'least_contacted' (los que hace más tiempo que no se contactan primero — usalo para campañas de recontacto)." },
+          limit: { type: "integer", description: "Cantidad máxima de resultados (default 20, máx 100)" },
+          offset: { type: "integer", description: "Desplazamiento para paginar (ej: offset=20 trae el 2º bloque de 20). Default 0." },
+          mark_contacted: { type: "boolean", description: "Si es true, marca el batch devuelto como contactado hoy (last_contact_at=ahora). Usalo SOLO cuando el agente pide un bloque de gente PARA CONTACTAR/campaña, para que la próxima vez no se repitan. NO lo uses al solo mostrar/buscar clientes." },
         },
         additionalProperties: false,
       },
