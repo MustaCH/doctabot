@@ -31,6 +31,22 @@ import {
 } from "./google.ts";
 import { CLIENT_EVENT_TYPES, CLIENT_EVENT_RECURRENCES } from "../alan-facts.ts";
 
+/**
+ * Registra una propiedad en la lista ORDENADA de tarjetas del turno y devuelve un "stub" para el
+ * modelo. El stub OCULTA los strings que el modelo fabrica (`url`, `photo`, `photos`): sin ellos no
+ * puede escribir la tarjeta a mano ni el link → tiene que dejar que el server la arme. El server
+ * matchea por POSICIÓN (orden de esta lista), no por ningún id que emita el modelo, así que no hay
+ * nada que el modelo pueda transcribir mal. Ver card-render.ts e incidente 86ajangkb. La lista es
+ * per-turno (vive en toolCtx, que se recrea por request).
+ */
+function toCardStub(ctx: any, property: any): any {
+  if (!property) return property;
+  if (!ctx.cardResults) ctx.cardResults = [];
+  ctx.cardResults.push(property);
+  const { url: _url, photo: _photo, photos: _photos, ...rest } = property;
+  return rest;
+}
+
 export async function executeTool(
   name: string,
   args: any,
@@ -39,6 +55,10 @@ export async function executeTool(
     userId: string;
     conversationId: string;
     getCalendarToken: () => Promise<string | null>;
+    // Lista ordenada de propiedades a mostrar como tarjeta en este turno. La llena toCardStub y la
+    // consume el expansor de <<<PROPERTIES>>> en index.ts (sanitizeFinal), por posición. Opcional
+    // para no romper callers/tests.
+    cardResults?: any[];
   }
 ): Promise<string> {
   const { supabase, userId, conversationId, getCalendarToken } = ctx;
@@ -197,12 +217,15 @@ export async function executeTool(
       // siendo el universo real (count head:true); `showing` es el slice final.
       const ranked = rankProperties(data, limit);
       const doctaCount = ranked.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
+      // Cada resultado se registra y se devuelve como stub con `ref` (sin url/photo): el modelo
+      // muestra la propiedad emitiendo <<<CARD:ref>>>, no escribiendo la tarjeta. Ver toCardStub / 86ajangkb.
+      const results = ranked.map((p: any) => toCardStub(ctx, p));
 
       return JSON.stringify({
         total_count: totalCount,
-        showing: ranked.length,
+        showing: results.length,
         docta_in_results: doctaCount,
-        results: ranked,
+        results,
         ...(titleFallbackTerm ? { match_mode: "title_fallback", searched_term: titleFallbackTerm } : {}),
       });
     }
@@ -225,7 +248,9 @@ export async function executeTool(
         .select("property_id, properties(*)")
         .eq("user_id", userId);
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ favorites: data });
+      // Se muestran como tarjetas → cada propiedad va como stub con `ref` (ver toCardStub / 86ajangkb).
+      const favorites = (data ?? []).map((f: any) => (f.properties ? { ...f, properties: toCardStub(ctx, f.properties) } : f));
+      return JSON.stringify({ favorites });
     }
 
     case "add_favorite": {
@@ -830,7 +855,9 @@ export async function executeTool(
       if (args.status && validStatuses.includes(args.status)) query = query.eq("status", args.status);
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ client_properties: data ?? [], total: data?.length ?? 0 });
+      // Se muestran como tarjetas → cada propiedad va como stub con `ref` (ver toCardStub / 86ajangkb).
+      const client_properties = (data ?? []).map((cp: any) => (cp.properties ? { ...cp, properties: toCardStub(ctx, cp.properties) } : cp));
+      return JSON.stringify({ client_properties, total: client_properties.length });
     }
 
     case "remove_client_property": {

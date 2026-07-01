@@ -25,6 +25,7 @@ import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
+import { expandCards, collapseEmptyBubbles, renderPropertyCard } from "./_shared/card-render.ts";
 import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
@@ -92,10 +93,16 @@ serve(async (req) => {
     const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 
     // Tool execution context
+    // Lista ordenada de propiedades a mostrar como tarjeta en este turno. La llenan las tools que
+    // producen tarjetas (search_properties, get_favorites, list_client_properties) vía toCardStub;
+    // la consume el expansor de <<<PROPERTIES>>> en sanitizeFinal, por POSICIÓN (no por ningún id que
+    // emita el modelo). Per-turno: se recrea en cada request. Ver 86ajangkb.
+    const cardResults: any[] = [];
     const toolCtx = {
       supabase,
       userId,
       conversationId,
+      cardResults,
       getCalendarToken: () => getValidCalendarToken(supabase, userId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
     };
 
@@ -160,25 +167,50 @@ serve(async (req) => {
     // (remax redirige los listings inexistentes a la home). Fail-open: cualquier error deja el texto
     // intacto. Es la red determinista que respalda la regla de prompt "copiá el url exacto".
     const sanitizeFinal = async (text: string): Promise<string> => {
+      // 1) Expansión de tarjetas: el modelo marca DÓNDE van con <<<PROPERTIES>>> y el server las arma
+      //    (foto + link con ?associate) desde los resultados del turno, POR POSICIÓN — inmune a que el
+      //    modelo invente/renumere/no reproduzca ids (causa raíz de 86ajangkb y del bug de burbujas
+      //    vacías del follow-up). Red de seguridad: si el modelo no ubicó todos los resultados
+      //    (marcador olvidado o de menos), se anexan al final para no perder ninguno. Luego se
+      //    colapsan burbujas vacías. Todo puro, no lanza.
+      let working = text;
       try {
-        const slugs = extractListingSlugs(text);
-        if (slugs.length === 0) return text;
+        const { text: expanded, leftover } = expandCards(working, cardResults, agentCode);
+        working = expanded;
+        if (leftover.length > 0) {
+          // El modelo buscó pero no puso (todos) los marcadores → anexamos las tarjetas restantes
+          // para que los resultados SIEMPRE se muestren (nunca una respuesta muda tras una búsqueda).
+          const tail = leftover.map((p) => renderPropertyCard(p, agentCode)).join(MSG_BREAK);
+          working = `${working}${MSG_BREAK}${tail}`;
+          console.warn("card-render: resultados anexados (marcador ausente/insuficiente)", { count: leftover.length });
+        }
+        working = collapseEmptyBubbles(working);
+      } catch (e) {
+        console.error("card-render expand error:", e);
+      }
+
+      // 2) Backstop de links inventados FUERA de tarjeta (borradores/fichas donde el modelo aún
+      //    escribe la URL a mano). Valida los listings de remax contra la tabla `properties` y
+      //    neutraliza los slugs inexistentes. Fail-open: cualquier error deja el texto intacto.
+      try {
+        const slugs = extractListingSlugs(working);
+        if (slugs.length === 0) return working;
         const candidateUrls = slugs.map((s) => `https://www.remax.com.ar/listings/${s}`);
         const { data, error } = await supabase.from("properties").select("url").in("url", candidateUrls);
-        if (error) return text; // no validable → no rompemos ni recortamos el turno
+        if (error) return working; // no validable → no rompemos ni recortamos el turno
         const valid = new Set<string>();
         for (const row of (data ?? []) as Array<{ url: string | null }>) {
           const m = String(row.url ?? "").match(/\/listings\/([a-z0-9-]+)/i);
           if (m) valid.add(m[1].toLowerCase());
         }
-        const { text: cleaned, removed } = neutralizeFabricatedListings(text, valid);
-        if (removed.length === 0) return text;
+        const { text: cleaned, removed } = neutralizeFabricatedListings(working, valid);
+        if (removed.length === 0) return working;
         console.warn("link-guardrail: listings inexistentes neutralizados", { count: removed.length, slugs: removed });
         const n = removed.length;
         const aviso = `${MSG_BREAK}⚠️ Quité ${n} ${n === 1 ? "enlace" : "enlaces"} de propiedad que no pude verificar en el sistema (apuntaban a una página inexistente). Volvé a pedirme esas propiedades o usá las tarjetas de búsqueda, que traen el link correcto.`;
         return cleaned + aviso;
       } catch {
-        return text;
+        return working;
       }
     };
 

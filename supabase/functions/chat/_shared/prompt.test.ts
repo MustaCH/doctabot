@@ -179,3 +179,21 @@ describe("regla de FIDELIDAD de URLs: copiar el url exacto, nunca inventar", () 
     expect(SYSTEM_PROMPT).toMatch(/un slug inventado/i);
   });
 });
+
+// Incidente 86ajangkb: Gemini fabricaba el slug (y hasta la foto) al redactar tarjetas → links
+// muertos. La v1 movió el problema a un `ref` por propiedad y en el follow-up el modelo no lo
+// reproducía → burbujas vacías. Fix definitivo: el modelo solo marca DÓNDE van con un único
+// <<<PROPERTIES>>> y el server las arma POR POSICIÓN (card-render.ts). El modelo no emite ningún
+// identificador. Este test blinda que el prompt instruye el marcador (el "cómo" vive en prompt.ts).
+describe("tarjetas server-side: el modelo emite <<<PROPERTIES>>>, no escribe el link (86ajangkb)", () => {
+  it("el system prompt instruye a mostrar propiedades con el marcador <<<PROPERTIES>>>", () => {
+    expect(SYSTEM_PROMPT).toContain("<<<PROPERTIES>>>");
+    expect(SYSTEM_PROMPT).toMatch(/una sola vez/i);
+    expect(SYSTEM_PROMPT).toMatch(/NO escribas fotos, precios/i);
+  });
+
+  it("el system prompt aclara que la fidelidad de URL aplica FUERA de tarjetas", () => {
+    expect(SYSTEM_PROMPT).toMatch(/fuera de (una )?tarjeta/i);
+    expect(SYSTEM_PROMPT).toMatch(/NO incluyen "url"/i);
+  });
+});
