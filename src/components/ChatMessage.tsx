@@ -2,7 +2,9 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard from "@/components/PropertyCard";
+import ContactCard from "@/components/ContactCard";
 import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
+import { parseContactCardSegments } from "@/lib/contact-card-parse";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
@@ -333,7 +335,13 @@ const AssistantContent = ({ content, clientPhone }: { content: string; clientPho
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
   const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
-  const draftSegments = useMemo(() => !propertyData && !multiCards ? extractMultipleDraftBlocks(processedContent) : null, [processedContent, propertyData, multiCards]);
+  // Contact cards: solo si no hubo property cards ni drafts en la burbuja (los drafts se extraen
+  // después; si conviven, gana el draft para no dejar los marcadores <<<DRAFT_*>>> crudos).
+  const contactSegments = useMemo(
+    () => !multiCards && !propertyData && !processedContent.includes(DRAFT_START) ? parseContactCardSegments(processedContent) : null,
+    [processedContent, multiCards, propertyData]
+  );
+  const draftSegments = useMemo(() => !propertyData && !multiCards && !contactSegments ? extractMultipleDraftBlocks(processedContent) : null, [processedContent, propertyData, multiCards, contactSegments]);
 
   if (multiCards) {
     return (
@@ -355,6 +363,24 @@ const AssistantContent = ({ content, clientPhone }: { content: string; clientPho
 
   if (propertyData) {
     return <PropertyCard {...propertyData} agentCode={agentCode} whatsappPhone={whatsappPhone} />;
+  }
+
+  if (contactSegments) {
+    return (
+      <div className="space-y-3">
+        {contactSegments.map((segment, i) =>
+          segment.type === "contact" && segment.contact ? (
+            <ContactCard key={i} {...segment.contact} />
+          ) : (
+            <div key={i} className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word]">
+              <ReactMarkdown components={{
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
+              }}>{segment.text || ""}</ReactMarkdown>
+            </div>
+          )
+        )}
+      </div>
+    );
   }
 
   if (draftSegments) {
