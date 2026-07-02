@@ -134,3 +134,85 @@ export function collapseEmptyBubbles(text: string): string {
   const parts = text.split(MSG_BREAK).map((s) => s.trim()).filter((s) => s.length > 0);
   return parts.join(`\n${MSG_BREAK}\n`);
 }
+
+// ---------------------------------------------------------------------------
+// TARJETAS DE CONTACTO (86ajbr466 v2): misma doctrina que las de propiedad — el modelo NO escribe
+// la lista (formato feo + riesgo de inventar); emite <<<CONTACTS>>> y el server la arma desde los
+// resultados REALES de list_clients, una tarjeta por burbuja (===MSG_BREAK===).
+// OJO: sin 🏠 en este formato (el front detecta tarjetas de propiedad contando 🏠).
+
+export interface ContactCardData {
+  id?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  status?: string | null;
+  client_type?: string | null;
+  is_client?: boolean | null;
+  preferred_zones?: string | null;
+  budget_max?: number | string | null;
+  budget_currency?: string | null;
+  property_type_interest?: string | null;
+  last_contact_at?: string | null;
+}
+
+const STATUS_LABEL: Record<string, string> = { hot: "🔥 Caliente", warm: "🟡 Tibio", cold: "❄️ Frío" };
+const TYPE_LABEL: Record<string, string> = { buyer: "Comprador", seller: "Vendedor", both: "Comprador/Vendedor" };
+
+/** "hoy" / "ayer" / "hace N días" relativo a `now` (inyectable para tests). */
+export function relativeDays(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const days = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  return `hace ${days} días`;
+}
+
+/** Tarjeta markdown de UN contacto. Solo líneas con datos. Pura y testeable. */
+export function renderContactCard(c: ContactCardData, now: Date = new Date()): string {
+  const lines: string[] = [];
+  lines.push(`👤 **${c.full_name ?? "Contacto"}**`);
+  const chips: string[] = [];
+  if (c.is_client === false) chips.push("Contacto");
+  else if (c.client_type && TYPE_LABEL[c.client_type]) chips.push(TYPE_LABEL[c.client_type]);
+  if (c.is_client !== false && c.status && STATUS_LABEL[c.status]) chips.push(STATUS_LABEL[c.status]);
+  if (chips.length) lines.push(`🏷️ ${chips.join(" · ")}`);
+  if (c.phone) lines.push(`📱 ${c.phone}`);
+  if (c.email) lines.push(`✉️ ${c.email}`);
+  const busca: string[] = [];
+  if (c.property_type_interest) busca.push(String(c.property_type_interest));
+  if (c.preferred_zones) busca.push(`en ${c.preferred_zones}`);
+  if (c.budget_max != null && c.budget_max !== "") busca.push(`hasta ${c.budget_currency ?? "USD"} ${Number(c.budget_max).toLocaleString("es-AR")}`);
+  if (busca.length) lines.push(`🔍 Busca: ${busca.join(" · ")}`);
+  const rel = relativeDays(c.last_contact_at, now);
+  lines.push(`🕓 Último contacto: ${rel ?? "nunca"}`);
+  return lines.join("\n");
+}
+
+const CONTACTS_MARKER = /<<<CONTACTS>>>/gi;
+
+/**
+ * Reemplaza <<<CONTACTS>>> por las tarjetas de TODOS los contactos del turno (una por burbuja).
+ * Sin resultados o sin marcador → fail-safe (nunca queda el token crudo; sin auto-anexado: una
+ * respuesta en prosa sin tarjetas es legítima, ej. "tenés 43 fríos"). Puro, no lanza.
+ */
+export function expandContactCards(
+  text: string,
+  contacts: ContactCardData[],
+  now: Date = new Date(),
+): { text: string; rendered: number; hadMarker: boolean } {
+  if (!text || !/<<<CONTACTS>>>/i.test(text)) return { text, rendered: 0, hadMarker: false };
+  const list = contacts ?? [];
+  let rendered = 0;
+  let first = true;
+  const out = text.replace(CONTACTS_MARKER, () => {
+    if (!first) return ""; // un solo marcador expande; los repetidos se limpian
+    first = false;
+    if (list.length === 0) return "";
+    rendered = list.length;
+    return list.map((c) => renderContactCard(c, now)).join(`\n${MSG_BREAK}\n`);
+  });
+  return { text: out, rendered, hadMarker: true };
+}

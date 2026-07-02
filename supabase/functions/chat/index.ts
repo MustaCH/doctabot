@@ -25,7 +25,7 @@ import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
-import { expandCards, collapseEmptyBubbles, renderPropertyCard } from "./_shared/card-render.ts";
+import { expandCards, collapseEmptyBubbles, renderPropertyCard, expandContactCards } from "./_shared/card-render.ts";
 import { normalizePhone, validateAndCorrectWhatsapp, whatsappNeutralizedNotice, verifyContactListPhones } from "./_shared/whatsapp-guardrail.ts";
 import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
@@ -103,7 +103,7 @@ serve(async (req) => {
     // Lo usa el guardarraíl de WhatsApp para CORREGIR un número inventado cuando el borrador nombra
     // sin ambigüedad al cliente. Se siembra con el cliente vinculado a la conversación (abajo). Ver 86ajb5g8d.
     const clientRegistry: Array<{ name: string; phone: string }> = [];
-    const toolCtx = {
+    const toolCtx: any = {
       supabase,
       userId,
       conversationId,
@@ -232,6 +232,14 @@ serve(async (req) => {
           const tail = leftover.map((p) => renderPropertyCard(p, agentCode)).join(MSG_BREAK);
           working = `${working}${MSG_BREAK}${tail}`;
           console.warn("card-render: resultados anexados (marcador ausente/insuficiente)", { count: leftover.length });
+        }
+        // Tarjetas de CONTACTO (<<<CONTACTS>>>): el modelo marca dónde va la lista y el server la
+        // arma desde la última página de list_clients del turno (una tarjeta por burbuja). Fail-safe:
+        // sin resultados o sin marcador no queda token crudo. Ver card-render.ts / 86ajbr466.
+        const cc = expandContactCards(working, toolCtx.contactCardResults ?? []);
+        if (cc.hadMarker) {
+          working = cc.text;
+          if (cc.rendered > 0) console.warn("contact-cards: expandidas", { count: cc.rendered });
         }
         working = collapseEmptyBubbles(working);
       } catch (e) {

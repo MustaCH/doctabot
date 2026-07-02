@@ -78,6 +78,8 @@ export async function executeTool(
     cardResults?: any[];
     // Registro por-turno de contactos (name + teléfono canónico) para el guardarraíl de WhatsApp.
     clientRegistry?: Array<{ name: string; phone: string }>;
+    // Última página de list_clients del turno → tarjetas de contacto (<<<CONTACTS>>>, ver card-render.ts).
+    contactCardResults?: any[];
   }
 ): Promise<string> {
   const { supabase, userId, conversationId, getCalendarToken } = ctx;
@@ -506,6 +508,10 @@ export async function executeTool(
       ]);
       if (error) return JSON.stringify({ error: safeDbError(error) });
       const clients = data ?? [];
+      // Tarjetas de contacto (<<<CONTACTS>>>): la ÚLTIMA página listada del turno es la que se
+      // muestra (replace, no append — si el modelo consulta el total y después pide la tanda,
+      // gana la tanda). Ver card-render.ts / 86ajbr466.
+      ctx.contactCardResults = clients;
       // Registro por-turno para el guardarraíl de WhatsApp (corrección de números inventados).
       for (const c of clients as any[]) registerContact(ctx, c.full_name, c.phone);
 

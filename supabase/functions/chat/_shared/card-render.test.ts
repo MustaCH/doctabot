@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildListingUrl, renderPropertyCard, expandCards, collapseEmptyBubbles } from "./card-render";
+import { buildListingUrl, renderPropertyCard, expandCards, collapseEmptyBubbles, renderContactCard, expandContactCards, relativeDays } from "./card-render";
 import { MSG_BREAK } from "./alan-facts";
 
 // Propiedad real del incidente 86ajangkb (fec68fa6 — la única tarjeta cuyo link funcionó en el bug).
@@ -120,5 +120,63 @@ describe("collapseEmptyBubbles", () => {
   });
   it("texto sin separadores pasa intacto", () => {
     expect(collapseEmptyBubbles("hola")).toBe("hola");
+  });
+});
+
+// 86ajbr466 v2 — tarjetas de contacto: misma doctrina server-side que las de propiedad.
+describe("tarjetas de contacto (renderContactCard / expandContactCards)", () => {
+  const NOW = new Date("2026-07-03T12:00:00Z");
+  const C1 = { full_name: "Julieta Moreno", phone: "+5493512001365", status: "cold", client_type: "both", is_client: true, preferred_zones: "Alta Córdoba", budget_max: 80000, budget_currency: "USD", property_type_interest: "Local comercial", last_contact_at: "2026-07-03T09:00:00Z" };
+  const C2 = { full_name: "Granja Tanti", phone: "3512222222", is_client: false, status: "warm", client_type: "buyer", last_contact_at: null };
+
+  it("renderiza la tarjeta con tipo/estado/busca/último contacto", () => {
+    const card = renderContactCard(C1, NOW);
+    expect(card).toContain("👤 **Julieta Moreno**");
+    expect(card).toContain("🏷️ Comprador/Vendedor · ❄️ Frío");
+    expect(card).toContain("📱 +5493512001365");
+    expect(card).toContain("🔍 Busca: Local comercial · en Alta Córdoba · hasta USD 80.000");
+    expect(card).toContain("🕓 Último contacto: hoy");
+    expect(card).not.toContain("🏠"); // nunca el emoji de tarjeta de propiedad
+  });
+
+  it("contacto común (is_client=false): chip 'Contacto' sin estado, y 'nunca' contactado", () => {
+    const card = renderContactCard(C2, NOW);
+    expect(card).toContain("🏷️ Contacto");
+    expect(card).not.toContain("Tibio"); // el status no aplica a contactos comunes
+    expect(card).toContain("🕓 Último contacto: nunca");
+  });
+
+  it("relativeDays: hoy / ayer / hace N días / null", () => {
+    expect(relativeDays("2026-07-03T01:00:00Z", NOW)).toBe("hoy");
+    expect(relativeDays("2026-07-02T01:00:00Z", NOW)).toBe("ayer");
+    expect(relativeDays("2026-06-21T12:00:00Z", NOW)).toBe("hace 12 días");
+    expect(relativeDays(null, NOW)).toBeNull();
+  });
+
+  it("expande <<<CONTACTS>>> a una tarjeta por burbuja", () => {
+    const input = `Tanda de hoy${MSG_BREAK}<<<CONTACTS>>>${MSG_BREAK}¿Avanzamos?`;
+    const r = expandContactCards(input, [C1, C2], NOW);
+    expect(r.rendered).toBe(2);
+    expect(r.text).not.toContain("<<<CONTACTS>>>");
+    expect(r.text).toContain("👤 **Julieta Moreno**");
+    expect(r.text).toContain("👤 **Granja Tanti**");
+    // separadas por MSG_BREAK (cada una su burbuja)
+    expect(r.text.split(MSG_BREAK).filter((s) => s.includes("👤")).length).toBe(2);
+  });
+
+  it("marcador sin resultados → se remueve (sin token crudo), y sin marcador → no-op", () => {
+    const r1 = expandContactCards(`a${MSG_BREAK}<<<CONTACTS>>>${MSG_BREAK}b`, [], NOW);
+    expect(r1.text).not.toContain("<<<CONTACTS>>>");
+    expect(r1.rendered).toBe(0);
+    const r2 = expandContactCards("respuesta en prosa", [C1], NOW);
+    expect(r2.hadMarker).toBe(false);
+    expect(r2.text).toBe("respuesta en prosa");
+  });
+
+  it("marcadores repetidos: solo el primero expande, el resto se limpia", () => {
+    const r = expandContactCards(`<<<CONTACTS>>>${MSG_BREAK}<<<CONTACTS>>>`, [C1], NOW);
+    expect(r.rendered).toBe(1);
+    expect((r.text.match(/👤/g) ?? []).length).toBe(1);
+    expect(r.text).not.toContain("<<<CONTACTS>>>");
   });
 });
