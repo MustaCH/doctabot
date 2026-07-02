@@ -123,16 +123,14 @@ describe("contrato chat/card-render → ContactCard (multi, como el mensaje real
   });
 });
 
-describe("línea opcional [Ver perfil](/clients/{id}) — punto abierto del handoff, opción (a)", () => {
-  it("si el backend agrega la línea, el front extrae la ruta interna", () => {
-    const md = `${renderContactCard(contact({}), NOW)}\n[Ver perfil](/clients/3f2a1b00-1111-2222-3333-444455556666)`;
-    const segments = parseContactCardSegments(md);
-    expect(segments![0].type).toBe("contact");
-    expect(segments![0].contact!.profilePath).toBe("/clients/3f2a1b00-1111-2222-3333-444455556666");
+describe("línea [Ver perfil](/clients/{id}) — opción (a) del handoff, YA implementada server-side", () => {
+  it("el server la emite cuando el contacto tiene id y el front extrae la ruta interna", () => {
+    const card = parseContactCard(renderContactCard(contact({}), NOW));
+    expect(card!.profilePath).toBe("/clients/c1"); // contact({}) trae id "c1"
   });
 
-  it("sin la línea, profilePath queda undefined (el botón no se muestra)", () => {
-    const card = parseContactCard(renderContactCard(contact({}), NOW));
+  it("sin id (contacto tipeado en el turno, no persistido), no hay línea y profilePath queda undefined", () => {
+    const card = parseContactCard(renderContactCard(contact({ id: undefined }), NOW));
     expect(card!.profilePath).toBeUndefined();
   });
 });

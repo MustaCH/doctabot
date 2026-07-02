@@ -188,6 +188,9 @@ export function renderContactCard(c: ContactCardData, now: Date = new Date()): s
   if (busca.length) lines.push(`🔍 Busca: ${busca.join(" · ")}`);
   const rel = relativeDays(c.last_contact_at, now);
   lines.push(`🕓 Último contacto: ${rel ?? "nunca"}`);
+  // Link de perfil para el ContactCard del front (opción (a) del handoff): el front lo convierte
+  // en el botón "Ver perfil"; como markdown plano también funciona (link interno /clients/{id}).
+  if (c.id) lines.push(`[Ver perfil](/clients/${c.id})`);
   return lines.join("\n");
 }
 

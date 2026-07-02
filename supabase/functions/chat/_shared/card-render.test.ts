@@ -139,6 +139,12 @@ describe("tarjetas de contacto (renderContactCard / expandContactCards)", () => 
     expect(card).not.toContain("🏠"); // nunca el emoji de tarjeta de propiedad
   });
 
+  it("con id emite la línea [Ver perfil](/clients/{id}) para el ContactCard del front", () => {
+    const card = renderContactCard({ ...C1, id: "abc-123" }, NOW);
+    expect(card).toContain("[Ver perfil](/clients/abc-123)");
+    expect(renderContactCard(C1, NOW)).not.toContain("Ver perfil"); // sin id, sin línea
+  });
+
   it("contacto común (is_client=false): chip 'Contacto' sin estado, y 'nunca' contactado", () => {
     const card = renderContactCard(C2, NOW);
     expect(card).toContain("🏷️ Contacto");
