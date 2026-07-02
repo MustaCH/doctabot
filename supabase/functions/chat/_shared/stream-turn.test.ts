@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError, truncationSuffix, unbalancedDraftClose, stripLeakedToolCalls, stripLeakedInternals } from "./stream-turn";
+import { streamTurn, AIError, truncationSuffix, unbalancedDraftClose, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -123,7 +123,67 @@ describe("stripLeakedInternals (proceso interno filtrado al texto final)", () =>
   });
 });
 
+// Regresión del incidente 86ajbjq22: Gemini 2.5 filtró su razonamiento interno ("thought" + plan
+// en inglés) como contenido al chat (spike a 3.5% de los mensajes el día del incidente). El fix
+// re-promptea para una reescritura limpia y, como backstop, recupera la respuesta en español.
+describe("razonamiento filtrado (thought) — detección y backstop (86ajbjq22)", () => {
+  it("looksLikeLeakedReasoning detecta el prefijo 'thought' y markers de plan; ignora español normal", () => {
+    expect(looksLikeLeakedReasoning("thought\n1. **Identify the user's intent:** ...")).toBe(true);
+    expect(looksLikeLeakedReasoning("thought\nThe user wants to add more contacts.")).toBe(true);
+    expect(looksLikeLeakedReasoning("Acá va mi plan:\n**My Plan:**\n1. Saludar")).toBe(true);
+    expect(looksLikeLeakedReasoning("¡Hola! Encontré 3 propiedades en Centro.")).toBe(false);
+    expect(looksLikeLeakedReasoning("Listo, ya guardé la propiedad en el perfil.")).toBe(false);
+  });
+
+  it("stripLeakedReasoningTail recupera la respuesta en español y descarta el bloque de razonamiento", () => {
+    const leaked =
+      "thought\nThe user wants to add more contacts. I have received a list of 14 contacts.\n\n" +
+      "I will call the create_client tool for each contact, is_client=false.\n\n" +
+      "¡Listo, Carla! Ya agendé los 14 contactos nuevos.\n\nYa están todos en tu agenda. ¿Necesitás algo más?";
+    const out = stripLeakedReasoningTail(leaked);
+    expect(out).not.toMatch(/thought/i);
+    expect(out).not.toMatch(/I will call|create_client|is_client/);
+    expect(out).toContain("¡Listo, Carla!");
+    expect(out).toContain("Ya están todos en tu agenda");
+  });
+
+  it("stripLeakedReasoningTail deja intacto un mensaje legítimo (no-op)", () => {
+    const ok = "¡Hola! Encontré 3 propiedades.\n\n¿Querés que te las muestre?";
+    expect(stripLeakedReasoningTail(ok)).toBe(ok);
+  });
+});
+
 describe("streamTurn", () => {
+  it("re-promptea cuando el modelo filtra su razonamiento (thought) y usa la reescritura limpia", async () => {
+    const leaked = "thought\n1. **Identify intent:** The user wants X. I will call search_properties.¡Hola! Acá está el resultado.";
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([contentChunk(leaked, "stop"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("¡Hola! Acá está el resultado.", "stop"), DONE]));
+    const messages: any[] = [{ role: "user", content: "buscá" }];
+    const emitted: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages, emit: (t) => emitted.push(t) },
+    );
+    expect(resilientAIFetch).toHaveBeenCalledTimes(2); // hubo re-prompt
+    expect(res.content).not.toMatch(/thought|I will call/);
+    expect(res.content).toBe("¡Hola! Acá está el resultado.");
+    expect(messages.some((m) => m.role === "user" && /filtró tu razonamiento/i.test(m.content))).toBe(true);
+  });
+
+  it("si el re-prompt tampoco limpia (cap agotado), el backstop recupera la respuesta sin el thought", async () => {
+    const leaked = "thought\nThe user wants to add contacts. I will call create_client.\n\n¡Listo! Agregué los contactos.\n\nYa están todos en tu agenda.";
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk(leaked, "stop"), DONE])); // siempre leakea
+    const messages: any[] = [{ role: "user", content: "agregá contactos" }];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages, emit: () => {} },
+    );
+    expect(res.content).not.toMatch(/^thought/);
+    expect(res.content).not.toMatch(/I will call|create_client/);
+    expect(res.content).toContain("Ya están todos en tu agenda");
+  });
+
   it("turno de texto puro: pipea cada token y devuelve el contenido completo", async () => {
     const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("Hola "), contentChunk("Alan", "stop"), DONE]));
     const executeTool = vi.fn();

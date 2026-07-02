@@ -105,8 +105,28 @@ export async function executeTool(
       const POOL_FACTOR = 4;
       const poolLimit = Math.min(limit * POOL_FACTOR, 200);
 
+      // Criterios MÚLTIPLES (separados por coma) y EXCLUSIONES (86ajbjq22): un cliente puede tener
+      // preferred_zones="Córdoba, Sierras" o property_type_interest="Casa, Departamento", y pedir
+      // "en todos lados MENOS Nueva Córdoba y Centro". orSafe deja solo letras/números/espacios/guión
+      // (sin comas/paréntesis/puntos) para que el string de .or() no se pueda inyectar. Solo se activa
+      // el camino multi cuando hay >1 valor: las búsquedas de un solo valor quedan idénticas.
+      const orSafe = (s: string): string => s.replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+      const parseList = (raw: unknown): string[] =>
+        typeof raw === "string" && raw.trim()
+          ? raw.split(",").map((v) => stripAccents(orSafe(v)) || "").filter(Boolean)
+          : [];
+      const zones = parseList(args.zone);
+      const propertyTypes = parseList(args.property_type);
+      const excludeZones = parseList(args.exclude_zones);
+      const excludeNeighborhoods = parseList(args.exclude_neighborhoods);
+
       const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean }) => {
-        if (zone && !opts?.skipZone) q = q.ilike("zone", `%${zone}%`);
+        if (!opts?.skipZone) {
+          if (zones.length > 1) q = q.or(zones.map((z) => `zone.ilike.%${z}%`).join(","));
+          else if (zone) q = q.ilike("zone", `%${zone}%`);
+        }
+        for (const z of excludeZones) q = q.not("zone", "ilike", `%${z}%`);
+        for (const n of excludeNeighborhoods) q = q.not("zone_neighborhood", "ilike", `%${n}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
         if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
@@ -120,7 +140,8 @@ export async function executeTool(
           if (canonicalOp) q = q.eq("operation", canonicalOp);
           else q = q.ilike("operation", `%${operation}%`);
         }
-        if (property_type) q = q.ilike("property_type", `%${property_type}%`);
+        if (propertyTypes.length > 1) q = q.or(propertyTypes.map((t) => `property_type.ilike.%${t}%`).join(","));
+        else if (property_type) q = q.ilike("property_type", `%${property_type}%`);
         if (min_price !== null) q = q.gte("price", min_price);
         if (max_price !== null && !opts?.skipMaxPrice) q = q.lte("price", max_price);
         if (currency) q = q.ilike("currency", `%${currency}%`);

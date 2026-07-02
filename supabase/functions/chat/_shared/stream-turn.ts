@@ -123,6 +123,49 @@ export function stripLeakedInternals(content: string, validToolNames: string[]):
   return out.replace(/[^\S\n]{2,}/g, " ").replace(/[^\S\n]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * Detecta si el modelo FILTRÓ su razonamiento/planificación interna como contenido (en vez de
+ * responder). Gemini 2.5 a veces emite su "thought" (plan en inglés, listas de pasos, "My Plan",
+ * "Mental Sandbox", "I will call…") pegado a la respuesta real. Señal principal: el mensaje ARRANCA
+ * con "thought" (100% de los casos observados en prod, 86ajbjq22). Puro y testeable.
+ */
+export function looksLikeLeakedReasoning(content: string): boolean {
+  if (!content) return false;
+  const head = content.slice(0, 4000);
+  if (/^﻿?\s*thought\s*[\n:]/i.test(head)) return true; // arranca con el bloque "thought"
+  // Markers inequívocos de planificación interna en inglés (por si no viene el prefijo "thought").
+  if (/\*\*\s*(My Plan|Mental Sandbox|Constraint Checklist|Confidence Score)\b/i.test(head)) return true;
+  return false;
+}
+
+// Un párrafo "parece razonamiento interno" (inglés / markdown de planificación).
+function paraLooksLikeReasoning(p: string): boolean {
+  return (
+    /^\s*thought\b/i.test(p) ||
+    /\*\*\s*(My Plan|Mental Sandbox|Constraint Checklist|Confidence Score|Step \d)/i.test(p) ||
+    /\b(I['’]?ll|I will|I need to|I have (received|successfully|now)|the user (wants|has|is|made|explicitly)|tool call|create_client|search_properties|list_clients|is_client)\b/.test(p) ||
+    /^\s*\d+\.\s+\*\*[^\n]*\*\*\s*:/.test(p) // items numerados de un plan: "1. **Nombre**: …"
+  );
+}
+
+/**
+ * Backstop cuando el re-prompt no logró una respuesta limpia: recupera la RESPUESTA en español
+ * (sufijo) descartando el bloque de razonamiento (prefijo en inglés). Toma, desde el final, los
+ * párrafos que NO parecen razonamiento y corta al toparse con el bloque de planificación. Si no logra
+ * separar nada, devuelve un aviso neutro — NUNCA el "thought" crudo. Puro y testeable.
+ */
+export function stripLeakedReasoningTail(content: string): string {
+  if (!looksLikeLeakedReasoning(content)) return content;
+  const paras = content.split(/\n{2,}/);
+  const tail: string[] = [];
+  for (let i = paras.length - 1; i >= 0; i--) {
+    if (paraLooksLikeReasoning(paras[i])) break;
+    tail.unshift(paras[i]);
+  }
+  const answer = tail.join("\n\n").trim();
+  return answer || "Perdón, tuve un problema al redactar la respuesta. ¿Me lo repetís?";
+}
+
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
   const { resilientAIFetch, executeTool, toolCtx, toolDefinitions } = deps;
   const { messages, emit } = opts;
@@ -217,7 +260,8 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     if (finishReason === "length") {
       // Ronda final truncada por límite de tokens: volcamos el contenido bufferizado + cierre de
       // marcadores abiertos + aviso, en vez de persistir/mostrar un borrador o tarjeta a medias.
-      const flush = await finalize(assistantContent + truncationSuffix(assistantContent));
+      const safe = stripLeakedReasoningTail(assistantContent);
+      const flush = await finalize(safe + truncationSuffix(safe));
       fullContent += flush;
       safeEmit(flush);
       emittedFinal = true;
@@ -260,13 +304,30 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
+    // Recuperación de RAZONAMIENTO fugado (86ajbjq22): si el modelo filtró su "thought"/plan como
+    // texto (100% de los casos arrancan con "thought"), re-prompteamos UNA vez para que reescriba
+    // SOLO el mensaje final. Es más robusto que recortar el prefijo a mano: la respuesta real viene
+    // pegada al plan sin delimitador y el plan a veces cita español. Comparte el cap de re-prompts.
+    if (leakedNames.length === 0 && looksLikeLeakedReasoning(assistantContent) && repromptCount < MAX_REPROMPTS) {
+      repromptCount++;
+      messages.push({ role: "assistant", content: assistantContent || null });
+      messages.push({
+        role: "user",
+        content: `[sistema] Tu último mensaje filtró tu razonamiento interno (empezó con "thought" o incluyó tu plan paso a paso, en inglés). Reescribí SOLO el mensaje final para el agente, en español rioplatense, sin ningún razonamiento, plan, listas de pasos, la palabra "thought" ni texto en inglés. Contá únicamente el resultado.`,
+      });
+      lastPreamble = assistantContent;
+      continue;
+    }
+
     // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Si quedó un leak
     // que no pudimos recuperar (cap agotado), va el texto ya strippeado. Validación mínima de
     // formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar, agregamos el cierre faltante.
     const finalText0 = leakedNames.length > 0 ? cleaned : assistantContent;
     // Barrido cosmético del proceso interno filtrado (header "🧠 …", sintaxis de invocación, etc.)
     // que stripLeakedToolCalls no recupera y que igual se mostraría. Ver stripLeakedInternals.
-    const finalText = stripLeakedInternals(finalText0, validToolNames);
+    // Luego, backstop: si el re-prompt no alcanzó (cap agotado) y sigue habiendo un "thought"
+    // filtrado, recuperamos la respuesta en español descartando el bloque de razonamiento.
+    const finalText = stripLeakedReasoningTail(stripLeakedInternals(finalText0, validToolNames));
     const flush = await finalize(finalText + unbalancedDraftClose(finalText));
     fullContent += flush;
     safeEmit(flush);
@@ -277,7 +338,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   // El turno agotó las iteraciones sin una ronda de texto final (todas terminaron en tool_calls).
   // Para no dejar la pantalla muda, volcamos el último preámbulo que habíamos suprimido.
   if (!emittedFinal && lastPreamble) {
-    const safe = await finalize(lastPreamble);
+    const safe = await finalize(stripLeakedReasoningTail(lastPreamble));
     fullContent += safe;
     safeEmit(safe);
   }
