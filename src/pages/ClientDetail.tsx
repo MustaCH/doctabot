@@ -1,21 +1,23 @@
-import { useEffect, useState, useCallback } from "react";
+// Ficha de cliente/contacto — rediseño 2026-07 (Claude Design bf1ecc53, implementación fiel):
+// UNA sola página con scroll natural de documento (sin scrolls internos anidados), header sticky
+// colapsable, widget "Último contacto" de un tap (escribe last_contact_at, el mismo campo que usa
+// la rotación de campañas de Alan), propiedades protagonistas con "Ver todas", notas integradas.
+// La pestaña Actividad fue eliminada a pedido. La capa de datos es la misma que la versión anterior.
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Cake, DollarSign,
-  Home, ExternalLink, Trash2, FileText, CalendarDays, Plus,
-  Clock, CheckCircle2, Circle, Send, Share2, StickyNote, ChevronDown,
-  Pencil, MoreVertical,
+  Home, ExternalLink, Trash2, FileText, CalendarDays,
+  CheckCircle2, Circle, Send, StickyNote, ChevronDown,
+  Pencil, MoreVertical, Sparkles,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -62,23 +64,6 @@ interface ClientProperty {
   } | null;
 }
 
-interface ClientEvent {
-  id: string;
-  event_type: string;
-  title: string;
-  event_date: string;
-  recurrence: string;
-  notes: string | null;
-}
-
-interface ActivityLog {
-  id: string;
-  action_type: string;
-  description: string;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-}
-
 interface ClientNote {
   id: string;
   content: string;
@@ -101,16 +86,42 @@ const clientTypeLabel: Record<string, string> = {
 const propStatusLabel: Record<string, string> = {
   sugerida: "Sugerida", enviada: "Enviada", visitada: "Visitada", descartada: "Descartada",
 };
-const propStatusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  sugerida: "secondary", enviada: "default", visitada: "outline", descartada: "destructive",
+// Chips de estado de propiedad, según el rediseño (gris / primario / celeste / rojo).
+const propStatusChip: Record<string, string> = {
+  sugerida: "bg-muted text-muted-foreground",
+  enviada: "bg-primary/10 text-primary",
+  visitada: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+  descartada: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
-const actionIcons: Record<string, React.ReactNode> = {
-  property_linked: <Home className="h-3.5 w-3.5 text-primary" />,
-  status_changed: <CheckCircle2 className="h-3.5 w-3.5 text-accent-foreground" />,
-  note_added: <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />,
-  event_created: <CalendarDays className="h-3.5 w-3.5 text-primary" />,
-  call_logged: <Phone className="h-3.5 w-3.5 text-primary" />,
-};
+
+// Semáforo del widget Último contacto (verde <7 días, ámbar <30, rojo 30+ / nunca).
+const contactTiers = {
+  green: {
+    panel: "bg-green-100 border-green-200 dark:bg-green-900/25 dark:border-green-800",
+    text: "text-green-800 dark:text-green-300",
+    dot: "bg-green-500",
+  },
+  amber: {
+    panel: "bg-amber-100 border-amber-200 dark:bg-amber-900/25 dark:border-amber-800",
+    text: "text-amber-800 dark:text-amber-300",
+    dot: "bg-amber-500",
+  },
+  red: {
+    panel: "bg-red-100 border-red-200 dark:bg-red-900/25 dark:border-red-800",
+    text: "text-red-800 dark:text-red-300",
+    dot: "bg-red-500",
+  },
+} as const;
+
+const CONTACT_CHIPS: Array<{ label: string; daysAgo: number }> = [
+  { label: "Hoy", daysAgo: 0 },
+  { label: "Esta semana", daysAgo: 3 },
+  { label: "Este mes", daysAgo: 20 },
+  { label: "Hace 2 meses", daysAgo: 60 },
+  { label: "Hace 3+ meses", daysAgo: 100 },
+];
+
+const PROPS_PREVIEW_COUNT = 3;
 
 const WhatsAppIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -126,8 +137,6 @@ const ClientDetail = () => {
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [properties, setProperties] = useState<ClientProperty[]>([]);
-  const [events, setEvents] = useState<ClientEvent[]>([]);
-  const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [notes, setNotes] = useState<ClientNote[]>([]);
   const [newNote, setNewNote] = useState("");
   const [isAction, setIsAction] = useState(false);
@@ -137,8 +146,16 @@ const ClientDetail = () => {
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showAllProps, setShowAllProps] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  
+  // Header colapsable: el documento entero scrollea (sin contenedores internos), así que
+  // escuchamos el scroll de la ventana.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 96);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const loadClient = useCallback(async () => {
     if (!id || !user) return;
@@ -169,29 +186,6 @@ const ClientDetail = () => {
     setProperties((data as unknown as ClientProperty[]) ?? []);
   }, [id, user]);
 
-  const loadEvents = useCallback(async () => {
-    if (!id || !user) return;
-    const { data } = await supabase
-      .from("client_events")
-      .select("id, event_type, title, event_date, recurrence, notes")
-      .eq("client_id", id)
-      .eq("user_id", user.id)
-      .order("event_date", { ascending: true });
-    setEvents((data as ClientEvent[]) ?? []);
-  }, [id, user]);
-
-  const loadActivity = useCallback(async () => {
-    if (!id || !user) return;
-    const { data } = await supabase
-      .from("client_activity_log")
-      .select("id, action_type, description, metadata, created_at")
-      .eq("client_id", id)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    setActivity((data as ActivityLog[]) ?? []);
-  }, [id, user]);
-
   const loadNotes = useCallback(async () => {
     if (!id || !user) return;
     const { data } = await supabase
@@ -206,11 +200,49 @@ const ClientDetail = () => {
   useEffect(() => {
     loadClient();
     loadProperties();
-    loadEvents();
-    loadActivity();
     loadNotes();
-  }, [loadClient, loadProperties, loadEvents, loadActivity, loadNotes]);
+  }, [loadClient, loadProperties, loadNotes]);
 
+  // ----- Último contacto -----
+  const lastContact = useMemo(() => {
+    if (!client) return null;
+    if (!client.last_contact_at) {
+      return { tier: "red" as const, human: "Nunca contactado", sub: "Registrá el primer contacto" };
+    }
+    const days = Math.max(0, Math.floor((Date.now() - new Date(client.last_contact_at).getTime()) / 86400000));
+    if (days <= 0) return { tier: "green" as const, human: "Contactado hoy", sub: "Al día — buen trabajo" };
+    const human = days < 45 ? `Contactado hace ${days} ${days === 1 ? "día" : "días"}` : `Contactado hace ${Math.round(days / 30)} meses`;
+    if (days < 7) return { tier: "green" as const, human, sub: "Contacto reciente" };
+    if (days < 30) return { tier: "amber" as const, human, sub: "Conviene retomar pronto" };
+    return { tier: "red" as const, human, sub: "Contacto atrasado — priorizar" };
+  }, [client]);
+
+  const handleMarkContacted = async (date: Date, label: string) => {
+    if (!client || !user) return;
+    const iso = date.toISOString();
+    const prev = client.last_contact_at;
+    setClient({ ...client, last_contact_at: iso }); // optimista
+    const { error } = await supabase
+      .from("clients")
+      .update({ last_contact_at: iso })
+      .eq("id", client.id)
+      .eq("user_id", user.id);
+    if (error) {
+      setClient({ ...client, last_contact_at: prev });
+      toast.error("No se pudo registrar el contacto");
+      return;
+    }
+    toast.success(`✓ Contacto registrado — ${label}`);
+    // Registro en el historial (misma tabla que usaban las notas; barato y auditable).
+    supabase.from("client_activity_log").insert({
+      client_id: client.id,
+      user_id: user.id,
+      action_type: "call_logged",
+      description: `Contacto registrado (${label})`,
+    });
+  };
+
+  // ----- Notas -----
   const handleAddNote = async () => {
     if (!id || !user || !newNote.trim()) return;
     setSavingNote(true);
@@ -223,17 +255,16 @@ const ClientDetail = () => {
     if (error) {
       toast.error("Error al guardar nota");
     } else {
+      const summary = newNote.trim().slice(0, 60);
       setNewNote("");
       setIsAction(false);
       loadNotes();
-      // Log activity
       await supabase.from("client_activity_log").insert({
         client_id: id,
         user_id: user.id,
         action_type: "note_added",
-        description: `Nota agregada: ${newNote.trim().slice(0, 60)}`,
+        description: `Nota agregada: ${summary}`,
       });
-      loadActivity();
     }
     setSavingNote(false);
   };
@@ -248,6 +279,7 @@ const ClientDetail = () => {
     loadNotes();
   };
 
+  // ----- Propiedades -----
   const handleUnlinkProperty = async (cpId: string) => {
     const { error } = await supabase.from("client_properties").delete().eq("id", cpId);
     if (error) {
@@ -258,10 +290,9 @@ const ClientDetail = () => {
     }
   };
 
-  const handleWhatsApp = (prop: ClientProperty) => {
-    if (!client?.phone || !prop.properties?.url) return;
-    const phone = client.phone.replace(/\D/g, "");
-    let url = prop.properties.url;
+  const withAssociate = (rawUrl: string | null): string | null => {
+    if (!rawUrl) return null;
+    let url = rawUrl;
     if (agentCode) {
       try {
         const u = new URL(url);
@@ -272,6 +303,13 @@ const ClientDetail = () => {
         url = `${url}${sep}associate=${encodeURIComponent(agentCode)}`;
       }
     }
+    return url;
+  };
+
+  const handleWhatsApp = (prop: ClientProperty) => {
+    if (!client?.phone || !prop.properties?.url) return;
+    const phone = client.phone.replace(/\D/g, "");
+    const url = withAssociate(prop.properties.url);
     const lines = [
       prop.properties.title && `🏠 *${prop.properties.title}*`,
       prop.properties.price && `💰 ${prop.properties.currency ?? "USD"} ${prop.properties.price.toLocaleString("es-AR")}`,
@@ -281,6 +319,7 @@ const ClientDetail = () => {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
   };
 
+  // ----- Edición / borrado (sin cambios de lógica) -----
   const clientToForm = (c: Client): ClientFormData => ({
     full_name: c.full_name,
     phone: c.phone ?? "",
@@ -349,7 +388,6 @@ const ClientDetail = () => {
     if (!client || !user) return;
     setDeleting(true);
     try {
-      // Clean up all related records first to avoid orphans and stale match suggestions
       const cleanupResults = await Promise.all([
         supabase.from("client_properties").delete().eq("client_id", client.id).eq("user_id", user.id),
         supabase.from("client_notes").delete().eq("client_id", client.id).eq("user_id", user.id),
@@ -358,8 +396,6 @@ const ClientDetail = () => {
         supabase.from("client_tags").delete().match({ client_id: client.id }),
         supabase.from("conversations").delete().eq("client_id", client.id).eq("user_id", user.id),
       ]);
-
-      // Log any cleanup errors but continue with deletion
       cleanupResults.forEach((r, i) => {
         if (r.error) console.warn(`Cleanup step ${i} error:`, r.error);
       });
@@ -367,7 +403,6 @@ const ClientDetail = () => {
       const { error } = await supabase.from("clients").delete().eq("id", client.id).eq("user_id", user.id);
       if (error) throw error;
 
-      // Verify deletion
       const { data: check } = await supabase.from("clients").select("id").eq("id", client.id).maybeSingle();
       if (check) {
         console.error("Client still exists after delete!", check);
@@ -384,7 +419,6 @@ const ClientDetail = () => {
       setDeleting(false);
     }
   };
-
 
   const formatDate = (d: string) => {
     try {
@@ -404,20 +438,23 @@ const ClientDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex h-[100dvh] flex-col bg-background">
+      <div className="min-h-[100dvh] bg-background">
         <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
           <Skeleton className="h-8 w-8 rounded" />
           <Skeleton className="h-5 w-40" />
         </div>
-        <div className="flex-1 p-4 space-y-4">
-          <Skeleton className="h-24 w-full rounded-xl" />
-          <Skeleton className="h-32 w-full rounded-xl" />
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
         </div>
       </div>
     );
   }
 
   if (!client) return null;
+
+  const initials = client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   const budget = (() => {
     const { budget_min: min, budget_max: max, budget_currency: cur } = client;
@@ -429,20 +466,33 @@ const ClientDetail = () => {
   })();
 
   const pendingActions = notes.filter(n => n.is_action && !n.is_done);
+  const tier = lastContact ? contactTiers[lastContact.tier] : contactTiers.red;
+  const visibleProps = showAllProps ? properties : properties.slice(0, PROPS_PREVIEW_COUNT);
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-card px-4 py-3 safe-top">
-        <div className="flex items-center justify-between">
-          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => navigate("/clients")}>
-            <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-[100dvh] bg-background">
+      {/* ===== Header sticky colapsable ===== */}
+      <div className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur-md safe-top">
+        <div className="flex min-h-12 items-center justify-between gap-2 px-3">
+          <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0" onClick={() => navigate("/clients")}>
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <span className="text-xs text-muted-foreground">Contacto</span>
+          <div className="flex min-w-0 flex-1 items-center justify-center">
+            {scrolled ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                  {initials}
+                </div>
+                <span className="truncate text-sm font-bold">{client.full_name}</span>
+              </div>
+            ) : (
+              <span className="text-xs font-medium text-muted-foreground">Contacto</span>
+            )}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
-                <MoreVertical className="h-4 w-4" />
+              <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0">
+                <MoreVertical className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -455,29 +505,34 @@ const ClientDetail = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
-        <div className="mt-3 flex flex-col items-center gap-2">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-            {client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
-          </div>
-          <p className="text-base font-bold text-center break-words max-w-full">{client.full_name}</p>
-          {client.is_client && (
-            <div className="flex items-center justify-center gap-1.5 flex-wrap">
-              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
-                {statusLabel[client.status] ?? client.status}
-              </span>
-              <span className="inline-flex items-center rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] font-medium h-5 text-muted-foreground">
-                {clientTypeLabel[client.client_type] ?? client.client_type}
-              </span>
+        {!scrolled && (
+          <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-1">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-extrabold text-primary-foreground">
+              {initials}
             </div>
-          )}
-        </div>
+            <p className="max-w-full break-words text-center text-lg font-extrabold tracking-tight">{client.full_name}</p>
+            {client.is_client && (
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <span className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-bold ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
+                  {statusLabel[client.status] ?? client.status}
+                </span>
+                <span className="inline-flex h-6 items-center rounded-full border bg-muted/40 px-2.5 text-[11px] font-bold text-muted-foreground">
+                  {clientTypeLabel[client.client_type] ?? client.client_type}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
+      {/* ===== Cuerpo: flujo vertical único ===== */}
+      <div className="flex flex-col gap-4 px-4 py-4 pb-10 safe-bottom">
 
-        <div className="mt-3 flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+        {/* Es cliente */}
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3">
           <div>
-            <p className="text-xs font-semibold">Es cliente</p>
-            <p className="text-[10px] text-muted-foreground">Activá para datos comerciales y matching</p>
+            <p className="text-sm font-bold">Es cliente</p>
+            <p className="text-[11px] text-muted-foreground">Activá para datos comerciales y matching</p>
           </div>
           <Switch
             checked={!!client.is_client}
@@ -488,355 +543,334 @@ const ClientDetail = () => {
           />
         </div>
 
-      </div>
+        {/* Acciones rápidas */}
+        <div className="grid grid-cols-3 gap-2">
+          <a href={client.phone ? `tel:${client.phone}` : undefined} className={client.phone ? "" : "pointer-events-none opacity-40"}>
+            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+              <Phone className="h-4 w-4" /> Llamar
+            </Button>
+          </a>
+          <a
+            href={client.phone ? `https://wa.me/${client.phone.replace(/\D/g, "")}` : undefined}
+            target="_blank" rel="noopener noreferrer"
+            className={client.phone ? "" : "pointer-events-none opacity-40"}
+          >
+            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+              <WhatsAppIcon className="h-4 w-4 text-[#25D366]" /> WhatsApp
+            </Button>
+          </a>
+          <a href={client.email ? `mailto:${client.email}` : undefined} className={client.email ? "" : "pointer-events-none opacity-40"}>
+            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+              <Mail className="h-4 w-4" /> Email
+            </Button>
+          </a>
+        </div>
 
-      {/* Quick action bar */}
-      <div className="flex items-center gap-2 border-b border-border bg-card/50 px-4 py-2">
-        {client.phone && (
-          <a href={`tel:${client.phone}`} className="flex-1">
-            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
-              <Phone className="h-3 w-3" /> Llamar
-            </Button>
-          </a>
-        )}
-        {client.phone && (
-          <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="flex-1">
-            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
-              <WhatsAppIcon className="h-3.5 w-3.5 text-[#25D366]" /> WhatsApp
-            </Button>
-          </a>
-        )}
-        {client.email && (
-          <a href={`mailto:${client.email}`} className="flex-1">
-            <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-8">
-              <Mail className="h-3 w-3" /> Email
-            </Button>
-          </a>
-        )}
-      </div>
+        {/* ===== Widget Último contacto ===== */}
+        <div className={`overflow-hidden rounded-2xl border shadow-sm ${tier.panel}`}>
+          <div className="px-4 pb-3.5 pt-4">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${tier.dot} ring-4 ring-white/50 dark:ring-black/20`} />
+              <span className={`text-[11px] font-extrabold uppercase tracking-widest ${tier.text}`}>Último contacto</span>
+            </div>
+            <p className={`mb-0.5 mt-2 text-[22px] font-extrabold tracking-tight ${tier.text}`}>{lastContact?.human}</p>
+            <p className={`text-xs font-semibold opacity-80 ${tier.text}`}>{lastContact?.sub}</p>
+            <div className={`mt-2 flex items-center gap-1.5 text-[11px] opacity-70 ${tier.text}`}>
+              <Sparkles className="h-3 w-3" /> Alimenta la rotación de campañas del asistente IA
+            </div>
+          </div>
+          <div className="border-t border-inherit bg-card px-3.5 pb-3.5 pt-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Registrar contacto</p>
+            <div className="flex flex-wrap gap-2">
+              {CONTACT_CHIPS.map((chip) => (
+                <button
+                  key={chip.label}
+                  onClick={() => handleMarkContacted(new Date(Date.now() - chip.daysAgo * 86400000), chip.label.toLowerCase())}
+                  className="min-h-11 rounded-full border border-border bg-card px-4 text-[13px] font-bold text-foreground transition-colors hover:border-primary hover:text-primary active:scale-95"
+                >
+                  {chip.label}
+                </button>
+              ))}
+              <label className="relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-4 text-[13px] font-bold text-foreground transition-colors hover:border-primary hover:text-primary">
+                <CalendarDays className="h-4 w-4" /> Fecha exacta…
+                <input
+                  type="date"
+                  className="pointer-events-none absolute h-px w-px opacity-0"
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    handleMarkContacted(new Date(`${v}T12:00:00`), formatDate(v));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
 
-      {/* Client info — collapsible details */}
-      <details open className="border-b border-border bg-card/30 group">
-        <summary className="px-4 py-2.5 text-xs font-medium text-muted-foreground cursor-pointer select-none flex items-center gap-1.5 hover:text-foreground transition-colors">
-          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
-          Información del cliente
-          {pendingActions.length > 0 && (
-            <Badge variant="destructive" className="text-[9px] h-4 px-1 ml-auto">
-              {pendingActions.length} tarea{pendingActions.length > 1 ? "s" : ""}
-            </Badge>
-          )}
-        </summary>
-        <div className="px-4 pb-3 space-y-2.5">
-          {/* Contact details grid */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        {/* Información (plegable, scroll de página) */}
+        <details open className="group rounded-2xl border border-border bg-card px-4 py-3.5">
+          <summary className="flex cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+            <span className="text-sm font-bold">
+              Información
+              {pendingActions.length > 0 && (
+                <span className="ml-2 inline-flex h-4 items-center rounded-full bg-destructive px-1.5 text-[9px] font-bold text-destructive-foreground">
+                  {pendingActions.length} tarea{pendingActions.length > 1 ? "s" : ""}
+                </span>
+              )}
+            </span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="mt-3 space-y-2.5">
             {client.phone && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Phone className="h-3 w-3 shrink-0 text-primary/60" />
-                <span className="truncate">{client.phone}</span>
+              <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {client.phone}
               </div>
             )}
             {client.email && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground col-span-2">
-                <Mail className="h-3 w-3 shrink-0 text-primary/60" />
-                <span className="truncate">{client.email}</span>
+              <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> <span className="truncate">{client.email}</span>
               </div>
             )}
             {client.company && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Building2 className="h-3 w-3 shrink-0 text-primary/60" />
-                <span className="truncate">{client.company}</span>
+              <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {client.company}
               </div>
             )}
             {client.birthday && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Cake className="h-3 w-3 shrink-0 text-primary/60" />
-                <span>{formatDate(client.birthday)}</span>
+              <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                <Cake className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {formatDate(client.birthday)}
               </div>
             )}
             {client.address && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground col-span-2">
-                <MapPin className="h-3 w-3 shrink-0 text-primary/60" />
-                <span className="truncate">{client.address}</span>
+              <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> <span className="truncate">{client.address}</span>
               </div>
             )}
-          </div>
-
-          {/* Search preferences */}
-          {client.is_client && (client.preferred_zones || budget || client.property_type_interest) && (
-            <div className="rounded-lg bg-muted/50 p-2.5 space-y-1.5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Búsqueda</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                {client.preferred_zones && (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    <MapPin className="h-3 w-3 text-primary/60" /> {client.preferred_zones}
-                  </span>
-                )}
-                {budget && (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    <DollarSign className="h-3 w-3 text-primary/60" /> {budget}
-                  </span>
-                )}
-                {client.property_type_interest && (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    <Home className="h-3 w-3 text-primary/60" /> {client.property_type_interest}
-                  </span>
-                )}
-              </div>
+            {client.notes && (
+              <p className="text-xs italic text-muted-foreground">
+                <FileText className="mr-1 inline h-3 w-3" />{client.notes}
+              </p>
+            )}
+            <div className="pt-1">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Etiquetas</p>
+              <ContactTags clientId={client.id} />
             </div>
-          )}
-
-          {/* Notes */}
-          {client.notes && (
-            <p className="text-xs text-muted-foreground italic">
-              <FileText className="inline h-3 w-3 mr-1 text-primary/60" />{client.notes}
-            </p>
-          )}
-
-          {/* Tags */}
-          <div className="pt-1">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Etiquetas</p>
-            <ContactTags clientId={client.id} />
           </div>
-        </div>
-      </details>
+        </details>
 
-      {/* Tabs */}
-      <Tabs defaultValue={client.is_client ? "properties" : "notes"} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <div className="border-b border-border bg-card px-4">
-          <TabsList className="w-full bg-transparent h-10">
-            {client.is_client && (
-              <TabsTrigger value="properties" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
-                <Home className="h-3.5 w-3.5" />
-                Propiedades
-                {properties.length > 0 && (
-                  <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
-                    {properties.length}
-                  </span>
-                )}
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="notes" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
-              <StickyNote className="h-3.5 w-3.5" />
-              Notas
-              {notes.length > 0 && (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted-foreground/20 px-1 text-[9px] font-bold">
-                  {notes.length}
+        {/* Búsqueda (plegable) */}
+        {client.is_client && (client.preferred_zones || budget || client.property_type_interest) && (
+          <details open className="group rounded-2xl border border-border bg-card px-4 py-3.5">
+            <summary className="flex cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+              <span className="text-sm font-bold">Búsqueda</span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-3 space-y-2.5">
+              {client.preferred_zones && (
+                <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {client.preferred_zones}
+                </div>
+              )}
+              {budget && (
+                <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                  <DollarSign className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {budget}
+                </div>
+              )}
+              {client.property_type_interest && (
+                <div className="flex items-center gap-2.5 text-sm text-foreground/80">
+                  <Home className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> {client.property_type_interest}
+                </div>
+              )}
+              {client.source && (
+                <span className="inline-flex rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                  {client.source}
                 </span>
               )}
-            </TabsTrigger>
-            <TabsTrigger value="timeline" className="flex-1 gap-1.5 text-xs data-[state=active]:bg-muted">
-              <Clock className="h-3.5 w-3.5" />
-              Actividad
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        {/* Properties Tab */}
-        {client.is_client && <TabsContent value="properties" className="m-0 p-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
-          {properties.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <Home className="h-12 w-12 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Sin propiedades vinculadas</p>
-              <p className="text-xs text-muted-foreground/70 max-w-xs">
-                Vinculá propiedades desde el explorador o pedile a Alan en el chat.
-              </p>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {properties.map((cp) => {
-                const p = cp.properties;
-                if (!p) return null;
-                const propUrl = (() => {
-                  if (!p.url) return null;
-                  let url = p.url;
-                  if (agentCode) {
-                    try {
-                      const u = new URL(url);
-                      u.searchParams.set("associate", agentCode);
-                      url = u.toString();
-                    } catch { /* keep original */ }
-                  }
-                  return url;
-                })();
-                return (
-                  <div key={cp.id} className="flex gap-2.5 rounded-lg border border-border bg-card p-2.5 group">
-                    {p.photo && (
-                      <img src={p.photo} alt="" className="h-16 w-16 rounded-md object-cover shrink-0 bg-muted" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    )}
-                    <div className="flex-1 min-w-0 space-y-0.5">
-                      <div className="flex items-start justify-between gap-1.5">
-                        <p className="text-xs font-semibold leading-tight truncate">{p.title ?? "Sin título"}</p>
-                        <Badge variant={propStatusVariant[cp.status] ?? "secondary"} className="text-[9px] h-4 px-1.5 shrink-0">
-                          {propStatusLabel[cp.status] ?? cp.status}
-                        </Badge>
-                      </div>
-                      {p.address && <p className="text-[11px] text-muted-foreground truncate">📍 {p.address}</p>}
-                      {p.price && (
-                        <p className="text-[11px] font-medium text-primary">
-                          💰 {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
-                        </p>
+          </details>
+        )}
+
+        {/* ===== Propiedades (sección protagonista) ===== */}
+        {client.is_client && (
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-2 px-0.5">
+              <h2 className="text-base font-extrabold tracking-tight">Propiedades</h2>
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-primary-foreground">
+                {properties.length}
+              </span>
+            </div>
+
+            {properties.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-8 text-center">
+                <Home className="mx-auto mb-2 h-10 w-10 text-muted-foreground/30" />
+                <p className="text-sm font-semibold text-muted-foreground">Sin propiedades vinculadas todavía</p>
+                <p className="mt-1 text-xs text-muted-foreground/70">Vinculá desde el explorador o pedile a Alan en el chat.</p>
+              </div>
+            ) : (
+              <>
+                {visibleProps.map((cp) => {
+                  const p = cp.properties;
+                  if (!p) return null;
+                  const propUrl = withAssociate(p.url);
+                  return (
+                    <div key={cp.id} className="flex gap-3 rounded-2xl border border-border bg-card p-3">
+                      {p.photo ? (
+                        <img
+                          src={p.photo}
+                          alt=""
+                          className="h-[88px] w-[88px] shrink-0 rounded-xl bg-muted object-cover"
+                          loading="lazy"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground/40">
+                          <Home className="h-6 w-6" />
+                        </div>
                       )}
-                      {cp.notes && <p className="text-[10px] text-muted-foreground italic truncate">💬 {cp.notes}</p>}
-                      <div className="flex items-center gap-1 pt-0.5">
-                        {propUrl && (
-                          <a href={propUrl} target="_blank" rel="noopener noreferrer">
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-primary">
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
-                          </a>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-2 text-[13px] font-bold leading-snug">{p.title ?? "Sin título"}</p>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${propStatusChip[cp.status] ?? "bg-muted text-muted-foreground"}`}>
+                            {propStatusLabel[cp.status] ?? cp.status}
+                          </span>
+                        </div>
+                        {p.address && (
+                          <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{p.address}</span>
+                          </p>
                         )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-muted-foreground hover:text-primary"
-                          onClick={() => handleWhatsApp(cp)}
-                          disabled={!client.phone}
-                          title={client.phone ? "Enviar por WhatsApp" : "Sin teléfono"}
-                        >
-                          <WhatsAppIcon className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleUnlinkProperty(cp.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {p.price != null && (
+                          <p className="text-sm font-extrabold text-primary">
+                            {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
+                          </p>
+                        )}
+                        {cp.notes && <p className="truncate text-[10px] italic text-muted-foreground">💬 {cp.notes}</p>}
+                        <div className="mt-auto flex gap-1.5 pt-1.5">
+                          {propUrl && (
+                            <a href={propUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+                              <Button variant="outline" className="h-9 w-full gap-1 rounded-lg text-xs font-bold">
+                                <ExternalLink className="h-3.5 w-3.5" /> Abrir
+                              </Button>
+                            </a>
+                          )}
+                          <Button
+                            variant="outline" size="icon"
+                            className="h-9 w-11 rounded-lg"
+                            onClick={() => handleWhatsApp(cp)}
+                            disabled={!client.phone || !p.url}
+                            title={client.phone ? "Enviar por WhatsApp" : "Sin teléfono"}
+                          >
+                            <WhatsAppIcon className="h-4 w-4 text-[#25D366]" />
+                          </Button>
+                          <Button
+                            variant="outline" size="icon"
+                            className="h-9 w-11 rounded-lg text-destructive hover:text-destructive"
+                            onClick={() => handleUnlinkProperty(cp.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>}
-
-        {/* Notes Tab */}
-        <TabsContent value="notes" className="m-0 flex flex-col overflow-hidden" style={{ flex: 1, minHeight: 0 }}>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 safe-bottom">
-            {notes.length === 0 && (
-              <div className="flex flex-col items-center gap-3 py-16 text-center">
-                <StickyNote className="h-12 w-12 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">Sin notas</p>
-              </div>
-            )}
-            {notes.map((note) => (
-              <div
-                key={note.id}
-                className={`rounded-lg border p-3 space-y-1 ${
-                  note.is_action && !note.is_done
-                    ? "border-primary/30 bg-primary/5"
-                    : note.is_done
-                    ? "border-border bg-muted/50 opacity-60"
-                    : "border-border bg-card"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2 min-w-0">
-                    {note.is_action && (
-                      <button
-                        onClick={() => handleToggleNoteDone(note)}
-                        className="mt-0.5 shrink-0"
-                      >
-                        {note.is_done ? (
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </button>
-                    )}
-                    <p className={`text-xs ${note.is_done ? "line-through" : ""}`}>
-                      {note.content}
-                    </p>
-                  </div>
+                  );
+                })}
+                {properties.length > PROPS_PREVIEW_COUNT && (
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteNote(note.id)}
+                    variant="outline"
+                    className="h-11 w-full rounded-xl text-[13px] font-bold text-primary"
+                    onClick={() => setShowAllProps(v => !v)}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    {showAllProps ? "Ver menos" : `Ver todas (${properties.length})`}
                   </Button>
-                </div>
-                <p className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at)}</p>
-              </div>
-            ))}
+                )}
+              </>
+            )}
           </div>
-          {/* Add note */}
-          <div className="border-t border-border bg-card px-4 py-3 space-y-2">
+        )}
+
+        {/* ===== Notas ===== */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2 px-0.5">
+            <h2 className="text-base font-extrabold tracking-tight">Notas</h2>
+            {notes.length > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-extrabold text-muted-foreground">
+                {notes.length}
+              </span>
+            )}
+          </div>
+
+          {/* Composer */}
+          <div className="rounded-2xl border border-border bg-card p-3">
             <Textarea
-              placeholder="Escribí una nota..."
+              placeholder="Escribí una nota…"
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              className="min-h-[60px] text-xs resize-none"
+              className="min-h-[56px] resize-none border-none p-0 text-[13px] shadow-none focus-visible:ring-0"
             />
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                <Checkbox
-                  checked={isAction}
-                  onCheckedChange={(v) => setIsAction(v === true)}
-                  className="h-3.5 w-3.5"
-                />
-                Marcar como acción pendiente
+            <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-2.5">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox checked={isAction} onCheckedChange={(v) => setIsAction(v === true)} className="h-3.5 w-3.5" />
+                Acción pendiente
               </label>
               <Button
                 size="sm"
-                className="gap-1.5 h-8"
+                className="h-9 gap-1.5 rounded-lg px-4 text-[13px] font-bold"
                 onClick={handleAddNote}
                 disabled={!newNote.trim() || savingNote}
               >
-                <Send className="h-3 w-3" />
-                Guardar
+                <Send className="h-3.5 w-3.5" /> Agregar
               </Button>
             </div>
           </div>
-        </TabsContent>
 
-        {/* Timeline Tab */}
-        <TabsContent value="timeline" className="m-0 px-4 pt-2 pb-4 overflow-y-auto safe-bottom" style={{ flex: 1, minHeight: 0 }}>
-          {/* Events section */}
-          {events.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">📅 Eventos</p>
-              <div className="space-y-2">
-                {events.map((ev) => (
-                  <div key={ev.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5">
-                    <CalendarDays className="h-4 w-4 text-primary shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{ev.title}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatDate(ev.event_date)} · {ev.recurrence === "yearly" ? "Anual" : ev.recurrence === "monthly" ? "Mensual" : "Una vez"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+          {notes.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-6 text-center">
+              <StickyNote className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
+              <p className="text-xs text-muted-foreground">Sin notas todavía</p>
+            </div>
+          )}
+
+          {notes.map((note) => (
+            <div
+              key={note.id}
+              className={`rounded-2xl border p-3.5 ${
+                note.is_action && !note.is_done
+                  ? "border-primary/30 bg-primary/5"
+                  : note.is_done
+                  ? "border-border bg-muted/50 opacity-60"
+                  : "border-border bg-card"
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {note.is_action && (
+                  <button onClick={() => handleToggleNoteDone(note)} className="mt-0.5 shrink-0">
+                    {note.is_done ? (
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </button>
+                )}
+                <p className={`flex-1 text-[13px] leading-relaxed ${note.is_done ? "line-through" : ""}`}>
+                  {note.content}
+                </p>
+                <Button
+                  size="icon" variant="ghost"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleDeleteNote(note.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
+              <p className={`mt-1.5 text-[11px] text-muted-foreground ${note.is_action ? "pl-[30px]" : ""}`}>
+                {formatDateTime(note.created_at)}
+              </p>
             </div>
-          )}
-
-          {/* Activity log */}
-          <p className="text-xs font-medium text-muted-foreground mb-2">🕐 Historial de actividad</p>
-          {activity.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <Clock className="h-12 w-12 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Sin actividad registrada</p>
-            </div>
-          ) : (
-            <div className="relative ml-2 border-l-2 border-border pl-4 space-y-4">
-              {activity.map((a) => (
-                <div key={a.id} className="relative">
-                  <div className="absolute -left-[1.35rem] top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background border-2 border-border">
-                    {actionIcons[a.action_type] ?? <Circle className="h-3 w-3 text-muted-foreground" />}
-                  </div>
-                  <p className="text-xs">{a.description}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatDateTime(a.created_at)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          ))}
+        </div>
+      </div>
 
       {/* Edit Dialog */}
       <Dialog open={showEdit} onOpenChange={setShowEdit}>
