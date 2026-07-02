@@ -197,7 +197,7 @@ describe("streamTurn", () => {
     expect(asst.tool_calls[0].extra_content).toBeUndefined();
   });
 
-  it("re-promptea cuando el modelo NARRA una tool sin ejecutarla (cualquier idioma, 86ajbrxxx)", async () => {
+  it("re-promptea cuando el modelo NARRA una tool sin ejecutarla (cualquier idioma, 86ajbr466)", async () => {
     // Caso real (Guido): "ツール呼び出しを実行します: `list_clients` と引数 `limit=100`" — anuncia la
     // tool en japonés, no la invoca, y al turno siguiente fabrica el resultado.
     const narrated = "Te preparo el listado.ツール呼び出しを実行します: `list_clients` と引数 `limit=100`。";

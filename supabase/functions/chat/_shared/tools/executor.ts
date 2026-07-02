@@ -339,7 +339,7 @@ export async function executeTool(
       const budget_currency = VALID_BUDGET_CURRENCIES.includes(args.budget_currency) ? args.budget_currency : "USD";
       const property_type_interest = typeof args.property_type_interest === "string" ? args.property_type_interest.trim().slice(0, 200) : null;
       const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
-      // Guard anti-duplicado (86ajbrxxx): si ya existe alguien con el MISMO teléfono, no creamos otra
+      // Guard anti-duplicado (86ajbr466): si ya existe alguien con el MISMO teléfono, no creamos otra
       // fila (las agendas de los agentes venían llenándose de copias — hasta 10 por persona — y eso
       // rompía la rotación de campañas). Devolvemos el existente para que Alan lo diga con claridad.
       const newPk = phoneDedupKey(phone);
@@ -369,7 +369,7 @@ export async function executeTool(
     }
 
     case "create_clients_bulk": {
-      // Carga MASIVA de contactos/clientes en UNA sola llamada (86ajbrxxx). Antes cada contacto era
+      // Carga MASIVA de contactos/clientes en UNA sola llamada (86ajbr466). Antes cada contacto era
       // un create_client individual: con listas grandes el tool-loop se quedaba corto (cap de
       // iteraciones), el modelo "narraba" llamadas sin ejecutarlas y CONFIRMABA cargas que nunca
       // pasaron (caso Carla: ~260 pegados, 138 reales, "412" reportados). Acá: un insert batch,
@@ -479,7 +479,7 @@ export async function executeTool(
       // Tolerante al quirk de Gemini de mandar booleans como string ("true").
       const markContacted = args.mark_contacted === true || args.mark_contacted === "true";
 
-      // Mismos filtros para la página de datos y para el COUNT real del universo (86ajbrxxx: el
+      // Mismos filtros para la página de datos y para el COUNT real del universo (86ajbr466: el
       // tool devolvía total = largo de la página y Alan concluía "tenés 19 vendedores fríos"
       // cuando había 1124).
       const applyClientFilters = (q: any) => {

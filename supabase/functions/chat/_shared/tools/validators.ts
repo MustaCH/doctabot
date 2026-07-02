@@ -42,7 +42,7 @@ export function sanitizePattern(val: unknown): string | null {
  * Clave de DEDUPLICACIÓN de teléfonos: últimos 10 dígitos (área+abonado), tolerante a formatos
  * (+549…, 549…, 351…, con separadores). Más laxa que la canonización E.164 del guardarraíl de
  * WhatsApp a propósito: acá el objetivo es detectar que dos filas son LA MISMA persona, no armar
- * un link. null si tiene <8 dígitos (placeholder/junk: no sirve para dedup). Ver 86ajbrxxx.
+ * un link. null si tiene <8 dígitos (placeholder/junk: no sirve para dedup). Ver 86ajbr466.
  */
 export function phoneDedupKey(raw: unknown): string | null {
   const d = String(raw ?? "").replace(/\D/g, "");
@@ -71,7 +71,7 @@ export interface PreparedContactBatch {
 }
 
 /**
- * Prepara un lote de contactos para inserción masiva (86ajbrxxx — carga masiva de agendas):
+ * Prepara un lote de contactos para inserción masiva (86ajbr466 — carga masiva de agendas):
  * valida cada fila, y DEDUPLICA tanto contra la agenda existente (por teléfono; por nombre solo si
  * la fila no trae teléfono) como DENTRO del propio lote (el usuario suele re-pegar listas).
  * Puro y testeable; el executor hace el insert y reporta los conteos REALES.

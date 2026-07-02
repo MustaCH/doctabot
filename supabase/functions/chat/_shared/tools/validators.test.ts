@@ -314,7 +314,7 @@ describe("normalizeOperation (igualdad exacta vs ILIKE substring)", () => {
   });
 });
 
-// 86ajbrxxx — carga masiva: dedup por teléfono (contra agenda y dentro del lote) + validación de filas.
+// 86ajbr466 — carga masiva: dedup por teléfono (contra agenda y dentro del lote) + validación de filas.
 describe("prepareContactBatch / phoneDedupKey (carga masiva de contactos)", () => {
   it("phoneDedupKey: mismo número en distintos formatos → misma clave; junk → null", async () => {
     const { phoneDedupKey } = await import("./validators");

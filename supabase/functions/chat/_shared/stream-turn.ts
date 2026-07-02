@@ -333,7 +333,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
-    // Narración de tool sin ejecución (86ajbrxxx — caso Guido, en japonés: "ツール呼び出しを実行します:
+    // Narración de tool sin ejecución (86ajbr466 — caso Guido, en japonés: "ツール呼び出しを実行します:
     // `list_clients`…"): el modelo ANUNCIA que va a llamar una herramienta, nombrándola, pero el turno
     // no ejecutó NINGUNA. La forma varía (cualquier idioma/sintaxis), así que el detector es
     // estructural: 0 tools ejecutadas en el turno + el texto final menciona un nombre de tool real.

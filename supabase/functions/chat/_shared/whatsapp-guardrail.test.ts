@@ -106,7 +106,7 @@ describe("whatsappNeutralizedNotice", () => {
   });
 });
 
-describe("verifyContactListPhones — listas de contactos fabricadas (86ajbrxxx)", () => {
+describe("verifyContactListPhones — listas de contactos fabricadas (86ajbr466)", () => {
   const agenda = new Set(["+5493511111111", "+5493512222222", "+5493513333333"]);
 
   it("lista REAL (todos en agenda) pasa intacta", () => {

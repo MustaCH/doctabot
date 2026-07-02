@@ -138,7 +138,7 @@ serve(async (req) => {
       }
     }
 
-    // MEMORIA ENTRE CHATS v1 (86ajbrxxx): bloque de actividad de campaña reciente, derivado del
+    // MEMORIA ENTRE CHATS v1 (86ajbr466): bloque de actividad de campaña reciente, derivado del
     // registro REAL (last_contact_at). Le da a Alan continuidad entre conversaciones para el flujo
     // de recontacto ("ayer te pasé una tanda de N, ¿los contactaste?") sin depender de su memoria.
     // Fail-open y barato (una query chica); si no hubo actividad, no se inyecta nada.
@@ -264,7 +264,7 @@ serve(async (req) => {
         console.error("link-guardrail error:", e);
       }
 
-      // 3) Guardarraíles de TELÉFONOS (86ajb5g8d + 86ajbrxxx), ambos contra el mismo set de números
+      // 3) Guardarraíles de TELÉFONOS (86ajb5g8d + 86ajbr466), ambos contra el mismo set de números
       //    reales (CRM del agente + los que tipeó en el turno). Fail-open.
       //    a. WhatsApp: valida cada <<<WHATSAPP_TO:número>>>; inventado → corrige por nombre
       //       (clientRegistry) o quita el botón.

@@ -140,7 +140,7 @@ export interface ContactListVerifyResult {
 }
 
 /**
- * Verificación de LISTAS de contactos (86ajbrxxx): cuando la respuesta lista teléfonos (una campaña,
+ * Verificación de LISTAS de contactos (86ajbr466): cuando la respuesta lista teléfonos (una campaña,
  * "pasame 100 contactos"), cada número se canoniza y se busca en `validKeys` (los teléfonos REALES
  * del CRM del agente + los tipeados en el turno). Si 3 o más NO figuran, el modelo probablemente
  * FABRICÓ la lista: se marca cada número no verificado con ⚠️ y se anexa un aviso. Con <3 no
