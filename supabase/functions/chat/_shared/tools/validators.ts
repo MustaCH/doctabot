@@ -39,6 +39,85 @@ export function sanitizePattern(val: unknown): string | null {
 }
 
 /**
+ * Clave de DEDUPLICACIÓN de teléfonos: últimos 10 dígitos (área+abonado), tolerante a formatos
+ * (+549…, 549…, 351…, con separadores). Más laxa que la canonización E.164 del guardarraíl de
+ * WhatsApp a propósito: acá el objetivo es detectar que dos filas son LA MISMA persona, no armar
+ * un link. null si tiene <8 dígitos (placeholder/junk: no sirve para dedup). Ver 86ajbrxxx.
+ */
+export function phoneDedupKey(raw: unknown): string | null {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length < 8) return null;
+  return d.slice(-10);
+}
+
+/** Nombre normalizado (case/acentos/espacios) para dedup de contactos SIN teléfono. */
+export function nameDedupKey(raw: unknown): string | null {
+  const s = String(raw ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  return s || null;
+}
+
+export interface BulkContactInput {
+  full_name?: unknown;
+  phone?: unknown;
+  email?: unknown;
+  notes?: unknown;
+  client_type?: unknown;
+  status?: unknown;
+}
+export interface PreparedContactBatch {
+  rows: Array<{ full_name: string; phone: string | null; email: string | null; notes: string | null; client_type: string; status: string; is_client: boolean }>;
+  skipped_duplicates: Array<{ full_name: string; reason: string }>;
+  invalid: Array<{ index: number; reason: string }>;
+}
+
+/**
+ * Prepara un lote de contactos para inserción masiva (86ajbrxxx — carga masiva de agendas):
+ * valida cada fila, y DEDUPLICA tanto contra la agenda existente (por teléfono; por nombre solo si
+ * la fila no trae teléfono) como DENTRO del propio lote (el usuario suele re-pegar listas).
+ * Puro y testeable; el executor hace el insert y reporta los conteos REALES.
+ */
+export function prepareContactBatch(
+  contacts: BulkContactInput[],
+  existingPhoneKeys: Set<string>,
+  existingNameKeys: Set<string>,
+  isClient: boolean,
+): PreparedContactBatch {
+  const rows: PreparedContactBatch["rows"] = [];
+  const skipped_duplicates: PreparedContactBatch["skipped_duplicates"] = [];
+  const invalid: PreparedContactBatch["invalid"] = [];
+  const seenPhones = new Set<string>(existingPhoneKeys);
+  const seenNames = new Set<string>(existingNameKeys);
+
+  contacts.forEach((c, i) => {
+    const full_name = typeof c.full_name === "string" ? c.full_name.trim().slice(0, 200) : "";
+    if (!full_name) { invalid.push({ index: i, reason: "sin nombre" }); return; }
+    const phone = typeof c.phone === "string" && c.phone.trim() ? c.phone.trim().slice(0, 50) : null;
+    const pk = phoneDedupKey(phone);
+    const nk = nameDedupKey(full_name);
+    if (pk) {
+      if (seenPhones.has(pk)) { skipped_duplicates.push({ full_name, reason: "teléfono ya agendado" }); return; }
+      seenPhones.add(pk);
+    } else if (nk && seenNames.has(nk)) {
+      // Sin teléfono dedupeamos por nombre exacto normalizado (evita triplicar "Granja Tanti").
+      skipped_duplicates.push({ full_name, reason: "nombre ya agendado (sin teléfono)" });
+      return;
+    }
+    if (nk) seenNames.add(nk);
+    rows.push({
+      full_name,
+      phone,
+      email: typeof c.email === "string" && c.email.trim() ? c.email.trim().slice(0, 200) : null,
+      notes: typeof c.notes === "string" && c.notes.trim() ? c.notes.trim().slice(0, 2000) : null,
+      client_type: VALID_CLIENT_TYPES.includes(c.client_type as string) ? (c.client_type as string) : "buyer",
+      status: normalizeClientStatus(c.status) ?? "warm",
+      is_client: isClient,
+    });
+  });
+
+  return { rows, skipped_duplicates, invalid };
+}
+
+/**
  * Neutraliza contenido web externo (web_search/scrape_url) antes de meterlo al contexto.
  * El contenido scrapeado NO es confiable: puede traer prompt injection indirecta
  * ("ignorá tus instrucciones…") o los marcadores de control que el front parsea

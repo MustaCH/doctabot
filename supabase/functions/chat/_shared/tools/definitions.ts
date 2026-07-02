@@ -119,6 +119,38 @@ export const toolDefinitions = [
   {
     type: "function",
     function: {
+      name: "create_clients_bulk",
+      description: "Crear VARIOS clientes o contactos de una sola vez (carga masiva de agendas: listas pegadas de Excel/planillas). Deduplica automáticamente (contra la agenda y dentro del lote) y devuelve los conteos REALES: created, skipped_duplicates, invalid y total_in_agenda. USALA SIEMPRE que el agente pase 3 o más contactos juntos (nunca create_client uno por uno para listas).",
+      parameters: {
+        type: "object",
+        properties: {
+          contacts: {
+            type: "array",
+            description: "Lista de contactos a crear. Cada uno con full_name (requerido) y opcionalmente phone, email, notes, client_type, status.",
+            items: {
+              type: "object",
+              properties: {
+                full_name: { type: "string", description: "Nombre completo (requerido)" },
+                phone: { type: "string", description: "Teléfono, tal como viene" },
+                email: { type: "string", description: "Email" },
+                notes: { type: "string", description: "Nota breve" },
+                client_type: { type: "string", description: "buyer|seller|both (default buyer)" },
+                status: { type: "string", description: "hot|warm|cold (default warm)" },
+              },
+              required: ["full_name"],
+              additionalProperties: false,
+            },
+          },
+          is_client: { type: "boolean", description: "true = clientes (default), false = CONTACTOS comunes de agenda. Usá false cuando el agente pida agendar 'contactos'." },
+        },
+        required: ["contacts"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "update_client",
       description: "Actualizar datos de un cliente existente. Podés actualizar cualquier campo del perfil CRM.",
       parameters: {
@@ -151,7 +183,7 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "list_clients",
-      description: "Listar los clientes y/o contactos del agente. Permite filtrar por categoría (cliente/contacto), por tipo (comprador/vendedor), por estado, buscar por nombre, ordenar por último contacto y paginar. Base de las campañas de recontacto.",
+      description: "Listar los clientes y/o contactos del agente. Permite filtrar por categoría (cliente/contacto), por tipo (comprador/vendedor), por estado, buscar por nombre, ordenar por último contacto y paginar. Devuelve total_count (universo REAL que matchea los filtros) y showing (los de esta página): usá total_count para decir cuántos hay. Base de las campañas de recontacto.",
       parameters: {
         type: "object",
         properties: {

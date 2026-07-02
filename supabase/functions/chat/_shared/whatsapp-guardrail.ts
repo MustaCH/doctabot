@@ -126,3 +126,54 @@ export function whatsappNeutralizedNotice(n: number): string {
   if (n <= 0) return "";
   return `${MSG_BREAK}⚠️ Quité el botón de WhatsApp de ${n} ${n === 1 ? "mensaje" : "mensajes"} porque no pude verificar el número contra tus clientes. Revisá que el teléfono esté guardado en el perfil del cliente o pasámelo de nuevo.`;
 }
+
+// Token con pinta de teléfono. El filtro real es normalizePhone: solo cuentan los que canonizan
+// a celular AR — precios (68000, 1.350.000), conteos y m² no llegan a 10 dígitos y quedan afuera.
+// OJO: sin \n en la clase — con \s el greedy fusionaba números de renglones consecutivos
+// ("...2630\n2. Ruth") y el token fusionado no canonizaba → el guardarraíl no veía nada.
+const PHONE_TOKEN = /\+?\d[\d \t().\-]{8,16}\d/g;
+
+export interface ContactListVerifyResult {
+  text: string;
+  totalPhones: number;
+  flagged: number;
+}
+
+/**
+ * Verificación de LISTAS de contactos (86ajbrxxx): cuando la respuesta lista teléfonos (una campaña,
+ * "pasame 100 contactos"), cada número se canoniza y se busca en `validKeys` (los teléfonos REALES
+ * del CRM del agente + los tipeados en el turno). Si 3 o más NO figuran, el modelo probablemente
+ * FABRICÓ la lista: se marca cada número no verificado con ⚠️ y se anexa un aviso. Con <3 no
+ * verificados no se toca nada (evita falsos positivos con fijos/junk). Los marcadores
+ * <<<WHATSAPP_TO:…>>> se saltean (los valida el otro guardarraíl y anotar adentro rompería el front).
+ * Puro y testeable, no lanza.
+ */
+export function verifyContactListPhones(text: string, validKeys: Set<string>): ContactListVerifyResult {
+  if (!text) return { text, totalPhones: 0, flagged: 0 };
+  // Partimos por los marcadores para no tocar su interior.
+  const parts = text.split(/(<<<WHATSAPP_TO:[^>]*>>>)/);
+  let totalPhones = 0;
+  let flagged = 0;
+  // Pasada 1: contar.
+  for (const part of parts) {
+    if (part.startsWith("<<<WHATSAPP_TO:")) continue;
+    for (const m of part.match(PHONE_TOKEN) ?? []) {
+      const canon = normalizePhone(m);
+      if (!canon) continue;
+      totalPhones++;
+      if (!validKeys.has(canon)) flagged++;
+    }
+  }
+  if (flagged < 3) return { text, totalPhones, flagged: 0 };
+  // Pasada 2: anotar los no verificados.
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].startsWith("<<<WHATSAPP_TO:")) continue;
+    parts[i] = parts[i].replace(PHONE_TOKEN, (m: string) => {
+      const canon = normalizePhone(m);
+      if (!canon || validKeys.has(canon)) return m;
+      return `${m} ⚠️`;
+    });
+  }
+  const notice = `${MSG_BREAK}⚠️ ATENCIÓN: ${flagged} de los ${totalPhones} teléfonos de esta lista NO figuran en tu agenda — es probable que sean incorrectos. No los uses sin verificar: pedime la lista de nuevo y la saco directo de tus contactos reales.`;
+  return { text: parts.join("") + notice, totalPhones, flagged };
+}

@@ -197,6 +197,37 @@ describe("streamTurn", () => {
     expect(asst.tool_calls[0].extra_content).toBeUndefined();
   });
 
+  it("re-promptea cuando el modelo NARRA una tool sin ejecutarla (cualquier idioma, 86ajbrxxx)", async () => {
+    // Caso real (Guido): "ツール呼び出しを実行します: `list_clients` と引数 `limit=100`" — anuncia la
+    // tool en japonés, no la invoca, y al turno siguiente fabrica el resultado.
+    const narrated = "Te preparo el listado.ツール呼び出しを実行します: `list_clients` と引数 `limit=100`。";
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([contentChunk(narrated, "stop"), DONE]))
+      .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Acá tenés la lista real.", "stop"), DONE]));
+    const messages: any[] = [{ role: "user", content: "pasame 100 contactos" }];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 5 })), toolCtx: {}, toolDefinitions: [{ type: "function", function: { name: "list_clients" } }, { type: "function", function: { name: "search_properties" } }] },
+      { messages, emit: () => {} },
+    );
+    expect(messages.some((m) => m.role === "user" && /NOMBRA la herramienta list_clients/i.test(m.content))).toBe(true);
+    expect(res.content).toBe("Acá tenés la lista real.");
+    expect(res.executedTools).toEqual(["search_properties"]);
+  });
+
+  it("NO re-promptea por mención de tool si el turno SÍ ejecutó herramientas", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Usé la búsqueda interna (search_properties) y encontré 3.", "stop"), DONE]));
+    const messages: any[] = [{ role: "user", content: "buscá" }];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 3 })), toolCtx: {}, toolDefinitions },
+      { messages, emit: () => {} },
+    );
+    expect(resilientAIFetch).toHaveBeenCalledTimes(2); // sin re-prompt extra
+    expect(res.content).toContain("encontré 3");
+  });
+
   it("re-promptea cuando el modelo filtra su razonamiento (thought) y usa la reescritura limpia", async () => {
     const leaked = "thought\n1. **Identify intent:** The user wants X. I will call search_properties.¡Hola! Acá está el resultado.";
     const resilientAIFetch = vi.fn()

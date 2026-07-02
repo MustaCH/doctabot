@@ -22,6 +22,9 @@ import {
   sanitizeExternalPortalResult,
   normalizeOperation,
   stripChatMarkers,
+  phoneDedupKey,
+  nameDedupKey,
+  prepareContactBatch,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -326,7 +329,7 @@ export async function executeTool(
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
       const status = resolveClientStatusForCreate(args.status);
       const client_type = VALID_CLIENT_TYPES.includes(args.client_type) ? args.client_type : "buyer";
-      const is_client = typeof args.is_client === "boolean" ? args.is_client : true;
+      const is_client = args.is_client === false || args.is_client === "false" ? false : true; // tolerante a "false" string (quirk Gemini)
       const birthday = typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday) ? args.birthday : null;
       const company = typeof args.company === "string" ? args.company.trim().slice(0, 100) : null;
       const address = typeof args.address === "string" ? args.address.trim().slice(0, 200) : null;
@@ -336,6 +339,26 @@ export async function executeTool(
       const budget_currency = VALID_BUDGET_CURRENCIES.includes(args.budget_currency) ? args.budget_currency : "USD";
       const property_type_interest = typeof args.property_type_interest === "string" ? args.property_type_interest.trim().slice(0, 200) : null;
       const source = typeof args.source === "string" ? args.source.trim().slice(0, 100) : null;
+      // Guard anti-duplicado (86ajbrxxx): si ya existe alguien con el MISMO teléfono, no creamos otra
+      // fila (las agendas de los agentes venían llenándose de copias — hasta 10 por persona — y eso
+      // rompía la rotación de campañas). Devolvemos el existente para que Alan lo diga con claridad.
+      const newPk = phoneDedupKey(phone);
+      if (newPk) {
+        const { data: dupRows } = await supabase
+          .from("clients")
+          .select("id, full_name, phone, is_client")
+          .eq("user_id", userId)
+          .not("phone", "is", null);
+        const dup = (dupRows ?? []).find((r: any) => phoneDedupKey(r.phone) === newPk);
+        if (dup) {
+          return JSON.stringify({
+            success: false,
+            duplicate: true,
+            existing: { id: dup.id, full_name: dup.full_name },
+            message: `Ya existe "${dup.full_name}" con ese teléfono en la agenda. No lo dupliqué; si querés actualizar sus datos usá update_client.`,
+          });
+        }
+      }
       const { data, error } = await supabase
         .from("clients")
         .insert({ user_id: userId, full_name, phone, email, notes, status, client_type, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, is_client })
@@ -343,6 +366,63 @@ export async function executeTool(
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, client: data, message: `${is_client ? "Cliente" : "Contacto"} "${full_name}" creado correctamente.` });
+    }
+
+    case "create_clients_bulk": {
+      // Carga MASIVA de contactos/clientes en UNA sola llamada (86ajbrxxx). Antes cada contacto era
+      // un create_client individual: con listas grandes el tool-loop se quedaba corto (cap de
+      // iteraciones), el modelo "narraba" llamadas sin ejecutarlas y CONFIRMABA cargas que nunca
+      // pasaron (caso Carla: ~260 pegados, 138 reales, "412" reportados). Acá: un insert batch,
+      // dedup contra la agenda y dentro del lote, y CONTEOS REALES que Alan debe reportar tal cual.
+      const contacts = Array.isArray(args.contacts) ? args.contacts.slice(0, 300) : [];
+      if (contacts.length === 0) return JSON.stringify({ error: "La lista de contactos está vacía. Pasá un array en 'contacts'." });
+      // Tolerante al quirk de Gemini de mandar booleans como string ("false").
+      const isClient = args.is_client === false || args.is_client === "false" ? false : true;
+
+      // Agenda existente → sets de dedup (teléfono; nombre solo para filas sin teléfono).
+      const { data: existing, error: exErr } = await supabase
+        .from("clients")
+        .select("full_name, phone")
+        .eq("user_id", userId);
+      if (exErr) return JSON.stringify({ error: safeDbError(exErr) });
+      const existingPhones = new Set<string>();
+      const existingNames = new Set<string>();
+      for (const r of (existing ?? []) as Array<{ full_name: string | null; phone: string | null }>) {
+        const pk = phoneDedupKey(r.phone);
+        if (pk) existingPhones.add(pk);
+        const nk = nameDedupKey(r.full_name);
+        if (nk) existingNames.add(nk);
+      }
+
+      const { rows, skipped_duplicates, invalid } = prepareContactBatch(contacts, existingPhones, existingNames, isClient);
+
+      let created = 0;
+      if (rows.length > 0) {
+        const { data: inserted, error } = await supabase
+          .from("clients")
+          .insert(rows.map((r) => ({ ...r, user_id: userId })))
+          .select("id");
+        if (error) return JSON.stringify({ error: safeDbError(error) });
+        created = inserted?.length ?? 0;
+      }
+      // Total REAL post-inserción, para que Alan reporte el estado verdadero de la agenda.
+      const { count: totalAfter } = await supabase
+        .from("clients")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("is_client", isClient);
+
+      return JSON.stringify({
+        success: true,
+        created,
+        created_names: rows.map((r) => r.full_name),
+        skipped_duplicates: skipped_duplicates.length,
+        skipped_names: skipped_duplicates.map((s) => `${s.full_name} (${s.reason})`),
+        invalid: invalid.length,
+        total_in_agenda: totalAfter ?? null,
+        kind: isClient ? "client" : "contact",
+        instruction: `REPORTÁ EXACTAMENTE estos números al agente: ${created} creados, ${skipped_duplicates.length} salteados por duplicado, ${invalid.length} inválidos. Total real en agenda (${isClient ? "clientes" : "contactos"}): ${totalAfter ?? "?"}. NO digas "ya están todos" ni otro número.`,
+      });
     }
 
     case "update_client": {
@@ -355,7 +435,7 @@ export async function executeTool(
       const normalizedStatus = normalizeClientStatus(args.status);
       if (normalizedStatus) updates.status = normalizedStatus;
       if (VALID_CLIENT_TYPES.includes(args.client_type)) updates.client_type = args.client_type;
-      if (typeof args.is_client === "boolean") updates.is_client = args.is_client;
+      if (typeof args.is_client === "boolean" || args.is_client === "true" || args.is_client === "false") updates.is_client = args.is_client === true || args.is_client === "true";
       if (typeof args.birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.birthday)) updates.birthday = args.birthday;
       if (typeof args.company === "string") updates.company = args.company.trim().slice(0, 100);
       if (typeof args.address === "string") updates.address = args.address.trim().slice(0, 200);
@@ -377,8 +457,8 @@ export async function executeTool(
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
       // Mensaje que refleja un movimiento de categoría cuando lo hubo (cliente↔contacto).
-      const moveMsg = typeof args.is_client === "boolean"
-        ? (args.is_client ? ` Lo moví a Clientes.` : ` Lo moví a Contactos.`)
+      const moveMsg = (typeof args.is_client === "boolean" || args.is_client === "true" || args.is_client === "false")
+        ? ((args.is_client === true || args.is_client === "true") ? ` Lo moví a Clientes.` : ` Lo moví a Contactos.`)
         : "";
       return JSON.stringify({ success: true, client: data, message: `Cliente actualizado correctamente.${moveMsg}` });
     }
@@ -396,24 +476,34 @@ export async function executeTool(
       const order = args.order === "least_contacted" ? "least_contacted" : "recent";
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 20, 1), 100);
       const offset = Math.max(0, safePositiveInt(args.offset) ?? 0);
-      const markContacted = args.mark_contacted === true;
+      // Tolerante al quirk de Gemini de mandar booleans como string ("true").
+      const markContacted = args.mark_contacted === true || args.mark_contacted === "true";
 
-      let query = supabase
+      // Mismos filtros para la página de datos y para el COUNT real del universo (86ajbrxxx: el
+      // tool devolvía total = largo de la página y Alan concluía "tenés 19 vendedores fríos"
+      // cuando había 1124).
+      const applyClientFilters = (q: any) => {
+        q = q.eq("user_id", userId);
+        if (kind === "client") q = q.eq("is_client", true);
+        else if (kind === "contact") q = q.eq("is_client", false);
+        if (clientTypeArg === "buyer") q = q.in("client_type", ["buyer", "both"]);
+        else if (clientTypeArg === "seller") q = q.in("client_type", ["seller", "both"]);
+        else if (clientTypeArg === "both") q = q.eq("client_type", "both");
+        if (search) q = q.ilike("full_name", `%${search}%`);
+        if (status) q = q.eq("status", status);
+        return q;
+      };
+      let query = applyClientFilters(supabase
         .from("clients")
-        .select("id, full_name, phone, email, status, client_type, is_client, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, last_contact_at, created_at, updated_at")
-        .eq("user_id", userId);
-      if (kind === "client") query = query.eq("is_client", true);
-      else if (kind === "contact") query = query.eq("is_client", false);
-      if (clientTypeArg === "buyer") query = query.in("client_type", ["buyer", "both"]);
-      else if (clientTypeArg === "seller") query = query.in("client_type", ["seller", "both"]);
-      else if (clientTypeArg === "both") query = query.eq("client_type", "both");
-      if (search) query = query.ilike("full_name", `%${search}%`);
-      if (status) query = query.eq("status", status);
+        .select("id, full_name, phone, email, status, client_type, is_client, notes, birthday, company, address, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, source, last_contact_at, created_at, updated_at"));
       if (order === "least_contacted") query = query.order("last_contact_at", { ascending: true, nullsFirst: true });
       else query = query.order("updated_at", { ascending: false });
       query = query.range(offset, offset + limit - 1);
 
-      const { data, error } = await query;
+      const [{ data, error }, { count: totalCount }] = await Promise.all([
+        query,
+        applyClientFilters(supabase.from("clients").select("*", { count: "exact", head: true })),
+      ]);
       if (error) return JSON.stringify({ error: safeDbError(error) });
       const clients = data ?? [];
       // Registro por-turno para el guardarraíl de WhatsApp (corrección de números inventados).
@@ -435,7 +525,8 @@ export async function executeTool(
 
       return JSON.stringify({
         clients,
-        total: clients.length,
+        showing: clients.length,
+        total_count: totalCount ?? clients.length,
         kind,
         order,
         offset,

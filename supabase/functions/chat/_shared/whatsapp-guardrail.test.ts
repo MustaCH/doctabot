@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizePhone, resolveUniqueClient, validateAndCorrectWhatsapp, whatsappNeutralizedNotice } from "./whatsapp-guardrail";
+import { normalizePhone, resolveUniqueClient, validateAndCorrectWhatsapp, whatsappNeutralizedNotice, verifyContactListPhones } from "./whatsapp-guardrail";
 
 const CANON = "+5493511234567";
 
@@ -103,5 +103,47 @@ describe("whatsappNeutralizedNotice", () => {
     expect(whatsappNeutralizedNotice(0)).toBe("");
     expect(whatsappNeutralizedNotice(1)).toContain("1 mensaje");
     expect(whatsappNeutralizedNotice(3)).toContain("3 mensajes");
+  });
+});
+
+describe("verifyContactListPhones — listas de contactos fabricadas (86ajbrxxx)", () => {
+  const agenda = new Set(["+5493511111111", "+5493512222222", "+5493513333333"]);
+
+  it("lista REAL (todos en agenda) pasa intacta", () => {
+    const t = "1. Ana +5493511111111\n2. Luis +5493512222222\n3. Marta +5493513333333";
+    const r = verifyContactListPhones(t, agenda);
+    expect(r.flagged).toBe(0);
+    expect(r.text).toBe(t);
+  });
+
+  it("lista FABRICADA (3+ desconocidos) marca cada número y anexa aviso", () => {
+    const t = "1. Lucas +5493572582630\n2. Ruth +5493572570959\n3. Anto +5493572525150\n4. Ana +5493511111111";
+    const r = verifyContactListPhones(t, agenda);
+    expect(r.flagged).toBe(3);
+    expect(r.text).toContain("+5493572582630 ⚠️");
+    expect(r.text).toContain("+5493572570959 ⚠️");
+    expect(r.text).not.toContain("+5493511111111 ⚠️"); // el real no se marca
+    expect(r.text).toContain("NO figuran en tu agenda");
+  });
+
+  it("1-2 desconocidos NO gatillan (evita falsos positivos)", () => {
+    const t = "Ana +5493511111111 y un nuevo +5493599999999";
+    const r = verifyContactListPhones(t, agenda);
+    expect(r.flagged).toBe(0);
+    expect(r.text).toBe(t);
+  });
+
+  it("precios/conteos/superficies no cuentan como teléfonos", () => {
+    const t = "💰 Precio: USD 129000\nExpensas: $1350000 ARS/mes\n📐 78 m² — total 1124 clientes";
+    const r = verifyContactListPhones(t, agenda);
+    expect(r.totalPhones).toBe(0);
+    expect(r.text).toBe(t);
+  });
+
+  it("no toca el interior de un marcador WHATSAPP_TO", () => {
+    const t = "<<<WHATSAPP_TO:+5493599999999>>>\nLista: +5493588888888, +5493577777777, +5493566666666";
+    const r = verifyContactListPhones(t, agenda);
+    expect(r.text).toContain("<<<WHATSAPP_TO:+5493599999999>>>"); // marcador intacto
+    expect(r.text).toContain("+5493588888888 ⚠️");
   });
 });

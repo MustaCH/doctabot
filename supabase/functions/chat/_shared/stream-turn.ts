@@ -333,6 +333,26 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       continue;
     }
 
+    // Narración de tool sin ejecución (86ajbrxxx — caso Guido, en japonés: "ツール呼び出しを実行します:
+    // `list_clients`…"): el modelo ANUNCIA que va a llamar una herramienta, nombrándola, pero el turno
+    // no ejecutó NINGUNA. La forma varía (cualquier idioma/sintaxis), así que el detector es
+    // estructural: 0 tools ejecutadas en el turno + el texto final menciona un nombre de tool real.
+    // El prompt prohíbe nombrar tools en la respuesta, así que un falso positivo es rarísimo. Va
+    // DESPUÉS del detector de razonamiento (más específico), y comparte el cap de re-prompts.
+    if (executedTools.length === 0 && repromptCount < MAX_REPROMPTS) {
+      const mentioned = validToolNames.filter((n: string) => new RegExp(`\\b${n}\\b`).test(assistantContent));
+      if (mentioned.length > 0) {
+        repromptCount++;
+        messages.push({ role: "assistant", content: assistantContent || null });
+        messages.push({
+          role: "user",
+          content: `[sistema] Tu mensaje NOMBRA la herramienta ${mentioned.join(", ")} pero NO la invocaste (no se ejecutó nada). Anunciarla no la ejecuta: invocala AHORA por el canal de herramientas y después contá el resultado real, sin mencionar nombres de herramientas.`,
+        });
+        lastPreamble = assistantContent;
+        continue;
+      }
+    }
+
     // Ronda de texto final: recién acá se vuelca al cliente (bufferizada, de una). Si quedó un leak
     // que no pudimos recuperar (cap agotado), va el texto ya strippeado. Validación mínima de
     // formato: si el modelo dejó un <<<DRAFT_START>>> sin cerrar, agregamos el cierre faltante.

@@ -26,7 +26,7 @@ import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts"
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
 import { expandCards, collapseEmptyBubbles, renderPropertyCard } from "./_shared/card-render.ts";
-import { normalizePhone, validateAndCorrectWhatsapp, whatsappNeutralizedNotice } from "./_shared/whatsapp-guardrail.ts";
+import { normalizePhone, validateAndCorrectWhatsapp, whatsappNeutralizedNotice, verifyContactListPhones } from "./_shared/whatsapp-guardrail.ts";
 import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
@@ -138,9 +138,40 @@ serve(async (req) => {
       }
     }
 
+    // MEMORIA ENTRE CHATS v1 (86ajbrxxx): bloque de actividad de campaña reciente, derivado del
+    // registro REAL (last_contact_at). Le da a Alan continuidad entre conversaciones para el flujo
+    // de recontacto ("ayer te pasé una tanda de N, ¿los contactaste?") sin depender de su memoria.
+    // Fail-open y barato (una query chica); si no hubo actividad, no se inyecta nada.
+    let recentOutreachBlock = "";
+    try {
+      const { data: recent } = await supabase
+        .from("clients")
+        .select("full_name, last_contact_at")
+        .eq("user_id", userId)
+        .gte("last_contact_at", new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString())
+        .order("last_contact_at", { ascending: false })
+        .limit(60);
+      if (recent && recent.length > 0) {
+        const hoy = new Date().toISOString().slice(0, 10);
+        const ayer = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+        const byDay = (d: string) => (recent as any[]).filter((r) => String(r.last_contact_at).slice(0, 10) === d);
+        const fmt = (rows: any[]) => rows.length <= 15 ? `${rows.length} (${rows.map((r) => r.full_name).join(", ")})` : `${rows.length}`;
+        const h = byDay(hoy);
+        const a = byDay(ayer);
+        const lines: string[] = [];
+        if (h.length) lines.push(`- Hoy: ${fmt(h)}`);
+        if (a.length) lines.push(`- Ayer: ${fmt(a)}`);
+        if (lines.length) {
+          recentOutreachBlock = `ACTIVIDAD DE CAMPAÑA RECIENTE (registro REAL del sistema — clientes marcados como contactados):\n${lines.join("\n")}\nSi el agente pide OTRA tanda de clientes para contactar, mencionale esta actividad ("hoy/ayer ya te pasé ${h.length || a.length}") y preguntale si ya los contactó, antes de dar más. La rotación sin repetir la garantiza list_clients con order="least_contacted" + mark_contacted=true — usala siempre para tandas.`;
+        }
+      }
+    } catch (e) {
+      console.error("recent outreach block error:", e);
+    }
+
     // Build prompt and messages
     const contextualPrompt = buildContextualPrompt(agentName, agentCode);
-    const systemContent = activeClientBlock ? `${contextualPrompt}\n\n${activeClientBlock}` : contextualPrompt;
+    const systemContent = [contextualPrompt, activeClientBlock, recentOutreachBlock].filter(Boolean).join("\n\n");
     const currentMessages: any[] = [
       { role: "system", content: systemContent },
       ...buildAIMessages(messages),
@@ -233,12 +264,17 @@ serve(async (req) => {
         console.error("link-guardrail error:", e);
       }
 
-      // 3) Guardarraíl de teléfonos de WhatsApp: valida cada <<<WHATSAPP_TO:número>>> contra los
-      //    teléfonos REALES del agente (sus clientes + los que tipeó en el turno). Un número inventado
-      //    se CORRIGE (si el borrador nombra sin ambigüedad al cliente, vía clientRegistry) o se
-      //    NEUTRALIZA (se quita el botón) — nunca un botón a un desconocido (86ajb5g8d). Fail-open.
+      // 3) Guardarraíles de TELÉFONOS (86ajb5g8d + 86ajbrxxx), ambos contra el mismo set de números
+      //    reales (CRM del agente + los que tipeó en el turno). Fail-open.
+      //    a. WhatsApp: valida cada <<<WHATSAPP_TO:número>>>; inventado → corrige por nombre
+      //       (clientRegistry) o quita el botón.
+      //    b. Listas de contactos: si la respuesta lista 3+ teléfonos que NO están en la agenda
+      //       (lista fabricada, ej. "pasame 100 contactos" sin ejecutar la tool), los marca con ⚠️
+      //       y avisa — el agente nunca usa números inventados sin saberlo.
       try {
-        if (working.includes("<<<WHATSAPP_TO:")) {
+        const hasWaMarker = working.includes("<<<WHATSAPP_TO:");
+        const phoneish = (working.match(/\+?\d[\d \t().\-]{8,16}\d/g) ?? []).length;
+        if (hasWaMarker || phoneish >= 3) {
           const validPhones = new Set<string>();
           // (a) Teléfonos que el agente tipeó en el turno (leads nuevos que no están en el CRM).
           for (const m of (Array.isArray(messages) ? messages : [])) {
@@ -254,12 +290,19 @@ serve(async (req) => {
             const canon = normalizePhone(row.phone);
             if (canon) validPhones.add(canon);
           }
-          const { text: waText, neutralized, corrected } = validateAndCorrectWhatsapp(working, validPhones, clientRegistry);
-          if (neutralized > 0 || corrected > 0) console.warn("whatsapp-guardrail", { neutralized, corrected });
-          working = waText + whatsappNeutralizedNotice(neutralized);
+          if (hasWaMarker) {
+            const { text: waText, neutralized, corrected } = validateAndCorrectWhatsapp(working, validPhones, clientRegistry);
+            if (neutralized > 0 || corrected > 0) console.warn("whatsapp-guardrail", { neutralized, corrected });
+            working = waText + whatsappNeutralizedNotice(neutralized);
+          }
+          const { text: verified, flagged, totalPhones } = verifyContactListPhones(working, validPhones);
+          if (flagged > 0) {
+            console.warn("contact-list-guardrail: teléfonos no verificados en lista", { flagged, totalPhones });
+            working = verified;
+          }
         }
       } catch (e) {
-        console.error("whatsapp-guardrail error:", e);
+        console.error("phone-guardrails error:", e);
       }
 
       return working;

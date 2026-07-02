@@ -313,3 +313,53 @@ describe("normalizeOperation (igualdad exacta vs ILIKE substring)", () => {
     expect(normalizeOperation(42)).toBeNull();
   });
 });
+
+// 86ajbrxxx — carga masiva: dedup por teléfono (contra agenda y dentro del lote) + validación de filas.
+describe("prepareContactBatch / phoneDedupKey (carga masiva de contactos)", () => {
+  it("phoneDedupKey: mismo número en distintos formatos → misma clave; junk → null", async () => {
+    const { phoneDedupKey } = await import("./validators");
+    expect(phoneDedupKey("+5493512126020")).toBe("3512126020");
+    expect(phoneDedupKey("3512126020")).toBe("3512126020");
+    expect(phoneDedupKey("351 212-6020")).toBe("3512126020");
+    expect(phoneDedupKey("4884398")).toBeNull(); // <8 dígitos
+  });
+
+  it("deduplica contra la agenda existente y DENTRO del lote (listas re-pegadas)", async () => {
+    const { prepareContactBatch } = await import("./validators");
+    const existingPhones = new Set(["3512126020"]);
+    const batch = [
+      { full_name: "Ana Perez", phone: "+5493512126020" },   // ya en agenda
+      { full_name: "Luis Gomez", phone: "3513333333" },       // nuevo
+      { full_name: "Luis G.", phone: "351 333-3333" },        // dupe DENTRO del lote (mismo tel)
+      { full_name: "Marta Diaz", phone: "3514444444" },       // nuevo
+      { full_name: "", phone: "3515555555" },                 // sin nombre → invalid
+    ];
+    const r = prepareContactBatch(batch, existingPhones, new Set(), false);
+    expect(r.rows.map((x) => x.full_name)).toEqual(["Luis Gomez", "Marta Diaz"]);
+    expect(r.skipped_duplicates.map((s) => s.full_name)).toEqual(["Ana Perez", "Luis G."]);
+    expect(r.invalid).toHaveLength(1);
+    expect(r.rows.every((x) => x.is_client === false)).toBe(true);
+  });
+
+  it("sin teléfono deduplica por nombre normalizado (acentos/case)", async () => {
+    const { prepareContactBatch } = await import("./validators");
+    const r = prepareContactBatch(
+      [{ full_name: "Granja Tanti" }, { full_name: "granja  tantí" }],
+      new Set(), new Set(), true,
+    );
+    expect(r.rows).toHaveLength(1);
+    expect(r.skipped_duplicates).toHaveLength(1);
+  });
+
+  it("defaults: client_type buyer, status warm; respeta valores válidos provistos", async () => {
+    const { prepareContactBatch } = await import("./validators");
+    const r = prepareContactBatch(
+      [{ full_name: "A", phone: "3511111111", client_type: "seller", status: "frío" }, { full_name: "B", phone: "3512222222" }],
+      new Set(), new Set(), true,
+    );
+    expect(r.rows[0].client_type).toBe("seller");
+    expect(r.rows[0].status).toBe("cold"); // sinónimo normalizado
+    expect(r.rows[1].client_type).toBe("buyer");
+    expect(r.rows[1].status).toBe("warm");
+  });
+});
