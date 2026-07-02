@@ -154,6 +154,49 @@ describe("razonamiento filtrado (thought) — detección y backstop (86ajbjq22)"
 });
 
 describe("streamTurn", () => {
+  it("reenvía el thought_signature de Gemini 3 en el assistant message del tool-loop (86ajbjq22)", async () => {
+    const toolChunkSig = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "search_properties", arguments: "{}" }, extra_content: { google: { thought_signature: "SIG_ABC" } } }] }, finish_reason: "tool_calls" }] })}\n\n`;
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([toolChunkSig, DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Listo", "stop"), DONE]));
+    const messages: any[] = [{ role: "user", content: "buscá" }];
+    await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 0 })), toolCtx: {}, toolDefinitions },
+      { messages, emit: () => {} },
+    );
+    const asst = messages.find((m) => m.role === "assistant" && m.tool_calls);
+    expect(asst.tool_calls[0].extra_content.google.thought_signature).toBe("SIG_ABC");
+  });
+
+  it("ejecuta tools aunque el finish_reason sea 'stop' (Gemini 3.x streaming, 86ajbjq22)", async () => {
+    // Gemini 3.x manda finish:"stop" en rondas CON tool_calls; la ronda igual debe ejecutarse.
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", '{"zone":"centro"}', "stop"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("Encontré 3", "stop"), DONE]));
+    const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+    const messages: any[] = [{ role: "user", content: "buscá" }];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+      { messages, emit: () => {} },
+    );
+    expect(executeTool).toHaveBeenCalledWith("search_properties", { zone: "centro" }, {});
+    expect(res.executedTools).toEqual(["search_properties"]);
+    expect(res.content).toBe("Encontré 3");
+  });
+
+  it("sin thought_signature (2.5-pro) el tool_call NO lleva extra_content (retrocompatible)", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk("ok", "stop"), DONE]));
+    const messages: any[] = [{ role: "user", content: "buscá" }];
+    await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 0 })), toolCtx: {}, toolDefinitions },
+      { messages, emit: () => {} },
+    );
+    const asst = messages.find((m) => m.role === "assistant" && m.tool_calls);
+    expect(asst.tool_calls[0].extra_content).toBeUndefined();
+  });
+
   it("re-promptea cuando el modelo filtra su razonamiento (thought) y usa la reescritura limpia", async () => {
     const leaked = "thought\n1. **Identify intent:** The user wants X. I will call search_properties.¡Hola! Acá está el resultado.";
     const resilientAIFetch = vi.fn()

@@ -5,6 +5,7 @@ export interface AccumulatedToolCall {
   id: string;
   name: string;
   arguments: string; // JSON string
+  thoughtSignature?: string; // Gemini 3+: se reenvía en el assistant message (ver sse-parse.ts / 86ajbjq22)
 }
 
 export interface ExecuteRoundDeps {

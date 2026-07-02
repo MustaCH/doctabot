@@ -26,6 +26,12 @@ describe("drainSSE", () => {
     expect(deltas[0].toolCallDeltas).toEqual([{ index: 0, id: "c1", name: "send_email", argsFragment: '{"to":' }]);
   });
 
+  it("extrae el thought_signature de un tool_call (Gemini 3, 86ajbjq22)", () => {
+    const buf = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "buscar", arguments: "{}" }, extra_content: { google: { thought_signature: "SIG123" } } }] }, finish_reason: null }] })}\n`;
+    const { deltas } = drainSSE(buf);
+    expect(deltas[0].toolCallDeltas?.[0].thoughtSignature).toBe("SIG123");
+  });
+
   it("devuelve en rest una línea con JSON partido entre chunks", () => {
     const partial = `data: {"choices":[{"delta":{"content":"ho`;
     const { deltas, rest } = drainSSE(partial + "\n");

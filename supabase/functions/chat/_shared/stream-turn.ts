@@ -237,6 +237,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
           if (tcd.id) cur.id = tcd.id;
           if (tcd.name) cur.name = tcd.name;
           if (tcd.argsFragment) cur.arguments += tcd.argsFragment;
+          if (tcd.thoughtSignature) cur.thoughtSignature = tcd.thoughtSignature;
           toolAccum.set(key, cur);
         }
       }
@@ -268,7 +269,12 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       break;
     }
 
-    if (finishReason === "tool_calls" && toolAccum.size > 0) {
+    // Gemini 2.5 cierra las rondas con tool calls con finish_reason:"tool_calls"; Gemini 3.x en
+    // streaming manda "stop" AUNQUE haya emitido tool_calls (verificado contra la API real,
+    // 86ajbjq22 — era la causa del turno vacío al migrar). El criterio robusto: si la ronda acumuló
+    // tool calls, ES una ronda de herramientas, sea cual sea el finish_reason (salvo "length", que
+    // se maneja arriba como truncado).
+    if (toolAccum.size > 0) {
       // Opción 2 (86aj1n43n): el preámbulo de una ronda que termina en tool_calls NO se muestra
       // ni se persiste. El modelo regenera saludos/narración en las continuaciones del mismo turno
       // y mostrarlos produce el re-saludo y la narración duplicada. El texto SÍ se conserva en
@@ -278,7 +284,15 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       messages.push({
         role: "assistant",
         content: assistantContent || null,
-        tool_calls: toolCalls.map((tc) => ({ id: tc.id, type: "function", function: { name: tc.name, arguments: tc.arguments } })),
+        // Gemini 3+: reenviamos el thought_signature en cada tool_call que lo trajo, si no la
+        // continuación tras el tool_call devuelve 400/vacío. En 2.5-pro no viene → no se agrega
+        // (retrocompatible). Ver sse-parse.ts / 86ajbjq22.
+        tool_calls: toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments },
+          ...(tc.thoughtSignature ? { extra_content: { google: { thought_signature: tc.thoughtSignature } } } : {}),
+        })),
       });
       const { toolMessages, executed } = await executeToolCalls(toolCalls, { executeTool, toolCtx });
       messages.push(...toolMessages);

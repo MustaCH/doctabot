@@ -6,6 +6,9 @@ export interface ToolCallDelta {
   id?: string;
   name?: string;
   argsFragment?: string;
+  // Gemini 3+: firma encriptada del "pensamiento" adjunta al tool_call. HAY que reenviarla en el
+  // assistant message de la continuación o la ronda siguiente devuelve 400/vacío (ver 86ajbjq22).
+  thoughtSignature?: string;
 }
 
 export interface StreamDelta {
@@ -54,6 +57,7 @@ export function drainSSE(buffer: string): { deltas: StreamDelta[]; rest: string;
         id: tc.id,
         name: tc.function?.name,
         argsFragment: tc.function?.arguments,
+        thoughtSignature: tc.extra_content?.google?.thought_signature,
       }));
     }
     deltas.push(d);
