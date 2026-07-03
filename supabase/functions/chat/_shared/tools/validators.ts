@@ -281,6 +281,42 @@ export function addDaysISO(iso: string, days: number): string {
 }
 
 /**
+ * Timestamp para registrar un contacto PASADO (mark_client_contacted): acepta days_ago
+ * (0=hoy, 1=ayer — preferido para fechas relativas, el modelo no hace aritmética de calendario)
+ * o una fecha exacta YYYY-MM-DD; days_ago gana si vienen ambos. Sin ninguno → hoy.
+ * Nunca devuelve futuro (se recorta a hoy). HOY usa el instante actual (conserva el orden
+ * intra-día de la rotación least_contacted); días pasados usan las 12:00 de Córdoba.
+ * Devuelve null si el input vino pero es inválido. Pura (now inyectable para tests).
+ */
+export function resolveContactTimestamp(
+  daysAgo: unknown,
+  date: unknown,
+  now: Date = new Date(),
+): { iso: string; dateISO: string } | null {
+  const today = todayCordobaISO(now);
+  let target: string | null = null;
+  // Tolerante al quirk de Gemini de mandar números como string ("1").
+  const n = typeof daysAgo === "number" && Number.isInteger(daysAgo)
+    ? daysAgo
+    : typeof daysAgo === "string" && /^\d+$/.test(daysAgo.trim())
+      ? Number(daysAgo.trim())
+      : null;
+  if (n !== null && n >= 0 && n <= 3650) {
+    target = addDaysISO(today, -n);
+  } else if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+    target = date.trim();
+    if (isNaN(new Date(`${target}T00:00:00Z`).getTime())) return null;
+  } else if (daysAgo == null && (date == null || date === "")) {
+    target = today;
+  } else {
+    return null;
+  }
+  if (target > today) target = today;
+  const iso = target === today ? now.toISOString() : new Date(`${target}T12:00:00-03:00`).toISOString();
+  return { iso, dateISO: target };
+}
+
+/**
  * Próxima ocurrencia (YYYY-MM-DD) de un evento recurrente, relativa a hoy en Córdoba.
  * Compara por fecha (no por instante) para que un evento de HOY se agende hoy y no al período siguiente.
  * Para `once` devuelve la fecha original. Ajusta días inexistentes (29-feb, día 31) al último día del mes.

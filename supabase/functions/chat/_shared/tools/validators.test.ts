@@ -1,5 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber, normalizeDatetime, neutralizeControlMarkers, wrapUntrustedWebContent, sanitizePattern, rankProperties, sanitizeExternalPortalResult, normalizeOperation, stripChatMarkers } from "./validators";
+import { todayCordobaISO, nextOccurrenceISO, addDaysISO, normalizeClientStatus, resolveClientStatusForCreate, safePositiveNumber, normalizeDatetime, neutralizeControlMarkers, wrapUntrustedWebContent, sanitizePattern, rankProperties, sanitizeExternalPortalResult, normalizeOperation, stripChatMarkers, resolveContactTimestamp } from "./validators";
+
+describe("resolveContactTimestamp (mark_client_contacted)", () => {
+  // 15:00 Córdoba (-03) del 2026-07-03 == 18:00Z
+  const NOW = new Date("2026-07-03T15:00:00-03:00");
+
+  it("days_ago=0 (hoy) usa el instante actual, no las 12:00", () => {
+    const r = resolveContactTimestamp(0, undefined, NOW)!;
+    expect(r.dateISO).toBe("2026-07-03");
+    expect(r.iso).toBe(NOW.toISOString());
+  });
+  it("sin days_ago ni date, default = hoy (ahora)", () => {
+    const r = resolveContactTimestamp(undefined, undefined, NOW)!;
+    expect(r.dateISO).toBe("2026-07-03");
+    expect(r.iso).toBe(NOW.toISOString());
+  });
+  it("days_ago=1 (ayer) estampa las 12:00 de Córdoba de ese día", () => {
+    const r = resolveContactTimestamp(1, undefined, NOW)!;
+    expect(r.dateISO).toBe("2026-07-02");
+    expect(r.iso).toBe("2026-07-02T15:00:00.000Z"); // 12:00 -03:00
+  });
+  it("tolera days_ago como string ('7', quirk de Gemini) y cruza límite de mes", () => {
+    const r = resolveContactTimestamp("7", undefined, NOW)!;
+    expect(r.dateISO).toBe("2026-06-26");
+  });
+  it("date exacta YYYY-MM-DD", () => {
+    const r = resolveContactTimestamp(undefined, "2026-06-20", NOW)!;
+    expect(r.dateISO).toBe("2026-06-20");
+    expect(r.iso).toBe("2026-06-20T15:00:00.000Z");
+  });
+  it("days_ago gana si vienen ambos", () => {
+    expect(resolveContactTimestamp(1, "2026-06-20", NOW)!.dateISO).toBe("2026-07-02");
+  });
+  it("una fecha futura se recorta a hoy (nunca contacto en el futuro)", () => {
+    const r = resolveContactTimestamp(undefined, "2026-08-01", NOW)!;
+    expect(r.dateISO).toBe("2026-07-03");
+    expect(r.iso).toBe(NOW.toISOString());
+  });
+  it("inputs inválidos devuelven null (el executor responde error claro)", () => {
+    expect(resolveContactTimestamp("banana", undefined, NOW)).toBeNull();
+    expect(resolveContactTimestamp(-1, undefined, NOW)).toBeNull();
+    expect(resolveContactTimestamp(undefined, "20/06/2026", NOW)).toBeNull();
+    expect(resolveContactTimestamp(3.5, undefined, NOW)).toBeNull();
+  });
+});
 
 describe("normalizeDatetime (única, compartida create/update)", () => {
   it("solo fecha (YYYY-MM-DD) asume 09:00 Córdoba — idéntico en crear y editar", () => {

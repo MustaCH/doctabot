@@ -203,6 +203,23 @@ export const toolDefinitions = [
   {
     type: "function",
     function: {
+      name: "mark_client_contacted",
+      description: "Registrar que el agente YA contactó (llamó, escribió, se reunió con) a uno o más clientes/contactos, con la fecha REAL del contacto. Actualiza el 'último contacto' que usan la rotación de campañas y la ficha del cliente. Usala PROACTIVAMENTE cuando el agente cuente EN PASADO que habló con alguien ('ayer llamé a Julieta', 'ya le mandé el mensaje'). NUNCA para intenciones futuras ('mañana lo llamo' → tarea con create_client_note).",
+      parameters: {
+        type: "object",
+        properties: {
+          client_names: { type: "array", items: { type: "string" }, description: "Nombres de los contactados, tal como los dijo el agente (se resuelven solos; si hay homónimos la herramienta devuelve los candidatos para preguntar)." },
+          client_ids: { type: "array", items: { type: "string" }, description: "IDs exactos si los tenés de una llamada anterior en este turno (alternativa a client_names)." },
+          days_ago: { type: "integer", description: "Hace cuántos días fue el contacto: 0=hoy (default), 1=ayer, 7=hace una semana. Preferí este campo para fechas relativas." },
+          date: { type: "string", description: "Fecha exacta del contacto (YYYY-MM-DD), alternativa a days_ago. Nunca futura." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_client",
       description: "Obtener el perfil completo (ficha 360) de un cliente: datos, historial de conversaciones, propiedades vinculadas, tareas pendientes y próximos eventos/vencimientos.",
       parameters: {

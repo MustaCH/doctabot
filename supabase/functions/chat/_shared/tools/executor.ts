@@ -13,6 +13,7 @@ import {
   safeDbError,
   normalizeDatetime,
   nextOccurrenceISO,
+  resolveContactTimestamp,
   todayCordobaISO,
   addDaysISO,
   wrapUntrustedWebContent,
@@ -538,6 +539,81 @@ export async function executeTool(
         offset,
         ...(clientTypeArg ? { client_type: clientTypeArg } : {}),
         ...(markContacted ? { marked_contacted } : {}),
+      });
+    }
+
+    case "mark_client_contacted": {
+      // Registro PROACTIVO de contactos hechos FUERA de la app ("ayer hablé con Julieta"):
+      // estampa last_contact_at con la fecha REAL del contacto, para que la rotación de campañas
+      // (order=least_contacted) y el widget "Último contacto" de la ficha reflejen la verdad.
+      // Regla anti-retroceso: nunca pisa un last_contact_at MÁS RECIENTE que la fecha informada
+      // (contar un contacto viejo no "des-contacta" a alguien ya contactado después).
+      const when = resolveContactTimestamp(args.days_ago, args.date);
+      if (!when) return JSON.stringify({ error: "Fecha inválida. Usá days_ago (0=hoy, 1=ayer) o date en formato YYYY-MM-DD, nunca futura." });
+
+      // Nombres y/o IDs; tolerante a un string suelto en vez de array (quirk de Gemini).
+      const rawNames: unknown[] = Array.isArray(args.client_names) ? args.client_names : typeof args.client_names === "string" && args.client_names.trim() ? [args.client_names] : [];
+      const rawIds: unknown[] = Array.isArray(args.client_ids) ? args.client_ids : typeof args.client_ids === "string" && args.client_ids.trim() ? [args.client_ids] : [];
+      if (rawNames.length === 0 && rawIds.length === 0) return JSON.stringify({ error: "Necesito al menos un client_name o client_id de a quién contactaste." });
+
+      type Target = { id: string; full_name: string; last_contact_at: string | null };
+      const targets: Target[] = [];
+      const not_found: string[] = [];
+      const ambiguous: Array<{ name: string; matches: string[] }> = [];
+
+      for (const rawId of rawIds.slice(0, 50)) {
+        if (typeof rawId !== "string" || !UUID_REGEX.test(rawId)) continue;
+        const { data } = await supabase.from("clients").select("id, full_name, last_contact_at").eq("id", rawId).eq("user_id", userId).maybeSingle();
+        if (data) targets.push(data as Target);
+        else not_found.push(rawId);
+      }
+      for (const rawName of rawNames.slice(0, 50)) {
+        if (typeof rawName !== "string" || !rawName.trim()) continue;
+        const pattern = sanitizePattern(rawName);
+        const { data: matches } = await supabase.from("clients").select("id, full_name, last_contact_at").eq("user_id", userId).ilike("full_name", `%${pattern}%`).limit(6);
+        if (!matches || matches.length === 0) { not_found.push(rawName); continue; }
+        if (matches.length > 1) {
+          // Un match EXACTO (case-insensitive) desambigua solo ("Juan Pérez" vs "Juan Pérez López").
+          const exact = (matches as Target[]).filter((m) => m.full_name?.trim().toLowerCase() === rawName.trim().toLowerCase());
+          if (exact.length === 1) { targets.push(exact[0]); continue; }
+          ambiguous.push({ name: rawName, matches: (matches as Target[]).map((m) => m.full_name) });
+          continue;
+        }
+        targets.push(matches[0] as Target);
+      }
+
+      // Dedup por id (mismo cliente llegado por nombre y por id).
+      const seenIds = new Set<string>();
+      const unique = targets.filter((t) => (seenIds.has(t.id) ? false : (seenIds.add(t.id), true)));
+
+      const kept_more_recent: string[] = [];
+      const toMark = unique.filter((t) => {
+        if (t.last_contact_at && new Date(t.last_contact_at).getTime() > new Date(when.iso).getTime()) {
+          kept_more_recent.push(t.full_name);
+          return false;
+        }
+        return true;
+      });
+
+      let marked: string[] = [];
+      if (toMark.length > 0) {
+        const ids = toMark.map((t) => t.id);
+        const { error } = await supabase.from("clients").update({ last_contact_at: when.iso }).in("id", ids).eq("user_id", userId);
+        if (error) return JSON.stringify({ error: safeDbError(error) });
+        marked = toMark.map((t) => t.full_name);
+        // Historial visible en la ficha (misma tabla/action_type que el widget del front). Best-effort.
+        const label = when.dateISO === todayCordobaISO() ? "hoy" : `el ${when.dateISO}`;
+        await supabase.from("client_activity_log").insert(ids.map((id) => ({ client_id: id, user_id: userId, action_type: "call_logged", description: `Contacto registrado por Alan (${label})` })));
+      }
+
+      return JSON.stringify({
+        success: true,
+        contact_date: when.dateISO,
+        marked,
+        marked_count: marked.length,
+        ...(kept_more_recent.length ? { kept_more_recent, kept_note: "Ya figuraban contactados MÁS recientemente que la fecha informada; el registro más nuevo se conserva (no se retrocede)." } : {}),
+        ...(not_found.length ? { not_found } : {}),
+        ...(ambiguous.length ? { ambiguous, ambiguous_note: "Hay varios con ese nombre: preguntale al agente cuál es (no adivines) y volvé a llamar con el nombre completo o el id." } : {}),
       });
     }
 
