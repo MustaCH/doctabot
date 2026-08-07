@@ -34,9 +34,11 @@ serve(async (req) => {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
     if (!audioFile) throw new ValidationError("audio es requerido");
-    const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25 MB
+    // 10 MB: el audio se arma como string base64 EN MEMORIA (~1.33x + string intermedio); con el
+    // tope anterior de 25 MB eso rondaba ~33 MB de string y arriesgaba OOM en la edge function.
+    const MAX_AUDIO_BYTES = 10 * 1024 * 1024; // 10 MB
     if (audioFile.size > MAX_AUDIO_BYTES) {
-      throw new ValidationError("el audio supera el tamaño máximo (25 MB)");
+      throw new ValidationError("el audio supera el tamaño máximo (10 MB). Probá con una nota de voz más corta.");
     }
 
     // Determine MIME type
@@ -98,7 +100,14 @@ serve(async (req) => {
     if (!response.ok) {
       const errText = await response.text();
       console.error("AI transcription error:", response.status, errText);
-      throw new Error(`Transcription failed: ${response.status}`);
+      // m2: motivo entendible para el usuario (el front lo muestra en el toast). El detalle real
+      // ya quedó logueado arriba; acá no se filtra nada del proveedor.
+      return errorResponse(
+        response.status === 429
+          ? "el servicio de transcripción está saturado. Esperá un momento y probá de nuevo."
+          : "el servicio de transcripción no pudo procesar el audio. Probá de nuevo en un rato.",
+        502,
+      );
     }
 
     const aiData = await response.json();

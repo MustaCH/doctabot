@@ -4,6 +4,7 @@ import { corsHeaders, handleOptions } from "../_shared/cors.ts";
 import { errorResponse, safeError } from "../_shared/http.ts";
 import { reportEdgeErrorBg } from "../_shared/observability.ts";
 import { dedupeByExternalId } from "./dedupe.ts";
+import { shouldAbortCleanup, CLEANUP_MAX_DELETE_RATIO } from "./cleanup-guard.ts";
 
 const SCRAPE_BASE_URL = "http://remaxdocta-scrapingdocta-zos1k5-a90019-31-97-164-164.sslip.io/api/scrape";
 
@@ -392,32 +393,12 @@ serve(async (req) => {
   }
 });
 
-/** Run after all operations complete: delete stale props, clean old logs, notify OVERLORD */
+/** Run after all operations complete: delete stale props (con guardarraíl), clean old logs, notify OVERLORD */
 async function runCleanup(supabase: any, batchId: string, batchTimestamp: string) {
   await writeLog(supabase, batchId, `🧹 Limpiando propiedades obsoletas...`, "info");
 
-  const { data: staleData, error: deleteError } = await supabase
-    .from("properties")
-    .delete()
-    .lt("last_seen_at", batchTimestamp)
-    .select("id");
-
-  let deleted = 0;
-  if (deleteError) {
-    await writeLog(supabase, batchId, `❌ Error en limpieza: ${deleteError.message}`, "error");
-  } else {
-    deleted = staleData?.length ?? 0;
-    await writeLog(supabase, batchId, `🗑️ ${deleted} propiedades obsoletas eliminadas`, deleted > 0 ? "warning" : "info");
-  }
-
-  // Count total upserted + hard errors logged for this batch
-  const { data: upsertLogs } = await supabase
-    .from("scraping_logs")
-    .select("properties_count")
-    .eq("batch_id", batchId)
-    .like("message", "%guardadas%");
-  const totalUpserted = (upsertLogs ?? []).reduce((sum: number, l: any) => sum + (l.properties_count ?? 0), 0);
-
+  // Errores de página de ESTA corrida — se consultan ANTES del delete porque alimentan el
+  // guardarraíl del cleanup (y después el status del batch).
   const { data: errorLogs } = await supabase
     .from("scraping_logs")
     .select("message")
@@ -427,11 +408,62 @@ async function runCleanup(supabase: any, batchId: string, batchTimestamp: string
   const errorCount = errorLogs?.length ?? 0;
   const firstError = errorLogs?.[0]?.message ?? null;
 
+  // GUARDARRAÍL del cleanup (ver cleanup-guard.ts): si la corrida perdió páginas o el % a borrar
+  // supera el umbral (default 30%, override por env CLEANUP_MAX_DELETE_RATIO), NO se borra nada —
+  // mejor conservar filas obsoletas un día más que vaciar media tabla por una corrida incompleta.
+  const envRatio = parseFloat(Deno.env.get("CLEANUP_MAX_DELETE_RATIO") ?? "");
+  const maxRatio = isFinite(envRatio) && envRatio > 0 ? envRatio : CLEANUP_MAX_DELETE_RATIO;
+  // Total de páginas de la corrida (m4): suma de los logs "📄 {op}: N páginas totales" (uno por
+  // operación). Alimenta la tolerancia proporcional de errores de página del guardarraíl (≤5%
+  // del total no aborta); si no se puede resolver, el guardarraíl cae al criterio binario.
+  const { data: pageLogs } = await supabase
+    .from("scraping_logs")
+    .select("total_pages")
+    .eq("batch_id", batchId)
+    .like("message", "%páginas totales%");
+  const totalPages = (pageLogs ?? []).reduce((sum: number, l: any) => sum + (l.total_pages ?? 0), 0);
+  const [{ count: staleCount }, { count: totalCount }] = await Promise.all([
+    supabase.from("properties").select("*", { count: "exact", head: true }).lt("last_seen_at", batchTimestamp),
+    supabase.from("properties").select("*", { count: "exact", head: true }),
+  ]);
+  const guard = shouldAbortCleanup({ pageErrors: errorCount, staleCount: staleCount ?? 0, totalCount: totalCount ?? 0, totalPages, maxRatio });
+
+  let deleted = 0;
+  // m4: el error del delete de limpieza se cuenta en el status del batch (antes se logueaba
+  // DESPUÉS de computar errorCount y la corrida igual cerraba "success").
+  let cleanupErrors = 0;
+  if (guard.abort) {
+    console.warn("cleanup abortado:", guard.reason);
+    await writeLog(supabase, batchId, `⛔ Cleanup ABORTADO — ${guard.reason}. Ninguna propiedad fue eliminada; se reintenta en la próxima corrida.`, "warning");
+  } else {
+    const { data: staleData, error: deleteError } = await supabase
+      .from("properties")
+      .delete()
+      .lt("last_seen_at", batchTimestamp)
+      .select("id");
+    if (deleteError) {
+      cleanupErrors = 1;
+      await writeLog(supabase, batchId, `❌ Error en limpieza: ${deleteError.message}`, "error");
+    } else {
+      deleted = staleData?.length ?? 0;
+      await writeLog(supabase, batchId, `🗑️ ${deleted} propiedades obsoletas eliminadas`, deleted > 0 ? "warning" : "info");
+    }
+  }
+
+  // Count total upserted for this batch
+  const { data: upsertLogs } = await supabase
+    .from("scraping_logs")
+    .select("properties_count")
+    .eq("batch_id", batchId)
+    .like("message", "%guardadas%");
+  const totalUpserted = (upsertLogs ?? []).reduce((sum: number, l: any) => sum + (l.properties_count ?? 0), 0);
+
   // status:
   //   error   → la corrida no produjo nada (VPS scraper caído / todas las páginas fallaron)
-  //   partial → guardó datos pero perdió alguna página (degradado, no caída total)
+  //   partial → guardó datos pero perdió alguna página O falló el delete de limpieza (m4)
   //   success → corrida limpia
-  const status = totalUpserted === 0 ? "error" : (errorCount > 0 ? "partial" : "success");
+  const totalErrors = errorCount + cleanupErrors;
+  const status = totalUpserted === 0 ? "error" : (totalErrors > 0 ? "partial" : "success");
   const durationSeconds = Math.max(
     0,
     Math.round((Date.now() - new Date(batchTimestamp).getTime()) / 1000),
@@ -461,7 +493,7 @@ async function runCleanup(supabase: any, batchId: string, batchTimestamp: string
         : status === "partial"
         ? {
             title: "Scraper diario degradado",
-            message: `Corrida ${batchTimestamp}: ${totalUpserted} actualizadas, ${deleted} eliminadas en ${durTxt}, pero con ${errorCount} errores de página (se perdieron datos). Primer error: ${firstError ?? "n/d"}.`,
+            message: `Corrida ${batchTimestamp}: ${totalUpserted} actualizadas, ${deleted} eliminadas en ${durTxt}, pero con ${errorCount} errores de página${cleanupErrors ? " y un error en el delete de limpieza" : ""} (se perdieron datos). Primer error: ${firstError ?? "n/d"}.`,
             type: "info",
           }
         : {

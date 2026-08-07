@@ -40,3 +40,7 @@ package-lock.json
 # Supabase CLI: estado local del link al proyecto (project-ref, pooler-url,
 # versiones de CLI/gotrue/postgres). Lo genera la CLI, no es código del proyecto.
 supabase/.temp/
+
+# Claude Code: config/estado local del harness (agentes, settings de sesión).
+# No es código del proyecto; un `git add -A` no debe meterlo al repo.
+.claude/
