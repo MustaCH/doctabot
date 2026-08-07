@@ -121,7 +121,18 @@ export async function transcribeAudio(blob: Blob): Promise<string> {
     body: formData,
   });
 
-  if (!resp.ok) throw new Error("transcription_failed");
+  if (!resp.ok) {
+    // m2: propagamos el `error` real del body (ej. "el audio supera el tamaño máximo (10 MB)…")
+    // para que el caller pueda mostrarle al usuario el motivo en vez de un toast genérico.
+    let reason = "";
+    try {
+      const body = await resp.json();
+      if (typeof body?.error === "string") reason = body.error;
+    } catch { /* body no-JSON: seguimos con el mensaje genérico */ }
+    const err = new Error(reason || "transcription_failed");
+    err.name = "TranscriptionError";
+    throw err;
+  }
   const data = await resp.json();
   return data.text || "";
 }

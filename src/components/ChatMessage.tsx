@@ -5,28 +5,12 @@ import PropertyCard from "@/components/PropertyCard";
 import ContactCard from "@/components/ContactCard";
 import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
 import { parseContactCardSegments } from "@/lib/contact-card-parse";
+import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsappNumber } from "@/lib/draft-parse";
+import { injectAssociate } from "@/lib/inject-associate";
 import alanAvatar from "@/assets/alan-avatar.png";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
 import type { MsgAttachment } from "@/lib/stream-chat";
-
-/** Inject ?associate=agentCode into any property URL that doesn't already have it */
-function injectAssociate(text: string, agentCode: string | null): string {
-  if (!agentCode) return text;
-  return text.replace(
-    /(https?:\/\/[^\s"')>\]]+)/g,
-    (url) => {
-      if (!/remax\.com\.ar/i.test(url)) return url;
-      // Strip trailing punctuation captured accidentally
-      const trailingMatch = url.match(/([.,;!?)\]]+)$/);
-      const trailing = trailingMatch ? trailingMatch[1] : "";
-      const cleanUrl = trailing ? url.slice(0, -trailing.length) : url;
-      if (cleanUrl.includes(`associate=`)) return url; // already has associate param
-      const sep = cleanUrl.includes("?") ? "&" : "?";
-      return `${cleanUrl}${sep}associate=${encodeURIComponent(agentCode)}${trailing}`;
-    }
-  );
-}
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -207,7 +191,13 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
             </div>
           )}
           {audioUrl ? (
-            <AudioBubble audioUrl={audioUrl} isTranscribing={isTranscribing} />
+            <>
+              <AudioBubble audioUrl={audioUrl} isTranscribing={isTranscribing} />
+              {/* m3: el texto transcripto se muestra debajo del reproductor (antes se descartaba). */}
+              {content && content !== "(mensaje de voz)" && (
+                <p className="whitespace-pre-wrap break-words overflow-hidden mt-1.5 text-[13px] opacity-90">{content}</p>
+              )}
+            </>
           ) : isUser ? (
             content !== "(imagen adjunta)" && content !== "(archivo adjunto)" && content !== "(mensaje de voz)" && <p className="whitespace-pre-wrap break-words overflow-hidden">{content}</p>
           ) : (
@@ -216,10 +206,12 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
         </div>
         {!isUser && (
           <div className="flex items-center gap-2">
-            <CopyButton content={content} />
+            {/* M2: Copiar/Citar trabajan sobre el texto SIN marcadores — el portapapeles y el
+                bloque [REFERENCIA] que viaja al modelo no deben llevar <<<...>>> crudos. */}
+            <CopyButton content={stripAllMarkers(content)} />
             {onReply && (
               <button
-                onClick={() => onReply(content)}
+                onClick={() => onReply(stripAllMarkers(content))}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
               >
                 <Reply className="h-3 w-3" />
@@ -233,53 +225,6 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
   );
 };
 
-const DRAFT_START = "<<<DRAFT_START>>>";
-const DRAFT_END = "<<<DRAFT_END>>>";
-const WHATSAPP_TO_RE = /<<<WHATSAPP_TO:([\d+]+)>>>/;
-
-type DraftSegment = { type: "text"; text: string } | { type: "draft"; draft: string; whatsappNumber?: string };
-
-/** Extracts ALL draft blocks from content, returning interleaved text + draft segments */
-function extractMultipleDraftBlocks(content: string): DraftSegment[] | null {
-  if (!content.includes(DRAFT_START)) return null;
-
-  const segments: DraftSegment[] = [];
-  let remaining = content;
-
-  while (remaining.length > 0) {
-    const startIdx = remaining.indexOf(DRAFT_START);
-    if (startIdx === -1) {
-      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
-      break;
-    }
-
-    let beforeDraft = remaining.slice(0, startIdx).trim();
-    const endIdx = remaining.indexOf(DRAFT_END, startIdx);
-    if (endIdx === -1) {
-      if (remaining.trim()) segments.push({ type: "text", text: remaining.trim() });
-      break;
-    }
-
-    let whatsappNumber: string | undefined;
-    const waMatch = beforeDraft.match(WHATSAPP_TO_RE);
-    if (waMatch) {
-      whatsappNumber = waMatch[1];
-      beforeDraft = beforeDraft.replace(WHATSAPP_TO_RE, "").trim();
-    }
-
-    if (beforeDraft) segments.push({ type: "text", text: beforeDraft });
-
-    const draft = remaining.slice(startIdx + DRAFT_START.length, endIdx).trim();
-    if (draft.length >= 20) {
-      segments.push({ type: "draft", draft, whatsappNumber });
-    }
-
-    remaining = remaining.slice(endIdx + DRAFT_END.length);
-  }
-
-  return segments.length > 0 ? segments : null;
-}
-
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg">
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
@@ -288,20 +233,23 @@ const WhatsAppIcon = () => (
 
 const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumber?: string }) => {
   const [copied, setCopied] = useState(false);
+  // m5: mensajes viejos en DB pueden traer un WHATSAPP_TO no numérico ("hola mundo") — solo
+  // mostramos el header/botón de WhatsApp si el número parece un teléfono real.
+  const validNumber = normalizeWhatsappNumber(whatsappNumber);
   const handleCopy = async () => {
     await navigator.clipboard.writeText(draft);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
   const handleWhatsApp = () => {
-    const url = `https://wa.me/${whatsappNumber?.replace(/\+/g, "")}/?text=${encodeURIComponent(draft)}`;
+    const url = `https://wa.me/${validNumber?.replace(/\+/g, "")}/?text=${encodeURIComponent(draft)}`;
     window.open(url, "_blank");
   };
   return (
     <div className="mt-2 rounded-xl border border-border bg-background overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
         <span className="text-xs font-medium text-muted-foreground">
-          {whatsappNumber ? "💬 Mensaje de WhatsApp" : "✉️ Texto listo para copiar"}
+          {validNumber ? "💬 Mensaje de WhatsApp" : "✉️ Texto listo para copiar"}
         </span>
         <div className="flex items-center gap-1.5">
           <button
@@ -311,7 +259,7 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied ? "¡Copiado!" : "Copiar"}
           </button>
-          {whatsappNumber && (
+          {validNumber && (
             <button
               onClick={handleWhatsApp}
               className="flex items-center justify-center h-[28px] w-[28px] rounded-md bg-[#25D366] text-white hover:bg-[#20BD5A] transition-colors"
@@ -333,15 +281,18 @@ const AssistantContent = ({ content, clientPhone }: { content: string; clientPho
   // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
   const whatsappPhone = clientPhone || undefined;
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
-  const multiCards = useMemo(() => parseMultiplePropertyCards(processedContent), [processedContent]);
-  const propertyData = useMemo(() => !multiCards ? parsePropertyCard(processedContent) : null, [processedContent, multiCards]);
-  // Contact cards: solo si no hubo property cards ni drafts en la burbuja (los drafts se extraen
-  // después; si conviven, gana el draft para no dejar los marcadores <<<DRAFT_*>>> crudos).
+  // Precedencia: los drafts GANAN. Si la burbuja contiene cualquier marcador <<<...>>> de borrador,
+  // los parsers de tarjetas (property/contact) no corren — si no, una campaña con ≥2 🏠 dentro de
+  // borradores activaba parseMultiplePropertyCards, el parseo por bloque fallaba y los marcadores
+  // se veían crudos (ticket URGENT marcadores renderizados).
+  const hasDrafts = useMemo(() => hasDraftMarkers(processedContent), [processedContent]);
+  const draftSegments = useMemo(() => hasDrafts ? parseDraftSegments(processedContent) : null, [hasDrafts, processedContent]);
+  const multiCards = useMemo(() => !hasDrafts ? parseMultiplePropertyCards(processedContent) : null, [hasDrafts, processedContent]);
+  const propertyData = useMemo(() => !hasDrafts && !multiCards ? parsePropertyCard(processedContent) : null, [hasDrafts, processedContent, multiCards]);
   const contactSegments = useMemo(
-    () => !multiCards && !propertyData && !processedContent.includes(DRAFT_START) ? parseContactCardSegments(processedContent) : null,
-    [processedContent, multiCards, propertyData]
+    () => !hasDrafts && !multiCards && !propertyData ? parseContactCardSegments(processedContent) : null,
+    [hasDrafts, processedContent, multiCards, propertyData]
   );
-  const draftSegments = useMemo(() => !propertyData && !multiCards && !contactSegments ? extractMultipleDraftBlocks(processedContent) : null, [processedContent, propertyData, multiCards, contactSegments]);
 
   if (multiCards) {
     return (
@@ -406,7 +357,7 @@ const AssistantContent = ({ content, clientPhone }: { content: string; clientPho
       <ReactMarkdown components={{
         a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-600 dark:!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
         img: ({ src, alt }) => <img src={src} alt={alt || ""} className="w-full max-h-48 object-cover rounded-xl" loading="lazy" />,
-      }}>{processedContent}</ReactMarkdown>
+      }}>{stripAllMarkers(processedContent)}</ReactMarkdown>
     </div>
   );
 };

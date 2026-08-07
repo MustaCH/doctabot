@@ -105,4 +105,33 @@ describe("useChatMessages — indicador 'Alan trabajando' (isWorking)", () => {
 
     await act(async () => { await streamOpts.onDone(); resolveStream(); });
   });
+
+  // M1: entre setIsStreaming(true) y el streamChat hay awaits (getSession, persistAttachments,
+  // insert). Si alguno tira y queda fuera del try, isStreaming se queda en true PARA SIEMPRE y el
+  // input se deshabilita. Estos tests fijan que cualquier fallo ahí libera el estado.
+  it("M1: si getSession tira antes del stream, isStreaming no queda trabado", async () => {
+    const { result } = setup();
+    h.getSession.mockRejectedValueOnce(new Error("session boom"));
+    await act(async () => { await result.current.handleSend("hola"); });
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.isWorking).toBe(false);
+    expect(h.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("M1: si el insert del mensaje TIRA (excepción, no error de retorno), isStreaming se libera", async () => {
+    const { result } = setup();
+    h.insert.mockRejectedValueOnce(new Error("db down"));
+    await act(async () => { await result.current.handleSend("hola"); });
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.isWorking).toBe(false);
+    expect(h.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("M1: el insert que devuelve error (sin tirar) también libera isStreaming y no streamea", async () => {
+    const { result } = setup();
+    h.insert.mockResolvedValueOnce({ error: { message: "rls" } });
+    await act(async () => { await result.current.handleSend("hola"); });
+    expect(result.current.isStreaming).toBe(false);
+    expect(h.streamChat).not.toHaveBeenCalled();
+  });
 });

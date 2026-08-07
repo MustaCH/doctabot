@@ -202,7 +202,9 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     ...data,
     user_id: userId,
     is_client: destination === "client",
-    status: destination === "client" ? clientStatus : "cold",
+    // Clientes: el status elegido en el diálogo. Contactos: "warm" (default del sistema) —
+    // antes se forzaban a "cold", lo que los excluía de cruces y campañas sin razón.
+    status: destination === "client" ? clientStatus : "warm",
   });
 
   const runInsert = async (toImport: ParsedRow[]) => {

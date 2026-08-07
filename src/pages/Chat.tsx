@@ -223,7 +223,8 @@ const Chat = () => {
                   <button
                     key={label}
                     onClick={() => handleSend(label)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent active:scale-[0.97]"
+                    disabled={isStreaming || isWorking}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                     {label}

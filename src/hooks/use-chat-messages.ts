@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
+import { MSG_BREAK } from "@/lib/stream-markers";
+import { splitBubbles } from "@/lib/draft-parse";
 import type { Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { feedbackReceive } from "@/hooks/use-feedback";
@@ -119,6 +121,15 @@ export function useChatMessages(
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [quotedText, setQuotedText] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Guarda SÍNCRONA anti doble-envío: isStreaming se setea recién después de varios awaits
+  // (createConversation / processAttachments), así que un doble tap colaba dos envíos.
+  // Se toma al entrar a handleSend/handleSendAudio y se libera en el finally.
+  const sendingRef = useRef(false);
+  // m4: fila de la última nota de voz cuya transcripción FALLÓ. Si el usuario regraba enseguida
+  // (misma conversación), el reintento ACTUALIZA esa fila en vez de insertar otra — evita notas
+  // duplicadas en el historial. Trade-off asumido: el audio anterior queda huérfano en Storage
+  // (no se borra acá para mantener el flujo simple; lo cubre una limpieza batch futura).
+  const failedVoiceRef = useRef<{ id: string; convId: string } | null>(null);
   const skipNextLoadRef = useRef(false);
   const mountedRef = useRef(true);
   const streamInterruptedRef = useRef(false);
@@ -144,14 +155,16 @@ export function useChatMessages(
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
     if (data) {
-      const MSG_BREAK = "===MSG_BREAK===";
       const LEGACY_BREAK = "\n\n---\n\n";
       const expanded: Msg[] = [];
       for (const msg of data) {
         if (msg.role === "assistant" && (msg.content.includes(MSG_BREAK) || msg.content.includes(LEGACY_BREAK))) {
-          // Split by current separator first, then legacy
-          const separator = msg.content.includes(MSG_BREAK) ? MSG_BREAK : LEGACY_BREAK;
-          const parts = msg.content.split(separator);
+          // splitBubbles es consciente de drafts: un ===MSG_BREAK=== dentro de una región
+          // <<<DRAFT_START>>>…<<<DRAFT_END>>> NO corta (paridad con MarkerStream en streaming —
+          // antes el split plano hacía que el mismo mensaje se viera distinto al recargar).
+          const parts = msg.content.includes(MSG_BREAK)
+            ? splitBubbles(msg.content)
+            : msg.content.split(LEGACY_BREAK);
           for (const part of parts) {
             if (part.trim()) expanded.push({ role: "assistant", content: part.trim() });
           }
@@ -244,8 +257,16 @@ export function useChatMessages(
   };
 
   const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
-    if (isStreaming) return;
+    if (isStreaming || sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await doSend(text, chatAttachments);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
 
+  const doSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
     let convId = activeConvId;
     if (!convId) {
       try {
@@ -312,37 +333,41 @@ export function useChatMessages(
     setIsStreaming(true);
     setWorking(true); // turno arrancando: indicador hasta el primer token
 
-    // Subimos los adjuntos a Storage para poder reconstruirlos al recargar.
-    const { data: { session } } = await supabase.auth.getSession();
-    const attachmentRefs = session?.user.id
-      ? await persistAttachments(session.user.id, convId, msgAttachments)
-      : null;
-
-    // Persistimos el mensaje del usuario ANTES de arrancar el stream (orden garantizado:
-    // user antes que assistant). Si falla, no streameamos → evitamos un assistant sin user
-    // y no perdemos el mensaje en silencio.
-    const { error: userInsertError } = await supabase.from("messages").insert({
-      conversation_id: convId,
-      role: "user",
-      content: displayText,
-      ai_content: aiForPersist,
-      attachments: (attachmentRefs as Json) ?? null,
-    });
-    if (userInsertError) {
-      console.error("Error guardando mensaje del usuario:", userInsertError);
-      toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
-      if (mountedRef.current) setIsStreaming(false);
-      setWorking(false);
-      return;
-    }
-
     let assistantContent = "";
     let allAssistantMessages: string[] = [];
     let needsNewBubble = false;
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // El try envuelve TODO lo que viene después de setIsStreaming(true): entre medio hay awaits
+    // (getSession, persistAttachments con atob, insert) que pueden tirar — si quedaban fuera del
+    // try, isStreaming quedaba en true para siempre y el input se deshabilitaba (M1).
     try {
+      // Subimos los adjuntos a Storage para poder reconstruirlos al recargar.
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
+      const attachmentRefs = session?.user.id
+        ? await persistAttachments(session.user.id, convId, msgAttachments)
+        : null;
+
+      // Persistimos el mensaje del usuario ANTES de arrancar el stream (orden garantizado:
+      // user antes que assistant). Si falla, no streameamos → evitamos un assistant sin user
+      // y no perdemos el mensaje en silencio.
+      const { error: userInsertError } = await supabase.from("messages").insert({
+        conversation_id: convId,
+        role: "user",
+        content: displayText,
+        ai_content: aiForPersist,
+        attachments: (attachmentRefs as Json) ?? null,
+      });
+      if (userInsertError) {
+        console.error("Error guardando mensaje del usuario:", userInsertError);
+        toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+        if (mountedRef.current) setIsStreaming(false);
+        setWorking(false);
+        return;
+      }
+
       const aiMessages = [...historyForAI(messages), userMsg];
       await streamChat({
         messages: aiMessages,
@@ -392,8 +417,16 @@ export function useChatMessages(
   };
 
   const handleSendAudio = async (blob: Blob, localUrl: string) => {
-    if (isStreaming || isTranscribing) return;
+    if (isStreaming || isTranscribing || sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await doSendAudio(blob, localUrl);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
 
+  const doSendAudio = async (blob: Blob, localUrl: string) => {
     let convId = activeConvId;
     if (!convId) {
       try {
@@ -406,17 +439,85 @@ export function useChatMessages(
       }
     }
 
+    // m4: reintento tras un fallo de transcripción en esta misma conversación → la burbuja
+    // nueva REEMPLAZA la anterior fallida (y su fila en DB se actualiza en vez de duplicarse).
+    const isRetry = failedVoiceRef.current?.convId === convId;
     const audioMsg: Msg = { role: "user", content: "(mensaje de voz)", audioUrl: localUrl };
-    setMessages((prev) => [...prev, audioMsg]);
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (isRetry && last?.role === "user" && last.audioUrl && last.content === "(mensaje de voz)") {
+        return prev.map((m, i) => (i === prev.length - 1 ? audioMsg : m));
+      }
+      return [...prev, audioMsg];
+    });
     setIsTranscribing(true);
 
     try {
-      const transcript = await transcribeAudio(blob);
-      if (!transcript) {
-        toast.error("No se pudo transcribir el audio.");
+      // Persistimos la nota de voz ANTES de transcribir: el audio va a Storage y la fila entra en
+      // `messages` con un placeholder. Así, si la transcripción falla, el mensaje NO desaparece al
+      // recargar (antes el insert recién ocurría después de transcribir y la nota se perdía).
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
+      const audioRefs = session?.user.id
+        ? await persistAudio(session.user.id, convId!, blob)
+        : null;
+
+      let insertedId: string;
+      if (isRetry && failedVoiceRef.current) {
+        // Reintento: actualizamos la fila fallida con el audio nuevo (sin insertar otra).
+        insertedId = failedVoiceRef.current.id;
+        const { error: retryUpdateError } = await supabase
+          .from("messages")
+          .update({ attachments: (audioRefs as Json) ?? null })
+          .eq("id", insertedId);
+        if (retryUpdateError) {
+          console.error("Error actualizando la nota de voz reintentada:", retryUpdateError);
+          toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+          setIsTranscribing(false);
+          return;
+        }
+      } else {
+        const { data: inserted, error: userInsertError } = await supabase
+          .from("messages")
+          .insert({ conversation_id: convId!, role: "user", content: "(mensaje de voz)", attachments: (audioRefs as Json) ?? null })
+          .select("id")
+          .single();
+        if (userInsertError || !inserted) {
+          console.error("Error guardando mensaje de voz del usuario:", userInsertError);
+          toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
+          setIsTranscribing(false);
+          return;
+        }
+        insertedId = inserted.id;
+      }
+
+      // m2: la transcripción tiene su catch propio — la nota YA quedó guardada, así que el fallo
+      // acá no es "error de conexión con Alan" sino "no pude transcribir" con su motivo real.
+      let transcript: string;
+      try {
+        transcript = await transcribeAudio(blob);
+      } catch (transcribeErr: any) {
+        const motivo =
+          transcribeErr?.name === "TranscriptionError" && transcribeErr.message !== "transcription_failed"
+            ? transcribeErr.message
+            : null;
+        toast.error(
+          motivo
+            ? `La nota de voz quedó guardada, pero no pude transcribirla: ${motivo}`
+            : "La nota de voz quedó guardada, pero no pude transcribirla. Probá de nuevo.",
+        );
+        failedVoiceRef.current = { id: insertedId, convId: convId! };
         setIsTranscribing(false);
         return;
       }
+      if (!transcript) {
+        // La nota quedó persistida con su audio; solo faltó el texto. Avisamos sin descartar nada.
+        toast.error("No se pudo transcribir el audio. La nota de voz quedó guardada; probá de nuevo.");
+        failedVoiceRef.current = { id: insertedId, convId: convId! };
+        setIsTranscribing(false);
+        return;
+      }
+      failedVoiceRef.current = null;
 
       const displayContent = `🎙️ ${transcript}`;
       setMessages((prev) =>
@@ -428,20 +529,13 @@ export function useChatMessages(
       );
       setIsTranscribing(false);
 
-      // Subimos el audio a Storage para reconstruir el reproductor al recargar (mismo patrón que imágenes).
-      const { data: { session } } = await supabase.auth.getSession();
-      const audioRefs = session?.user.id
-        ? await persistAudio(session.user.id, convId!, blob)
-        : null;
-
-      // content = lo que se muestra ("🎙️ …"); ai_content = lo que ve la IA (transcript limpio);
-      // attachments = ref del audio en Storage para rehidratar el audioUrl firmado al recargar.
-      const { error: userInsertError } = await supabase.from("messages").insert({ conversation_id: convId!, role: "user", content: displayContent, ai_content: transcript, attachments: (audioRefs as Json) ?? null });
-      if (userInsertError) {
-        console.error("Error guardando mensaje de voz del usuario:", userInsertError);
-        toast.error("No se pudo guardar tu mensaje. Intentá de nuevo.");
-        return;
-      }
+      // Actualizamos el placeholder: content = lo que se muestra ("🎙️ …"); ai_content = lo que ve
+      // la IA (transcript limpio). El ref del audio ya quedó en attachments desde el insert.
+      const { error: updateError } = await supabase
+        .from("messages")
+        .update({ content: displayContent, ai_content: transcript })
+        .eq("id", insertedId);
+      if (updateError) console.error("Error actualizando transcript del mensaje de voz:", updateError);
 
       const msgsForAI: Msg[] = [...historyForAI(messages), { role: "user", content: transcript }];
       setIsStreaming(true);
