@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractListingSlugs, neutralizeFabricatedListings } from "./link-guardrail";
+import { extractListingSlugs, neutralizeFabricatedListings, validSlugSetFromUrls } from "./link-guardrail";
 
 describe("extractListingSlugs", () => {
   it("extrae slugs distintos de listings de remax (ignora otras URLs)", () => {
@@ -92,5 +92,47 @@ describe("neutralizeFabricatedListings", () => {
     const { text, removed } = neutralizeFabricatedListings("No hay propiedades que coincidan.", valid);
     expect(removed).toEqual([]);
     expect(text).toBe("No hay propiedades que coincidan.");
+  });
+});
+
+// Ticket link-guardrail por SLUG: la verificación contra la DB dejaba falsos positivos con
+// variantes legítimas de URL (http://, sin www, barra final, query params) porque comparaba
+// igualdad exacta de URL reconstruida. Ahora ambos lados se normalizan a slug.
+describe("validSlugSetFromUrls — normalización por slug (variantes legítimas de URL)", () => {
+  it("extrae el slug de variantes: http, sin www, barra final, query params, host en mayúsculas", () => {
+    const set = validSlugSetFromUrls([
+      "http://remax.com.ar/listings/depto-centro",
+      "https://www.remax.com.ar/listings/casa-arguello/",
+      "https://www.remax.com.ar/listings/ph-general-paz?associate=123",
+      "HTTPS://WWW.REMAX.COM.AR/listings/lote-manantiales",
+    ]);
+    expect(set).toEqual(new Set(["depto-centro", "casa-arguello", "ph-general-paz", "lote-manantiales"]));
+  });
+
+  it("nulls, vacíos y URLs que no son listings se ignoran", () => {
+    expect(validSlugSetFromUrls([null, undefined, "", "https://www.zonaprop.com.ar/inmuebles-venta.html"])).toEqual(new Set());
+  });
+
+  it("un slug más largo en la DB NO valida a un candidato más corto (comparación exacta de slug)", () => {
+    const set = validSlugSetFromUrls(["https://www.remax.com.ar/listings/casa-nueva-cordoba"]);
+    expect(set.has("casa-nueva-cordoba")).toBe(true);
+    expect(set.has("casa-nueva")).toBe(false);
+  });
+
+  it("integración: la variante legítima (http, sin www, barra final) valida y el link NO se neutraliza", () => {
+    const valid2 = validSlugSetFromUrls(["http://remax.com.ar/listings/depto-centro/"]);
+    const input = "Mirá [acá](https://www.remax.com.ar/listings/depto-centro?associate=420401250)";
+    const { text, removed } = neutralizeFabricatedListings(input, valid2);
+    expect(removed).toEqual([]);
+    expect(text).toBe(input);
+  });
+
+  it("integración: un slug realmente inexistente sigue neutralizado", () => {
+    const valid2 = validSlugSetFromUrls(["https://www.remax.com.ar/listings/depto-centro"]);
+    const { removed } = neutralizeFabricatedListings(
+      "Link: https://www.remax.com.ar/listings/dpto-centro",
+      valid2,
+    );
+    expect(removed).toEqual(["dpto-centro"]);
   });
 });

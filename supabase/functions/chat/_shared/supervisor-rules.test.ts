@@ -114,3 +114,13 @@ describe("buildPriorContextBlock", () => {
     expect(block).not.toContain("Usuario (anterior)");
   });
 });
+
+// M2: whatsappWithoutContactToolVerdict se ELIMINÓ — evaluaba el texto YA saneado por el
+// guardarraíl server-side (sanitizeWhatsappBlocks), así que solo veía bloques legítimos → 100%
+// falsos positivos + webhook n8n en cada WhatsApp normal. Este test blinda que la regla no vuelva.
+describe("regla WHATSAPP_TO-sin-tool eliminada (M2)", () => {
+  it("el módulo ya no exporta whatsappWithoutContactToolVerdict", async () => {
+    const mod = await import("./supervisor-rules");
+    expect((mod as any).whatsappWithoutContactToolVerdict).toBeUndefined();
+  });
+});

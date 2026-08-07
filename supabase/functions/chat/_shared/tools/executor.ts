@@ -26,6 +26,8 @@ import {
   phoneDedupKey,
   nameDedupKey,
   prepareContactBatch,
+  exactNameMatches,
+  parseEmailList,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -60,9 +62,82 @@ function registerContact(ctx: any, fullName: unknown, rawPhone: unknown): void {
 function toCardStub(ctx: any, property: any): any {
   if (!property) return property;
   if (!ctx.cardResults) ctx.cardResults = [];
-  ctx.cardResults.push(property);
+  // Dedup por id dentro del lote: la misma propiedad no genera dos tarjetas (ej. pool con
+  // filas repetidas o favoritos duplicados). Sin id no podemos dedupear → se agrega igual.
+  // Con lote FUSIONADO (tools distintas en el turno, ver beginCardBatch/M9) se aplica un cap
+  // de tamaño total para no volcar una respuesta interminable.
+  const id = property.id ?? null;
+  if (!id || !ctx.cardResults.some((p: any) => p?.id === id)) {
+    if (!ctx.cardBatchMerged || ctx.cardResults.length < CARD_MERGE_CAP) ctx.cardResults.push(property);
+  }
   const { url: _url, photo: _photo, photos: _photos, ...rest } = property;
   return rest;
+}
+
+/** Cap del lote cuando se fusionan tarjetas de tools distintas en el mismo turno (M9). */
+const CARD_MERGE_CAP = 30;
+
+/**
+ * Arranca un LOTE de tarjetas para `toolName`. Semántica (M9):
+ *  - MISMA tool que el lote existente (búsquedas sucesivas) → REEMPLAZA ("última búsqueda gana"):
+ *    dos search_properties en el mismo turno no deben volcar las tarjetas de ambas.
+ *  - TOOL DISTINTA con resultados en ambos lados ("favoritos de Juan + buscá similares") →
+ *    CONCATENA con dedup por id (cap CARD_MERGE_CAP): el texto describe ambas listas y "última
+ *    gana" suprimía las tarjetas de la primera.
+ * Se vacía EN EL LUGAR (length = 0) porque index.ts conserva la referencia al array.
+ * Solo se llama cuando la tool tiene resultados; el camino de 0 resultados usa clearCardBatch (M6).
+ */
+function beginCardBatch(ctx: any, toolName: string): void {
+  if (!ctx.cardResults) ctx.cardResults = [];
+  const merge = !!ctx.cardBatchTool && ctx.cardBatchTool !== toolName && ctx.cardResults.length > 0;
+  if (!merge) ctx.cardResults.length = 0;
+  ctx.cardBatchMerged = merge;
+  ctx.cardBatchTool = toolName;
+  // Señal para la red de seguridad de leftovers en index.ts (M7): el lote quedó fresco (la tool
+  // que lo produjo devolvió resultados). clearCardBatch la apaga.
+  ctx.cardBatchFresh = true;
+}
+
+/**
+ * Limpia el lote de tarjetas del turno (M6): una búsqueda con 0 resultados NO debe dejar pegado el
+ * lote de una tool anterior — el expansor anexaría tarjetas viejas debajo de un "no encontré".
+ */
+function clearCardBatch(ctx: any): void {
+  if (!ctx.cardResults) ctx.cardResults = [];
+  ctx.cardResults.length = 0;
+  ctx.cardBatchTool = null;
+  ctx.cardBatchMerged = false;
+  ctx.cardBatchFresh = false;
+}
+
+/**
+ * Baja la agenda COMPLETA (id, full_name, phone, is_client) del agente con paginación .range():
+ * PostgREST corta silenciosamente en ~1000 filas, así que un select "sin límite" NO es toda la
+ * agenda — con 1500 contactos, la validación de teléfonos y el dedup ignoraban 500. El matching por
+ * .in("phone", …) exacto se descartó por frágil (los teléfonos en DB vienen en formatos heterogéneos
+ * y la clave de comparación es normalizada), así que se pagina y se normaliza en memoria.
+ * La consumen: el guardarraíl de WhatsApp (index.ts, necesita phone+full_name), el dedup de
+ * create_client y el de create_clients_bulk. SIEMPRE scopeada por user_id.
+ */
+export async function fetchAllClientContactRows(
+  supabase: any,
+  userId: string,
+): Promise<{ rows: Array<{ id: string; full_name: string | null; phone: string | null; is_client: boolean | null }>; error: any }> {
+  const PAGE = 1000;
+  const MAX_PAGES = 50; // tope de sanidad: 50k filas
+  const rows: Array<{ id: string; full_name: string | null; phone: string | null; is_client: boolean | null }> = [];
+  for (let p = 0; p < MAX_PAGES; p++) {
+    const { data, error } = await supabase
+      .from("clients")
+      .select("id, full_name, phone, is_client")
+      .eq("user_id", userId)
+      .order("id", { ascending: true })
+      .range(p * PAGE, (p + 1) * PAGE - 1);
+    if (error) return { rows, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return { rows, error: null };
 }
 
 export async function executeTool(
@@ -81,6 +156,17 @@ export async function executeTool(
     clientRegistry?: Array<{ name: string; phone: string }>;
     // Última página de list_clients del turno → tarjetas de contacto (<<<CONTACTS>>>, ver card-render.ts).
     contactCardResults?: any[];
+    // Batch(es) de list_clients(mark_contacted) del turno: valor previo de last_contact_at +
+    // teléfono canónico por cliente, y filas del activity log con su client_id, para que
+    // sanitizeFinal (index.ts) pueda REVERTIR POR DIFERENCIA a los clientes sin borrador válido
+    // (M3). Si la tool corre 2+ veces en el turno, los batches se ACUMULAN (no se pisan).
+    markedBatch?: {
+      rows: Array<{ id: string; prev: string | null; phone: string | null }>;
+      logs: Array<{ id: string; client_id: string }>;
+    } | null;
+    // Eco de la ÚLTIMA search_properties del turno (applied_filters): lo consume el supervisor
+    // para la regla determinista de claims sin respaldo ("activas/perfectamente/100%").
+    lastSearchAppliedFilters?: Record<string, unknown> | null;
   }
 ): Promise<string> {
   const { supabase, userId, conversationId, getCalendarToken } = ctx;
@@ -97,19 +183,46 @@ export async function executeTool(
       const titleSearch = stripAccents(sanitizePattern(args.title));
       const operation = sanitizePattern(args.operation);
       const property_type = sanitizePattern(args.property_type);
-      const currency = sanitizePattern(args.currency);
+      let currency = sanitizePattern(args.currency);
       const office = stripAccents(sanitizePattern(args.office));
-      const min_price = safePositiveNumber(args.min_price);
+      const excludeOffice = stripAccents(sanitizePattern(args.exclude_office));
+      // min_price=0 significa "sin mínimo" (Gemini lo manda así): se trata como NO seteado — un 0
+      // no filtra nada pero disparaba el default de moneda USD y rompía alquileres en ARS (M8).
+      const minPriceRaw = safePositiveNumber(args.min_price);
+      const min_price = minPriceRaw === 0 ? null : minPriceRaw;
       const max_price = safePositiveNumber(args.max_price);
       const min_ambientes = safePositiveInt(args.min_ambientes);
       const max_ambientes = safePositiveInt(args.max_ambientes);
       const min_habitaciones = safePositiveInt(args.min_habitaciones);
       const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
-      // Traemos un POOL ordenado (created_at DESC) más grande que `limit` para poder
-      // re-rankear Docta-first ANTES de truncar (ver rankProperties / ticket 86aj1f0ve).
-      const POOL_FACTOR = 4;
-      const poolLimit = Math.min(limit * POOL_FACTOR, 200);
+      // Paginación ("mostrame más"): el pool se trae SIEMPRE desde 0 (rango [0, offset+pool)) y el
+      // offset se aplica DESPUÉS del re-rankeo Docta-first (B1). Si el offset desplazara el pool,
+      // el re-orden en memoria haría que cada página re-rankee un pool distinto → propiedades
+      // repetidas y salteadas entre páginas.
+      const offset = Math.max(0, safePositiveInt(args.offset) ?? 0);
+      // only_active (default true): el scraper escribe listing_status='active'; filas legacy
+      // pueden tener NULL y cuentan como activas. Tolerante al quirk Gemini de booleans string.
+      const onlyActive = !(args.only_active === false || args.only_active === "false");
+      // docta_first (default true, regla canónica de prioridad Docta): false SOLO cuando el
+      // agente pide explícitamente las de otras oficinas (típicamente con exclude_office).
+      const doctaFirst = !(args.docta_first === false || args.docta_first === "false");
+      // Moneda default USD cuando hay filtro de precio sin moneda explícita (el mercado de VENTA
+      // opera en USD): sin esto un max_price=120000 mezclaba precios en ARS. NO aplica cuando la
+      // operación es Alquiler / Alquiler temporario (ese mercado opera en pesos: forzar USD
+      // vaciaba los resultados — M8). Cuando aplica, se ecoa currency_defaulted en applied_filters.
+      const canonicalOperation = normalizeOperation(operation);
+      let currencyDefaulted = false;
+      if ((min_price !== null || max_price !== null) && !currency &&
+          canonicalOperation !== "Alquiler" && canonicalOperation !== "Alquiler temporario") {
+        currency = "USD";
+        currencyDefaulted = true;
+      }
+      // POOL ampliado (limit*10, cap 300) ordenado por created_at DESC para re-rankear
+      // Docta-first EN MEMORIA antes de truncar (ver rankProperties: se decidió pool grande +
+      // rank en memoria en vez de ORDER BY por expresión, que PostgREST no soporta sin columna
+      // computada). Ver ticket 86aj1f0ve.
+      const poolLimit = Math.min(limit * 10, 300);
 
       // Criterios MÚLTIPLES (separados por coma) y EXCLUSIONES (86ajbjq22): un cliente puede tener
       // preferred_zones="Córdoba, Sierras" o property_type_interest="Casa, Departamento", y pedir
@@ -126,7 +239,10 @@ export async function executeTool(
       const excludeZones = parseList(args.exclude_zones);
       const excludeNeighborhoods = parseList(args.exclude_neighborhoods);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean }) => {
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean; skipPrice?: boolean }) => {
+        // only_active: publicación activa = listing_status 'active' O NULL (filas legacy
+        // anteriores a la columna). Aplica a count y data por igual.
+        if (onlyActive) q = q.or("listing_status.eq.active,listing_status.is.null");
         if (!opts?.skipZone) {
           if (zones.length > 1) q = q.or(zones.map((z) => `zone.ilike.%${z}%`).join(","));
           else if (zone) q = q.ilike("zone", `%${zone}%`);
@@ -148,21 +264,83 @@ export async function executeTool(
         }
         if (propertyTypes.length > 1) q = q.or(propertyTypes.map((t) => `property_type.ilike.%${t}%`).join(","));
         else if (property_type) q = q.ilike("property_type", `%${property_type}%`);
-        if (min_price !== null) q = q.gte("price", min_price);
-        if (max_price !== null && !opts?.skipMaxPrice) q = q.lte("price", max_price);
-        if (currency) q = q.ilike("currency", `%${currency}%`);
+        if (min_price !== null && !opts?.skipPrice) q = q.gte("price", min_price);
+        if (max_price !== null && !opts?.skipMaxPrice && !opts?.skipPrice) q = q.lte("price", max_price);
+        if (currency && !opts?.skipPrice) q = q.ilike("currency", `%${currency}%`);
         if (min_ambientes !== null && !opts?.skipMinRooms) q = q.gte("ambientes", min_ambientes);
         if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
         if (min_habitaciones !== null && !opts?.skipMinRooms) q = q.gte("habitaciones", min_habitaciones);
         if (max_habitaciones !== null) q = q.lte("habitaciones", max_habitaciones);
         if (office) q = q.ilike("office", `%${office}%`);
+        if (excludeOffice) {
+          // m1: NOT ILIKE solo descarta filas con office NO nulo — office IS NULL también debe
+          // pasar el filtro ("que no sea de Docta" incluye las sin oficina cargada). Se sanea el
+          // término con el mismo criterio que orSafe para que el string de .or() no sea inyectable.
+          const exOr = excludeOffice.replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+          if (exOr) q = q.or(`office.is.null,office.not.ilike.%${exOr}%`);
+        }
         return q;
       };
+
+      // ECO DE FILTROS (honestidad de la búsqueda): applied_filters = lo que REALMENTE se aplicó
+      // (valores post-sanitización); ignored_filters = args que llegaron pero NO se aplicaron
+      // (no soportados o descartados por sanitización). Regla de prompt/supervisor: Alan solo
+      // puede afirmar criterios presentes en applied_filters.
+      const applied_filters: Record<string, unknown> = {};
+      if (zones.length > 1) applied_filters.zone = zones.join(", ");
+      else if (zone) applied_filters.zone = zone;
+      if (locality) applied_filters.locality = locality;
+      if (neighborhood) applied_filters.neighborhood = neighborhood;
+      if (city) applied_filters.city = city;
+      if (titleSearch) applied_filters.title = titleSearch;
+      if (operation) applied_filters.operation = canonicalOperation ?? operation;
+      if (propertyTypes.length > 1) applied_filters.property_type = propertyTypes.join(", ");
+      else if (property_type) applied_filters.property_type = property_type;
+      if (excludeZones.length) applied_filters.exclude_zones = excludeZones.join(", ");
+      if (excludeNeighborhoods.length) applied_filters.exclude_neighborhoods = excludeNeighborhoods.join(", ");
+      if (min_price !== null) applied_filters.min_price = min_price;
+      if (max_price !== null) applied_filters.max_price = max_price;
+      if (currency) applied_filters.currency = currency;
+      if (currencyDefaulted) applied_filters.currency_defaulted = true;
+      if (min_ambientes !== null) applied_filters.min_ambientes = min_ambientes;
+      if (max_ambientes !== null) applied_filters.max_ambientes = max_ambientes;
+      if (min_habitaciones !== null) applied_filters.min_habitaciones = min_habitaciones;
+      if (max_habitaciones !== null) applied_filters.max_habitaciones = max_habitaciones;
+      if (office) applied_filters.office = office;
+      if (excludeOffice) applied_filters.exclude_office = excludeOffice;
+      applied_filters.only_active = onlyActive;
+      applied_filters.docta_first = doctaFirst;
+      if (offset > 0) applied_filters.offset = offset;
+      applied_filters.limit = limit;
+
+      const SUPPORTED_ARGS = new Set([
+        "locality", "zone", "neighborhood", "city", "title", "operation", "property_type",
+        "exclude_zones", "exclude_neighborhoods", "min_price", "max_price", "currency",
+        "min_ambientes", "max_ambientes", "min_habitaciones", "max_habitaciones",
+        "office", "exclude_office", "docta_first", "only_active", "offset", "limit",
+      ]);
+      const ALWAYS_APPLIED = new Set(["only_active", "docta_first", "offset", "limit"]);
+      const ignored_filters: string[] = [];
+      for (const k of Object.keys(args ?? {})) {
+        const provided = (args as any)[k];
+        if (provided === null || provided === undefined || provided === "") continue;
+        if (!SUPPORTED_ARGS.has(k)) { ignored_filters.push(k); continue; }
+        if (!(k in applied_filters) && !ALWAYS_APPLIED.has(k)) ignored_filters.push(k);
+      }
+      // Eco para el supervisor (regla determinista de claims sin respaldo). Per-turno en toolCtx;
+      // la última búsqueda del turno gana (consistente con el lote de tarjetas).
+      ctx.lastSearchAppliedFilters = applied_filters;
+
+      // Validación min>max DESPUÉS de setear el eco (m2): así el supervisor ve los filtros del
+      // intento aunque la búsqueda no llegue a correr.
+      if (min_price !== null && max_price !== null && min_price > max_price) {
+        return JSON.stringify({ error: `Rango de precio inválido: min_price (${min_price}) es mayor que max_price (${max_price}). Corregí el rango y volvé a buscar.` });
+      }
 
       // Primary search. La query de datos trae un pool ordenado; la de count queda intacta
       // (head:true → total_count real del universo, sin order ni pool).
       let baseQuery = applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }));
-      let dataQuery = applyFilters(supabase.from("properties").select("*")).order("created_at", { ascending: false }).limit(poolLimit);
+      let dataQuery = applyFilters(supabase.from("properties").select("*")).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
 
       const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
       let totalCount = countResult.count ?? 0;
@@ -181,7 +359,7 @@ export async function executeTool(
         const fbData = applyFilters(
           supabase.from("properties").select("*"),
           { useLocalityAsTitle: true }
-        ).order("created_at", { ascending: false }).limit(poolLimit);
+        ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
         const [fbCountRes, fbDataRes] = await Promise.all([fbBase, fbData]);
         if (!fbDataRes.error && fbDataRes.data && fbDataRes.data.length > 0) {
           totalCount = fbCountRes.count ?? 0;
@@ -200,7 +378,7 @@ export async function executeTool(
         const fbData2 = applyFilters(
           supabase.from("properties").select("*"),
           { useLocalityAsTitle: true }
-        ).order("created_at", { ascending: false }).limit(poolLimit);
+        ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
         // For this fallback, search neighborhood term in title
         const [fbCountRes2, fbDataRes2] = await Promise.all([
           fbBase2.ilike("title", `%${neighborhood}%`),
@@ -224,7 +402,7 @@ export async function executeTool(
         const fbDataZ = applyFilters(
           supabase.from("properties").select("*"),
           { skipZone: true }
-        ).ilike("title", `%${zone}%`).order("created_at", { ascending: false }).limit(poolLimit);
+        ).ilike("title", `%${zone}%`).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
         const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
         if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
           totalCount = fbCountResZ.count ?? 0;
@@ -236,6 +414,21 @@ export async function executeTool(
 
       if (error) return JSON.stringify({ error: safeDbError(error) });
       if (!data || data.length === 0) {
+        // M6: 0 resultados limpia el lote de tarjetas del turno — sin esto, el expansor anexaba
+        // las tarjetas de una tool ANTERIOR debajo de un "no encontré".
+        clearCardBatch(ctx);
+        // M5: con offset > 0 y universo real > 0 no es "sin resultados": es el FIN de la
+        // paginación. Sin mensaje de sin-resultados ni relax_hints (serían falsos).
+        if (offset > 0 && totalCount > 0) {
+          return JSON.stringify({
+            end_of_results: true,
+            total_count: totalCount,
+            showing: 0,
+            applied_filters,
+            ...(ignored_filters.length ? { ignored_filters } : {}),
+            message: "No hay más resultados: ya se mostraron todas las propiedades de esta búsqueda.",
+          });
+        }
         // 0 resultados: si había al menos un filtro numérico, reintentamos 1-2 counts `exact`
         // relajando el filtro más probable (primero max_price, después min_habitaciones/ambientes)
         // para que Alan ofrezca una relajación concreta ("hay N opciones si subís ~15%").
@@ -252,14 +445,66 @@ export async function executeTool(
             if ((count ?? 0) > 0) relax_hints.push({ drop: min_habitaciones !== null ? "min_habitaciones" : "min_ambientes", count: count ?? 0 });
           }
         }
-        return JSON.stringify({ message: "No se encontraron propiedades con esos criterios.", total_count: 0, results: [], ...(relax_hints.length ? { relax_hints } : {}) });
+        // price_unset_count también en el camino de 0 resultados: un rango de precio puede haber
+        // dejado afuera SOLO las "a consultar" — dato clave para que Alan ofrezca algo.
+        let price_unset_count0 = 0;
+        if (min_price !== null || max_price !== null) {
+          const { count: unsetCount } = await applyFilters(
+            supabase.from("properties").select("*", { count: "exact", head: true }),
+            { skipPrice: true },
+          ).is("price", null);
+          price_unset_count0 = unsetCount ?? 0;
+        }
+        // M8: si la moneda se defaulteó a USD, un presupuesto en pesos pudo vaciar la búsqueda —
+        // sugerimos revisar la moneda en el mensaje.
+        const noResultsMsg = currencyDefaulted
+          ? "No se encontraron propiedades con esos criterios. Ojo: el filtro de precio asumió USD por default — si el presupuesto era en pesos, repetí la búsqueda con currency=\"ARS\"."
+          : "No se encontraron propiedades con esos criterios.";
+        return JSON.stringify({
+          message: noResultsMsg,
+          total_count: 0,
+          results: [],
+          applied_filters,
+          ...(ignored_filters.length ? { ignored_filters } : {}),
+          ...(price_unset_count0 > 0 ? { price_unset_count: price_unset_count0 } : {}),
+          ...(relax_hints.length ? { relax_hints } : {}),
+        });
       }
 
-      // Re-rankeamos el pool Docta-first y recién ahí truncamos a `limit`: una Docta fuera
-      // de la ventana de los más nuevos puede subir a la página visible. total_count sigue
-      // siendo el universo real (count head:true); `showing` es el slice final.
-      const ranked = rankProperties(data, limit);
+      // price_unset_count: propiedades que cumplen el RESTO de los filtros pero tienen precio
+      // NULL ("a consultar") — el gte/lte las excluye de total_count. Solo se calcula con filtro
+      // de precio activo (sin filtro de precio ya integran total_count). Se computa sobre los
+      // filtros base (sin los fallbacks por título: caso borde, se prefiere simple y honesto).
+      let price_unset_count = 0;
+      if ((min_price !== null || max_price !== null) && !titleFallbackTerm) {
+        const { count: unsetCount } = await applyFilters(
+          supabase.from("properties").select("*", { count: "exact", head: true }),
+          { skipPrice: true },
+        ).is("price", null);
+        price_unset_count = unsetCount ?? 0;
+      }
+
+      // Re-rankeamos el pool COMPLETO Docta-first (salvo docta_first=false) y recién ahí aplicamos
+      // la paginación: primero se ordena el universo [0, offset+limit) y después se corta la página
+      // con .slice(offset) (B1 — el rankeo estable garantiza páginas consecutivas sin solapamiento
+      // ni salteos). total_count sigue siendo el universo real (count head:true).
+      const ranked = rankProperties(data, offset + limit, doctaFirst).slice(offset);
+      if (ranked.length === 0) {
+        // M5: offset más allá del final del pool — fin de la paginación, no "sin resultados".
+        clearCardBatch(ctx);
+        return JSON.stringify({
+          end_of_results: true,
+          total_count: totalCount,
+          showing: 0,
+          applied_filters,
+          ...(ignored_filters.length ? { ignored_filters } : {}),
+          message: "No hay más resultados: ya se mostraron todas las propiedades de esta búsqueda.",
+        });
+      }
       const doctaCount = ranked.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
+      // Lote de tarjetas del turno: búsquedas sucesivas REEMPLAZAN ("última búsqueda gana"); si el
+      // lote venía de OTRA tool con resultados, se fusiona con dedup — ver beginCardBatch (M9).
+      beginCardBatch(ctx, "search_properties");
       // Cada resultado se registra y se devuelve como stub con `ref` (sin url/photo): el modelo
       // muestra la propiedad emitiendo <<<CARD:ref>>>, no escribiendo la tarjeta. Ver toCardStub / 86ajangkb.
       const results = ranked.map((p: any) => toCardStub(ctx, p));
@@ -268,6 +513,9 @@ export async function executeTool(
         total_count: totalCount,
         showing: results.length,
         docta_in_results: doctaCount,
+        applied_filters,
+        ...(ignored_filters.length ? { ignored_filters } : {}),
+        ...(price_unset_count > 0 ? { price_unset_count, price_unset_note: "Propiedades que cumplen el resto de los filtros pero con precio 'a consultar' (sin precio cargado): el filtro de precio no las puede evaluar. Ofrecéselas al agente como opción aparte." } : {}),
         results,
         ...(titleFallbackTerm ? { match_mode: "title_fallback", searched_term: titleFallbackTerm } : {}),
       });
@@ -291,7 +539,9 @@ export async function executeTool(
         .select("property_id, properties(*)")
         .eq("user_id", userId);
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      // Se muestran como tarjetas → cada propiedad va como stub con `ref` (ver toCardStub / 86ajangkb).
+      // Lote de tarjetas (replace misma tool / merge entre tools distintas, ver beginCardBatch/M9)
+      // + stub sin url/photo (ver toCardStub / 86ajangkb).
+      if ((data ?? []).length > 0) beginCardBatch(ctx, "get_favorites");
       const favorites = (data ?? []).map((f: any) => (f.properties ? { ...f, properties: toCardStub(ctx, f.properties) } : f));
       return JSON.stringify({ favorites });
     }
@@ -346,20 +596,26 @@ export async function executeTool(
       // fila (las agendas de los agentes venían llenándose de copias — hasta 10 por persona — y eso
       // rompía la rotación de campañas). Devolvemos el existente para que Alan lo diga con claridad.
       const newPk = phoneDedupKey(phone);
+      let dedupWarning: string | null = null;
       if (newPk) {
-        const { data: dupRows } = await supabase
-          .from("clients")
-          .select("id, full_name, phone, is_client")
-          .eq("user_id", userId)
-          .not("phone", "is", null);
-        const dup = (dupRows ?? []).find((r: any) => phoneDedupKey(r.phone) === newPk);
-        if (dup) {
-          return JSON.stringify({
-            success: false,
-            duplicate: true,
-            existing: { id: dup.id, full_name: dup.full_name },
-            message: `Ya existe "${dup.full_name}" con ese teléfono en la agenda. No lo dupliqué; si querés actualizar sus datos usá update_client.`,
-          });
+        // Agenda completa PAGINADA (cap ~1000 de PostgREST): sin esto, el dedup no veía las filas
+        // más allá de la primera página y se colaban duplicados en agendas grandes.
+        const { rows: dupRows, error: dupErr } = await fetchAllClientContactRows(supabase, userId);
+        if (dupErr) {
+          // m11: FAIL-OPEN — un error transitorio del chequeo de duplicados no debe bloquear el
+          // alta (el comportamiento histórico era crear directo). Se crea igual, con warning.
+          console.error("create_client dedup check error (fail-open):", dupErr);
+          dedupWarning = "No pude verificar duplicados por un error transitorio: lo creé igual. Si sospechás que ya existía, revisá la agenda.";
+        } else {
+          const dup = dupRows.find((r) => phoneDedupKey(r.phone) === newPk);
+          if (dup) {
+            return JSON.stringify({
+              success: false,
+              duplicate: true,
+              existing: { id: dup.id, full_name: dup.full_name },
+              message: `Ya existe "${dup.full_name}" con ese teléfono en la agenda. No lo dupliqué; si querés actualizar sus datos usá update_client.`,
+            });
+          }
         }
       }
       const { data, error } = await supabase
@@ -368,7 +624,12 @@ export async function executeTool(
         .select("id, full_name, status, client_type, is_client")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ success: true, client: data, message: `${is_client ? "Cliente" : "Contacto"} "${full_name}" creado correctamente.` });
+      return JSON.stringify({
+        success: true,
+        client: data,
+        message: `${is_client ? "Cliente" : "Contacto"} "${full_name}" creado correctamente.${dedupWarning ? ` ${dedupWarning}` : ""}`,
+        ...(dedupWarning ? { warning: dedupWarning } : {}),
+      });
     }
 
     case "create_clients_bulk": {
@@ -383,14 +644,13 @@ export async function executeTool(
       const isClient = args.is_client === false || args.is_client === "false" ? false : true;
 
       // Agenda existente → sets de dedup (teléfono; nombre solo para filas sin teléfono).
-      const { data: existing, error: exErr } = await supabase
-        .from("clients")
-        .select("full_name, phone")
-        .eq("user_id", userId);
+      // PAGINADA (cap ~1000 de PostgREST): en agendas grandes el dedup ignoraba todo lo que
+      // quedaba fuera de la primera página.
+      const { rows: existing, error: exErr } = await fetchAllClientContactRows(supabase, userId);
       if (exErr) return JSON.stringify({ error: safeDbError(exErr) });
       const existingPhones = new Set<string>();
       const existingNames = new Set<string>();
-      for (const r of (existing ?? []) as Array<{ full_name: string | null; phone: string | null }>) {
+      for (const r of existing) {
         const pk = phoneDedupKey(r.phone);
         if (pk) existingPhones.add(pk);
         const nk = nameDedupKey(r.full_name);
@@ -527,7 +787,32 @@ export async function executeTool(
           .update({ last_contact_at: new Date().toISOString() })
           .in("id", ids)
           .eq("user_id", userId);
-        if (!mErr) marked_contacted = ids.length;
+        if (!mErr) {
+          marked_contacted = ids.length;
+          // Auditoría: mismo registro que mark_client_contacted (historial visible en la ficha).
+          // Best-effort; guardamos id + client_id para poder borrar SOLO las filas de los clientes
+          // que se reviertan (M3: reversión por diferencia).
+          const { data: logRows } = await supabase
+            .from("client_activity_log")
+            .insert(ids.map((id: string) => ({ client_id: id, user_id: userId, action_type: "call_logged", description: "Tanda de campaña marcada por Alan (list_clients mark_contacted)" })))
+            .select("id, client_id");
+          // REVERSIBILIDAD del batch (M3): `clients` se seleccionó ANTES del update, así que
+          // c.last_contact_at es el valor previo; el teléfono canónico permite matchear contra los
+          // bloques <<<WHATSAPP_TO>>> sobrevivientes del texto final. sanitizeFinal (index.ts)
+          // revierte POR DIFERENCIA a los clientes sin borrador válido. Si la tool corre 2+ veces
+          // en el turno, los batches se ACUMULAN (dedup por id conservando el prev ORIGINAL: el
+          // segundo estampado pisó al primero y su "prev" ya sería el timestamp del primero).
+          const newRows = clients.map((c: any) => ({ id: c.id, prev: c.last_contact_at ?? null, phone: normalizePhone(c.phone) }));
+          const newLogs = ((logRows ?? []) as Array<{ id: string; client_id: string }>).map((r) => ({ id: r.id, client_id: r.client_id }));
+          if (ctx.markedBatch?.rows?.length) {
+            for (const r of newRows) {
+              if (!ctx.markedBatch.rows.some((x: { id: string }) => x.id === r.id)) ctx.markedBatch.rows.push(r);
+            }
+            ctx.markedBatch.logs.push(...newLogs);
+          } else {
+            ctx.markedBatch = { rows: newRows, logs: newLogs };
+          }
+        }
       }
 
       return JSON.stringify({
@@ -538,6 +823,8 @@ export async function executeTool(
         order,
         offset,
         ...(clientTypeArg ? { client_type: clientTypeArg } : {}),
+        // m10: los IDs marcados NO van al payload que ve el modelo (son datos opacos que podría
+        // transcribir mal); la reversión usa ctx.markedBatch, que nunca pasa por el modelo.
         ...(markContacted ? { marked_contacted } : {}),
       });
     }
@@ -768,8 +1055,22 @@ export async function executeTool(
       }
       if (!accessToken) return JSON.stringify({ error: "Gmail no conectado. El agente debe reconectar su cuenta desde el perfil para activar el envío de emails." });
 
-      const to = typeof args.to === "string" ? args.to.trim().slice(0, 500) : null;
-      if (!to || !to.includes("@")) return JSON.stringify({ error: "Email de destinatario inválido" });
+      // Validación real de destinatarios (anti header-injection CRLF): cada dirección debe pasar la
+      // regex de email — una "dirección" con \r\n/espacios (intento de inyectar Bcc/headers) se
+      // rechaza acá y el email NO se envía. buildMimeEmail además strippea CRLF (defensa en profundidad).
+      // m9: el tope se aplica POR DIRECCIÓN (cantidad), no con slice(0,500) del string crudo — el
+      // slice podía cortar una dirección al medio y convertirla en otra (inválida o, peor, válida
+      // y ajena). parseEmailList valida cada dirección entera; MAX_EMAIL_RECIPIENTS acota el abuso.
+      const MAX_EMAIL_RECIPIENTS = 20;
+      const rawTo = typeof args.to === "string" ? args.to.trim() : "";
+      const { emails: toEmails, invalid: toInvalid } = parseEmailList(rawTo);
+      if (toEmails.length === 0 || toInvalid.length > 0) {
+        return JSON.stringify({ error: `Email de destinatario inválido${toInvalid.length ? `: ${toInvalid.join(", ")}` : ""}. Verificá la dirección antes de enviar. El formato es emails puros separados por coma (sin "Nombre <mail>").` });
+      }
+      if (toEmails.length > MAX_EMAIL_RECIPIENTS) {
+        return JSON.stringify({ error: `Demasiados destinatarios (${toEmails.length}): el máximo es ${MAX_EMAIL_RECIPIENTS} por envío.` });
+      }
+      const to = toEmails.join(", ");
       const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 500) : null;
       if (!subject) return JSON.stringify({ error: "El asunto es requerido" });
       const rawBody = typeof args.body === "string" ? args.body.trim().slice(0, 50000) : null;
@@ -778,7 +1079,17 @@ export async function executeTool(
       // para que NUNCA lleguen al email real del cliente, aunque el modelo los filtre. Ver 86aj1f236.
       const body = stripChatMarkers(rawBody);
       if (!body) return JSON.stringify({ error: "El cuerpo del email es requerido" });
-      const cc = typeof args.cc === "string" ? args.cc.trim().slice(0, 500) : null;
+      let cc: string | null = null;
+      if (typeof args.cc === "string" && args.cc.trim()) {
+        const { emails: ccEmails, invalid: ccInvalid } = parseEmailList(args.cc.trim());
+        if (ccEmails.length === 0 || ccInvalid.length > 0) {
+          return JSON.stringify({ error: `Email de CC inválido${ccInvalid.length ? `: ${ccInvalid.join(", ")}` : ""}. Corregilo o mandá sin CC.` });
+        }
+        if (ccEmails.length > MAX_EMAIL_RECIPIENTS) {
+          return JSON.stringify({ error: `Demasiados destinatarios en CC (${ccEmails.length}): el máximo es ${MAX_EMAIL_RECIPIENTS}.` });
+        }
+        cc = ccEmails.join(", ");
+      }
 
       const encoded = buildMimeEmail(to, subject, body, cc);
 
@@ -1106,7 +1417,9 @@ export async function executeTool(
       if (args.status && validStatuses.includes(args.status)) query = query.eq("status", args.status);
       const { data, error } = await query;
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      // Se muestran como tarjetas → cada propiedad va como stub con `ref` (ver toCardStub / 86ajangkb).
+      // Lote de tarjetas (replace misma tool / merge entre tools distintas, ver beginCardBatch/M9)
+      // + stub sin url/photo (ver toCardStub / 86ajangkb).
+      if ((data ?? []).length > 0) beginCardBatch(ctx, "list_client_properties");
       const client_properties = (data ?? []).map((cp: any) => (cp.properties ? { ...cp, properties: toCardStub(ctx, cp.properties) } : cp));
       return JSON.stringify({ client_properties, total: client_properties.length });
     }
@@ -1187,9 +1500,15 @@ export async function executeTool(
       if (!resolvedClientId && args.client_name) {
         const search = sanitizePattern(args.client_name);
         if (search) {
-          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
-          if (found?.length) resolvedClientId = found[0].id;
-          else return JSON.stringify({ error: `No se encontró un cliente con nombre "${args.client_name}"` });
+          // m7: match EXACTO obligatorio (mismo criterio que delete_client) — el atajo "substring
+          // con match único" agendaba en un cliente CUALQUIERA ("Ana" → "Susana Pérez").
+          // limit(6) permite reportar "5+" sin traer toda la agenda.
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(6);
+          if (!found?.length) return JSON.stringify({ error: `No se encontró un cliente con nombre "${args.client_name}"` });
+          const exact = exactNameMatches(found as Array<{ id: string; full_name: string | null }>, args.client_name);
+          if (exact.length === 1) resolvedClientId = (exact[0] as any).id;
+          else if (exact.length > 1) return JSON.stringify({ error: `Hay ${exact.length} clientes con exactamente ese nombre. Identificá cuál (por teléfono/email) y volvé a llamar con el client_id.`, matches: exact });
+          else return JSON.stringify({ error: `No encontré una coincidencia EXACTA con "${args.client_name}". Coincidencias parciales (${found.length >= 6 ? "5+" : found.length}): ${found.slice(0, 5).map((c: any) => c.full_name).join(", ")}. Confirmá con el agente el nombre COMPLETO (o usá el client_id) y volvé a llamar.`, matches: found.slice(0, 5) });
         }
       }
       if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) return JSON.stringify({ error: "Se requiere client_id o client_name" });
@@ -1314,9 +1633,15 @@ export async function executeTool(
       if (!clientId && args.client_name) {
         const search = sanitizePattern(args.client_name);
         if (search) {
-          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(1);
-          if (found?.length) clientId = found[0].id;
-          else return JSON.stringify({ error: `No encontré un cliente con nombre "${args.client_name}"` });
+          // m7: match EXACTO obligatorio (mismo criterio que delete_client) — el atajo "substring
+          // con match único" anotaba en un cliente CUALQUIERA ("Ana" → "Susana Pérez").
+          // limit(6) permite reportar "5+" sin traer toda la agenda.
+          const { data: found } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${search}%`).limit(6);
+          if (!found?.length) return JSON.stringify({ error: `No encontré un cliente con nombre "${args.client_name}"` });
+          const exact = exactNameMatches(found as Array<{ id: string; full_name: string | null }>, args.client_name);
+          if (exact.length === 1) clientId = (exact[0] as any).id;
+          else if (exact.length > 1) return JSON.stringify({ error: `Hay ${exact.length} clientes con exactamente ese nombre. Identificá cuál (por teléfono/email) y volvé a llamar con el client_id.`, matches: exact });
+          else return JSON.stringify({ error: `No encontré una coincidencia EXACTA con "${args.client_name}". Coincidencias parciales (${found.length >= 6 ? "5+" : found.length}): ${found.slice(0, 5).map((c: any) => c.full_name).join(", ")}. Confirmá con el agente el nombre COMPLETO (o usá el client_id) y volvé a llamar.`, matches: found.slice(0, 5) });
         }
       }
       if (!clientId || !UUID_REGEX.test(clientId)) return JSON.stringify({ error: "Se necesita un client_id o client_name válido" });
@@ -1371,16 +1696,33 @@ export async function executeTool(
       if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) {
         if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente/contacto a borrar." });
         const searchName = sanitizePattern(args.client_name);
-        const { data: matches } = await supabase
-          .from("clients")
-          .select("id, full_name, is_client")
-          .eq("user_id", userId)
-          .ilike("full_name", `%${searchName}%`)
-          .limit(10);
-        if (!matches || matches.length === 0) return JSON.stringify({ error: `No encontré ningún cliente ni contacto con el nombre "${args.client_name}".` });
-        if (matches.length > 1) return JSON.stringify({ error: `Encontré ${matches.length} coincidencias: ${matches.map((c) => c.full_name).join(", ")}. ¿Cuál querés borrar?`, matches });
-        resolvedClientId = matches[0].id;
-        resolvedName = matches[0].full_name;
+        // m8: consulta previa por nombre EXACTO (ilike sin comodines = igualdad case-insensitive)
+        // ADEMÁS del listado difuso: en agendas con muchos homónimos parciales, el match exacto
+        // podía quedar FUERA del limit(10) del difuso y el borrado legítimo se volvía imposible.
+        const [{ data: exactRows }, { data: fuzzyRows }] = await Promise.all([
+          supabase.from("clients").select("id, full_name, is_client").eq("user_id", userId).ilike("full_name", searchName).limit(10),
+          supabase.from("clients").select("id, full_name, is_client").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(10),
+        ]);
+        const seenIds = new Set<string>();
+        const matches: Array<{ id: string; full_name: string | null; is_client: boolean | null }> = [];
+        for (const r of [...(exactRows ?? []), ...(fuzzyRows ?? [])]) {
+          if (seenIds.has(r.id)) continue;
+          seenIds.add(r.id);
+          matches.push(r);
+        }
+        if (matches.length === 0) return JSON.stringify({ error: `No encontré ningún cliente ni contacto con el nombre "${args.client_name}".` });
+        // Borrado IRREVERSIBLE (CASCADE) → SOLO se ejecuta con match EXACTO del nombre completo
+        // (case/acento-insensible vía nameDedupKey). Un substring NUNCA borra: antes "Ana" con un
+        // único match parcial borraba a "Susana Pérez" con todos sus datos.
+        const exact = exactNameMatches(matches as Array<{ id: string; full_name: string | null }>, args.client_name);
+        if (exact.length === 1) {
+          resolvedClientId = (exact[0] as any).id;
+          resolvedName = exact[0].full_name;
+        } else if (exact.length > 1) {
+          return JSON.stringify({ error: `Hay ${exact.length} registros con exactamente ese nombre. Pedile al agente que identifique cuál (por teléfono/email) y borrá por ID.`, matches: exact });
+        } else {
+          return JSON.stringify({ error: `No encontré una coincidencia EXACTA con "${args.client_name}". Coincidencias parciales: ${matches.map((c) => c.full_name).join(", ")}. Borrar es irreversible: confirmá con el agente el NOMBRE COMPLETO exacto (o el ID) antes de volver a llamar.`, matches });
+        }
       }
       if (!resolvedName) {
         const { data: c } = await supabase.from("clients").select("full_name").eq("id", resolvedClientId).eq("user_id", userId).maybeSingle();

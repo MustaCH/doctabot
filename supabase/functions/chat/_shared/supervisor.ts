@@ -3,7 +3,7 @@
 // (EdgeRuntime.waitUntil) después de cerrar el stream.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ALAN_CONTEXT_FACTS } from "./alan-facts.ts";
-import { unactedReadVerdict, unexecutedWriteVerdict, buildPriorContextBlock, SUPERVISOR_CATEGORIES } from "./supervisor-rules.ts";
+import { unactedReadVerdict, unexecutedWriteVerdict, unsupportedSearchClaimVerdict, buildPriorContextBlock, SUPERVISOR_CATEGORIES } from "./supervisor-rules.ts";
 
 export interface SupervisorResult {
   verdict: string;
@@ -20,6 +20,9 @@ export async function runSupervisorEval(params: {
   apiKey: string;
   executedTools?: string[];
   priorContext?: { user?: string | null; assistant?: string | null } | null;
+  // Eco de filtros de la última search_properties del turno (applied_filters), para la regla
+  // determinista de claims sin respaldo ("activas"/"perfectamente"/"100%"). Opcional.
+  searchAppliedFilters?: Record<string, unknown> | null;
 }): Promise<SupervisorResult> {
   const { content, userMessage, apiKey } = params;
   const executedTools = params.executedTools ?? [];
@@ -30,7 +33,13 @@ export async function runSupervisorEval(params: {
   // NO corrió → dato inventado/descripto (86aj1f0x3); (b) si Alan AFIRMA una escritura (guardar/
   // vincular/agendar/enviar/crear) y la tool de escritura NO corrió → guardado fantasma (86aj1nb16).
   // Ambos son rechazo sin gastar una llamada al modelo.
-  const hardReject = unactedReadVerdict(userMessage, executedTools) ?? unexecutedWriteVerdict(content, executedTools);
+  // (c) claims sobre resultados de búsqueda sin respaldo en applied_filters
+  // ("perfectamente"/"100%"/"activas") → dato_inventado (incidente "172 perfectas").
+  // NOTA (M2): la regla de WHATSAPP_TO-sin-tool se eliminó — evaluaba el texto YA saneado por el
+  // guardarraíl server-side, así que solo veía bloques legítimos (100% falsos positivos).
+  const hardReject = unactedReadVerdict(userMessage, executedTools)
+    ?? unexecutedWriteVerdict(content, executedTools)
+    ?? unsupportedSearchClaimVerdict(content, executedTools, params.searchAppliedFilters ?? null);
   if (hardReject) {
     return { ...hardReject, retryCount: 0, latency: Date.now() - supervisorStart };
   }

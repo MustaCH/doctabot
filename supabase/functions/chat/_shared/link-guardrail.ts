@@ -20,6 +20,24 @@ function slugOf(url: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+/**
+ * Set de slugs válidos a partir de las URLs REALES de la tabla `properties`. La verificación es
+ * por SLUG normalizado, NO por igualdad exacta de URL completa: variantes legítimas de una misma
+ * propiedad (http:// vs https://, con/sin www, barra final, query params, mayúsculas en el host)
+ * validan igual — antes daban falso positivo y el guardarraíl "neutralizaba" links reales
+ * (incidente "Quité 2 enlaces de propiedad"). El prefetch por ilike puede traer de más (un slug
+ * más largo que contiene al candidato): no importa, acá la comparación es por slug EXACTO.
+ * Puro y testeable.
+ */
+export function validSlugSetFromUrls(urls: Array<string | null | undefined>): Set<string> {
+  const set = new Set<string>();
+  for (const u of urls) {
+    const s = slugOf(String(u ?? ""));
+    if (s) set.add(s);
+  }
+  return set;
+}
+
 /** Devuelve los slugs DISTINTOS de listings de remax que aparecen en el texto. */
 export function extractListingSlugs(text: string): string[] {
   if (!text) return [];

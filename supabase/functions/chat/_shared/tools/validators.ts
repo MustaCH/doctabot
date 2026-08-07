@@ -56,6 +56,41 @@ export function nameDedupKey(raw: unknown): string | null {
   return s || null;
 }
 
+/**
+ * Filtra las filas cuyo full_name matchea EXACTO (case/acentos/espacios-insensible, vía nameDedupKey)
+ * el nombre pedido. Para acciones destructivas o ambiguas un substring NUNCA alcanza: "Ana" NO es
+ * "Susana Pérez" (el ilike %Ana% sí los mezcla — de ahí este segundo filtro). Puro.
+ */
+export function exactNameMatches<T extends { full_name?: string | null }>(rows: T[], rawName: unknown): T[] {
+  const key = nameDedupKey(rawName);
+  if (!key) return [];
+  return (rows ?? []).filter((r) => nameDedupKey(r?.full_name) === key);
+}
+
+/** Email razonable y header-safe: sin espacios/CRLF/separadores de lista ni <> de display-name. */
+const EMAIL_RE = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
+
+/**
+ * Parsea una lista de destinatarios ("a@b.com, c@d.com") validando cada dirección.
+ * Anti header-injection (CRLF): una "dirección" con \r/\n, espacios o <> NO valida y va a
+ * `invalid` — el caller debe rechazar el envío en vez de dejar que llegue al MIME. Puro.
+ */
+export function parseEmailList(raw: unknown): { emails: string[]; invalid: string[] } {
+  const emails: string[] = [];
+  const invalid: string[] = [];
+  if (typeof raw !== "string") return { emails, invalid };
+  for (const part of raw.split(/[,;]/)) {
+    const e = part.trim();
+    if (!e) continue;
+    // m9: una dirección de >200 chars es inválida ENTERA — recortarla y validar el recorte podía
+    // "aprobar" una dirección distinta de la escrita.
+    if (e.length > 200) { invalid.push(e.slice(0, 80)); continue; }
+    if (EMAIL_RE.test(e)) emails.push(e);
+    else invalid.push(e.slice(0, 80));
+  }
+  return { emails, invalid };
+}
+
 export interface BulkContactInput {
   full_name?: unknown;
   phone?: unknown;
@@ -221,12 +256,20 @@ export function normalizeOperation(raw: unknown): string | null {
  *
  * Orden total determinista (no depende del orden físico de Postgres): Docta primero,
  * luego created_at DESC, luego id DESC como desempate. Stable y sin mutar la entrada.
+ *
+ * `doctaFirst` (default true, ticket "otras oficinas"): con false NO se prioriza Docta
+ * (orden puro por created_at DESC) — para "mostrame las de otras oficinas". Decisión de
+ * diseño: el Docta-first vive acá EN MEMORIA sobre un pool ampliado (limit*10, cap 300)
+ * en vez de un ORDER BY por expresión en SQL, porque PostgREST no ordena por expresiones
+ * arbitrarias sin una columna computada/función; el pool grande hace la priorización
+ * robusta sin migración.
  */
 export function rankProperties<T extends { office?: string | null; created_at?: string | null; id?: string }>(
   pool: T[],
   limit: number,
+  doctaFirst: boolean = true,
 ): T[] {
-  const doctaKey = (p: T) => (p.office?.toLowerCase().includes("docta") ? 0 : 1);
+  const doctaKey = (p: T) => (doctaFirst && !(p.office?.toLowerCase().includes("docta")) ? 1 : 0);
   const createdMs = (p: T) => {
     const t = Date.parse(p.created_at ?? "");
     return isNaN(t) ? 0 : t;

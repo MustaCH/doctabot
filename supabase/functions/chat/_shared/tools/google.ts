@@ -98,11 +98,18 @@ export function encodeHeaderValue(value: string): string {
   return value;
 }
 
+/** Neutraliza CRLF en valores de header: un \r\n dentro de To/Cc/Subject inyectaría headers
+ *  arbitrarios (ej. un Bcc oculto) en el MIME. Defensa en profundidad: el executor además valida
+ *  cada destinatario con parseEmailList y rechaza el envío si no valida. */
+function stripHeaderCrlf(value: string): string {
+  return String(value ?? "").replace(/[\r\n]+/g, " ");
+}
+
 /** Build a MIME email message and base64url-encode it */
 export function buildMimeEmail(to: string, subject: string, body: string, cc?: string | null): string {
-  const encodedSubject = encodeHeaderValue(subject);
-  const mimeLines = [`To: ${to}`, `Subject: ${encodedSubject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit"];
-  if (cc) mimeLines.push(`Cc: ${cc}`);
+  const encodedSubject = encodeHeaderValue(stripHeaderCrlf(subject));
+  const mimeLines = [`To: ${stripHeaderCrlf(to)}`, `Subject: ${encodedSubject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit"];
+  if (cc) mimeLines.push(`Cc: ${stripHeaderCrlf(cc)}`);
   mimeLines.push("", body);
   const mimeMessage = mimeLines.join("\r\n");
   return btoa(unescape(encodeURIComponent(mimeMessage))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

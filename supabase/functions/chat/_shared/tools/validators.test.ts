@@ -407,3 +407,68 @@ describe("prepareContactBatch / phoneDedupKey (carga masiva de contactos)", () =
     expect(r.rows[1].status).toBe("warm");
   });
 });
+
+describe("exactNameMatches — match exacto normalizado, nunca substring", () => {
+  it("'Ana' NO matchea 'Susana Pérez' (el ilike %Ana% sí; este filtro lo corta)", async () => {
+    const { exactNameMatches } = await import("./validators");
+    const rows = [{ id: "1", full_name: "Susana Pérez" }];
+    expect(exactNameMatches(rows, "Ana")).toHaveLength(0);
+  });
+
+  it("case/acentos/espacios-insensible: 'maria  gonzalez' === 'María González'", async () => {
+    const { exactNameMatches } = await import("./validators");
+    const rows = [{ id: "1", full_name: "María González" }, { id: "2", full_name: "María González Ruiz" }];
+    const r = exactNameMatches(rows, "maria  gonzalez");
+    expect(r).toHaveLength(1);
+    expect((r[0] as any).id).toBe("1");
+  });
+
+  it("homónimos exactos → devuelve todos (el caller debe desambiguar)", async () => {
+    const { exactNameMatches } = await import("./validators");
+    const rows = [{ id: "1", full_name: "Juan Pérez" }, { id: "2", full_name: "Juan Perez" }];
+    expect(exactNameMatches(rows, "Juan Pérez")).toHaveLength(2);
+  });
+
+  it("nombre vacío/null → sin matches", async () => {
+    const { exactNameMatches } = await import("./validators");
+    expect(exactNameMatches([{ full_name: "Ana" }], "")).toHaveLength(0);
+    expect(exactNameMatches([{ full_name: "Ana" }], null)).toHaveLength(0);
+  });
+});
+
+describe("parseEmailList — validación de destinatarios + anti header-injection", () => {
+  it("lista válida separada por coma/;", async () => {
+    const { parseEmailList } = await import("./validators");
+    const r = parseEmailList("ana@ejemplo.com, luis@remax.com.ar; marta@test.org");
+    expect(r.emails).toEqual(["ana@ejemplo.com", "luis@remax.com.ar", "marta@test.org"]);
+    expect(r.invalid).toHaveLength(0);
+  });
+
+  it("inyección CRLF (Bcc oculto) NO valida", async () => {
+    const { parseEmailList } = await import("./validators");
+    const r = parseEmailList("victima@ejemplo.com\r\nBcc: atacante@evil.com");
+    expect(r.emails).toHaveLength(0);
+    expect(r.invalid).toHaveLength(1);
+  });
+
+  it("dirección con espacios o sin dominio válido → invalid", async () => {
+    const { parseEmailList } = await import("./validators");
+    expect(parseEmailList("no es un email").emails).toHaveLength(0);
+    expect(parseEmailList("a@b").emails).toHaveLength(0); // sin TLD
+    expect(parseEmailList("<x@y.com>").emails).toHaveLength(0); // display-name form no permitida
+  });
+
+  it("no-string / vacío → vacío sin explotar", async () => {
+    const { parseEmailList } = await import("./validators");
+    expect(parseEmailList(null).emails).toHaveLength(0);
+    expect(parseEmailList("").emails).toHaveLength(0);
+  });
+
+  it("m9: una dirección de >200 chars es inválida ENTERA (no se recorta y valida el recorte)", async () => {
+    const { parseEmailList } = await import("./validators");
+    const larga = `${"a".repeat(195)}@dominio.com`; // >200 en total
+    const r = parseEmailList(`${larga}, ok@remax.com.ar`);
+    expect(r.emails).toEqual(["ok@remax.com.ar"]);
+    expect(r.invalid).toHaveLength(1);
+  });
+});

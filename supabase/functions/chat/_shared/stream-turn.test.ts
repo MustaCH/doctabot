@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError, truncationSuffix, unbalancedDraftClose, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail } from "./stream-turn";
+import { streamTurn, AIError, applyTruncation, TRUNCATION_NOTICE, closeUnbalancedDrafts, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail, MAX_ITERATIONS_NOTICE } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -23,25 +23,75 @@ const DONE = "data: [DONE]\n\n";
 
 const toolDefinitions = [{ type: "function", function: { name: "search_properties" } }];
 
-describe("unbalancedDraftClose", () => {
-  it("devuelve el cierre faltante si hay un DRAFT abierto", () => {
-    expect(unbalancedDraftClose("<<<DRAFT_START>>>a medias")).toBe("\n<<<DRAFT_END>>>");
+describe("closeUnbalancedDrafts", () => {
+  it("cierra un draft abierto ANTES del siguiente ===MSG_BREAK===, no al final del texto", () => {
+    const out = closeUnbalancedDrafts("Mensaje: <<<DRAFT_START>>>Hola Juan===MSG_BREAK===¿Lo mando?");
+    const [block1, block2] = out.split("===MSG_BREAK===");
+    expect(block1).toContain("<<<DRAFT_START>>>");
+    expect(block1).toContain("<<<DRAFT_END>>>"); // el cierre cayó en la MISMA burbuja
+    expect(block2).toBe("¿Lo mando?");
+    expect(block2).not.toContain("<<<DRAFT_END>>>");
   });
-  it("devuelve '' si los marcadores están balanceados o no hay", () => {
-    expect(unbalancedDraftClose("<<<DRAFT_START>>>ok<<<DRAFT_END>>>")).toBe("");
-    expect(unbalancedDraftClose("texto sin borrador")).toBe("");
+
+  it("cierra un draft abierto antes del siguiente <<<DRAFT_START>>> del mismo bloque", () => {
+    const out = closeUnbalancedDrafts("<<<DRAFT_START>>>uno <<<DRAFT_START>>>dos<<<DRAFT_END>>>");
+    expect((out.match(/<<<DRAFT_START>>>/g) || []).length).toBe(2);
+    expect((out.match(/<<<DRAFT_END>>>/g) || []).length).toBe(2);
+    // El primer cierre está ANTES del segundo DRAFT_START.
+    expect(out.indexOf("<<<DRAFT_END>>>")).toBeLessThan(out.indexOf("<<<DRAFT_START>>>", 10));
+  });
+
+  it("cierra al final del bloque cuando el draft abierto es el último contenido", () => {
+    const out = closeUnbalancedDrafts("Te dejo: <<<DRAFT_START>>>Hola, soy Nacho");
+    expect(out).toBe("Te dejo: <<<DRAFT_START>>>Hola, soy Nacho\n<<<DRAFT_END>>>");
+  });
+
+  it("no toca drafts balanceados ni texto sin drafts", () => {
+    const balanced = "a <<<DRAFT_START>>>ok<<<DRAFT_END>>> b===MSG_BREAK===c";
+    expect(closeUnbalancedDrafts(balanced)).toBe(balanced);
+    expect(closeUnbalancedDrafts("texto sin borrador")).toBe("texto sin borrador");
+  });
+
+  // m1: el split incondicional por MSG_BREAK partía un draft LEGÍTIMO que contiene ===MSG_BREAK===
+  // adentro, le inventaba un cierre y dejaba el DRAFT_END real huérfano (renderizado crudo).
+  it("un draft BALANCEADO que contiene ===MSG_BREAK=== adentro queda intacto (no se parte)", () => {
+    const balanced =
+      "intro===MSG_BREAK===<<<DRAFT_START>>>línea1===MSG_BREAK===línea2<<<DRAFT_END>>>===MSG_BREAK===cierre";
+    expect(closeUnbalancedDrafts(balanced)).toBe(balanced);
+  });
+
+  it("mezcla: draft balanceado con MSG_BREAK adentro intacto + draft abierto posterior cerrado en su burbuja", () => {
+    const input =
+      "<<<DRAFT_START>>>uno===MSG_BREAK===dos<<<DRAFT_END>>>===MSG_BREAK===<<<DRAFT_START>>>abierto===MSG_BREAK===final";
+    const out = closeUnbalancedDrafts(input);
+    // El primer draft (con MSG_BREAK adentro) no se tocó.
+    expect(out).toContain("<<<DRAFT_START>>>uno===MSG_BREAK===dos<<<DRAFT_END>>>");
+    // El segundo se cerró ANTES del MSG_BREAK siguiente (misma burbuja).
+    expect((out.match(/<<<DRAFT_START>>>/g) || []).length).toBe(2);
+    expect((out.match(/<<<DRAFT_END>>>/g) || []).length).toBe(2);
+    const lastBlock = out.split("===MSG_BREAK===").pop()!;
+    expect(lastBlock).toBe("final");
+    expect(lastBlock).not.toContain("<<<DRAFT_END>>>");
   });
 });
 
-describe("truncationSuffix", () => {
-  it("cierra un DRAFT abierto cuando hay más START que END", () => {
-    const s = truncationSuffix("<<<DRAFT_START>>>texto a medias");
-    expect(s).toContain("<<<DRAFT_END>>>");
+describe("applyTruncation (camino finish_reason 'length')", () => {
+  it("cierra un DRAFT abierto y agrega el aviso", () => {
+    const s = applyTruncation("<<<DRAFT_START>>>texto a medias");
+    expect(s).toContain("<<<DRAFT_START>>>texto a medias\n<<<DRAFT_END>>>");
     expect(s).toContain("se cortó");
   });
-  it("no cierra nada si los marcadores están balanceados", () => {
-    const s = truncationSuffix("<<<DRAFT_START>>>ok<<<DRAFT_END>>>");
-    expect(s).not.toContain("<<<DRAFT_END>>>");
+  it("con marcadores balanceados solo agrega el aviso", () => {
+    const s = applyTruncation("<<<DRAFT_START>>>ok<<<DRAFT_END>>>");
+    expect(s).toBe("<<<DRAFT_START>>>ok<<<DRAFT_END>>>" + TRUNCATION_NOTICE);
+  });
+  // M3: el camino de truncado usaba el cierre viejo (un solo DRAFT_END al final del texto entero) —
+  // ahora usa closeUnbalancedDrafts: el cierre cae en la MISMA burbuja que el draft abierto.
+  it("draft abierto seguido de ===MSG_BREAK===: el cierre cae en la burbuja del draft, no al final", () => {
+    const s = applyTruncation("Mensaje: <<<DRAFT_START>>>Hola Juan===MSG_BREAK===¿Lo mando?");
+    const [block1, block2] = s.split("===MSG_BREAK===");
+    expect(block1).toContain("<<<DRAFT_END>>>");
+    expect(block2).not.toContain("<<<DRAFT_END>>>");
     expect(s).toContain("se cortó");
   });
 });
@@ -341,6 +391,32 @@ describe("streamTurn", () => {
     expect(emitted.join("")).toBe(res.content);
   });
 
+  it("finish 'length' con draft abierto + ===MSG_BREAK===: el cierre cae en la burbuja del draft (M3)", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("<<<DRAFT_START>>>Hola Juan===MSG_BREAK===¿Sigo con el resto?", "length"), DONE]),
+    );
+    const emitted: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: (t) => emitted.push(t) },
+    );
+    const [block1, block2] = res.content.split("===MSG_BREAK===");
+    expect(block1).toContain("<<<DRAFT_END>>>"); // en la MISMA burbuja que el draft abierto
+    expect(block2).not.toContain("<<<DRAFT_END>>>");
+    expect(res.content).toContain("se cortó");
+    expect(emitted.join("")).toBe(res.content);
+  });
+
+  it("finish 'length' con draft BALANCEADO que contiene MSG_BREAK: no lo parte ni inventa cierres (m1)", async () => {
+    const balanced = "<<<DRAFT_START>>>línea1===MSG_BREAK===línea2<<<DRAFT_END>>>";
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk(balanced, "length"), DONE]));
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {} },
+    );
+    expect(res.content).toBe(balanced + TRUNCATION_NOTICE);
+  });
+
   it("finish_reason 'length' sin marcadores abiertos: solo agrega aviso", async () => {
     const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("Texto largo cortado", "length"), DONE]));
     const res = await streamTurn(
@@ -381,7 +457,7 @@ describe("streamTurn", () => {
     expect(res.content).toBe("<<<DRAFT_START>>>Hola<<<DRAFT_END>>>");
   });
 
-  it("corta en maxIterations si el modelo siempre pide tools", async () => {
+  it("corta en maxIterations si el modelo siempre pide tools (y avisa que quedó incompleto)", async () => {
     const resilientAIFetch = vi.fn(async () => sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]));
     const executeTool = vi.fn(async () => JSON.stringify({ results: [] }));
     const res = await streamTurn(
@@ -389,7 +465,8 @@ describe("streamTurn", () => {
       { messages: [], emit: () => {}, maxIterations: 2 },
     );
     expect(executeTool).toHaveBeenCalledTimes(2);
-    expect(res.content).toBe("");
+    // Sin preámbulo, el contenido queda solo con el aviso de respuesta incompleta.
+    expect(res.content).toBe(MAX_ITERATIONS_NOTICE);
   });
 
   it("suprime el preámbulo de una ronda que termina en tool_calls (no re-saludo): solo muestra la ronda de texto final", async () => {
@@ -414,7 +491,37 @@ describe("streamTurn", () => {
     expect(messages.some((m) => m.role === "assistant" && typeof m.content === "string" && m.content.includes("Hola"))).toBe(true);
   });
 
-  it("si el turno se queda sin ronda de texto final, vuelca el último preámbulo suprimido (fallback anti-pantalla-muda)", async () => {
+  it("el fallback de lastPreamble TAMBIÉN cierra un DRAFT sin cerrar (antes solo la ronda final lo hacía)", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("Te dejo el mensaje: <<<DRAFT_START>>>Hola, quedó abierto "), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
+    );
+    const executeTool = vi.fn(async () => JSON.stringify({ results: [] }));
+    const emitted: string[] = [];
+
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+      { messages: [], emit: (t) => emitted.push(t), maxIterations: 1 },
+    );
+
+    expect((res.content.match(/<<<DRAFT_START>>>/g) || []).length).toBe(1);
+    expect((res.content.match(/<<<DRAFT_END>>>/g) || []).length).toBe(1);
+    expect(emitted.join("")).toBe(res.content); // live == persistido
+  });
+
+  it("ronda final con draft abierto seguido de ===MSG_BREAK===: el cierre cae en la burbuja del draft", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("<<<DRAFT_START>>>Hola Juan===MSG_BREAK===¿Lo mando?", "stop"), DONE]),
+    );
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {} },
+    );
+    const [block1, block2] = res.content.split("===MSG_BREAK===");
+    expect(block1).toContain("<<<DRAFT_END>>>");
+    expect(block2).not.toContain("<<<DRAFT_END>>>");
+  });
+
+  it("si el turno se queda sin ronda de texto final, vuelca el último preámbulo suprimido + aviso de incompleto", async () => {
     const resilientAIFetch = vi.fn(async () =>
       sseResponse([contentChunk("Buscando propiedades… "), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
     );
@@ -426,8 +533,48 @@ describe("streamTurn", () => {
       { messages: [], emit: (t) => emitted.push(t), maxIterations: 1 },
     );
 
-    expect(res.content).toBe("Buscando propiedades… ");
-    expect(emitted.join("")).toBe("Buscando propiedades… ");
+    expect(res.content).toContain("Buscando propiedades…");
+    expect(res.content).toContain(MAX_ITERATIONS_NOTICE);
+    expect(emitted.join("")).toBe(res.content); // live == persistido
+  });
+
+  it("maxIterations agotado: invoca onMaxIterationsExhausted con las tools del turno (log a error_logs)", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
+    );
+    const executeTool = vi.fn(async () => JSON.stringify({ results: [] }));
+    const onMaxIterationsExhausted = vi.fn();
+
+    await streamTurn(
+      { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {}, maxIterations: 2, onMaxIterationsExhausted },
+    );
+
+    expect(onMaxIterationsExhausted).toHaveBeenCalledTimes(1);
+    expect(onMaxIterationsExhausted).toHaveBeenCalledWith(["search_properties", "search_properties"]);
+  });
+
+  it("con ronda de texto final NO se invoca onMaxIterationsExhausted ni se anexa el aviso", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("Todo listo.", "stop"), DONE]));
+    const onMaxIterationsExhausted = vi.fn();
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {}, onMaxIterationsExhausted },
+    );
+    expect(onMaxIterationsExhausted).not.toHaveBeenCalled();
+    expect(res.content).toBe("Todo listo.");
+    expect(res.content).not.toContain(MAX_ITERATIONS_NOTICE);
+  });
+
+  it("un onMaxIterationsExhausted que tira NO rompe el turno (fail-open del reporte)", async () => {
+    const resilientAIFetch = vi.fn(async () =>
+      sseResponse([contentChunk("Preparo la tanda. "), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
+    );
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => "{}"), toolCtx: {}, toolDefinitions },
+      { messages: [], emit: () => {}, maxIterations: 1, onMaxIterationsExhausted: () => { throw new Error("boom"); } },
+    );
+    expect(res.content).toContain(MAX_ITERATIONS_NOTICE);
   });
 
   // Regresión del bug 86aj1ncj4 (send_email que no se enviaba): args truncados/malformados en el

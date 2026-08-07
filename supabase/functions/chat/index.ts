@@ -19,14 +19,15 @@ import { corsHeaders, MAX_MESSAGE_LENGTH, validateAttachmentSizes } from "./_sha
 import { authenticateRequest } from "./_shared/auth.ts";
 import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
-import { executeTool } from "./_shared/tools/executor.ts";
+import { executeTool, fetchAllClientContactRows } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
 import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
-import { extractListingSlugs, neutralizeFabricatedListings } from "./_shared/link-guardrail.ts";
+import { extractListingSlugs, neutralizeFabricatedListings, validSlugSetFromUrls } from "./_shared/link-guardrail.ts";
+import { sanitizePattern } from "./_shared/tools/validators.ts";
 import { expandCards, collapseEmptyBubbles, renderPropertyCard, expandContactCards } from "./_shared/card-render.ts";
-import { normalizePhone, validateAndCorrectWhatsapp, whatsappNeutralizedNotice, verifyContactListPhones } from "./_shared/whatsapp-guardrail.ts";
+import { normalizePhone, sanitizeWhatsappBlocks, whatsappNeutralizedNotice, whatsappRemovedNotice, whatsappCorrectedNotice, verifyContactListPhones } from "./_shared/whatsapp-guardrail.ts";
 import { MSG_BREAK } from "./_shared/alan-facts.ts";
 import { fetchWithRetry } from "./_shared/retry.ts";
 import { sendPushNotification, notifyN8nWebhook } from "./_shared/notifications.ts";
@@ -103,6 +104,10 @@ serve(async (req) => {
     // Lo usa el guardarraíl de WhatsApp para CORREGIR un número inventado cuando el borrador nombra
     // sin ambigüedad al cliente. Se siembra con el cliente vinculado a la conversación (abajo). Ver 86ajb5g8d.
     const clientRegistry: Array<{ name: string; phone: string }> = [];
+    // Teléfonos del cliente ACTIVO sembrado (vinculado a la conversación): son los únicos bloques de
+    // WhatsApp que pasan el gate estructural cuando list_clients/get_client NO corrió en el turno
+    // ("mandale un WhatsApp a este cliente" no necesita re-listar). Ver sanitizeWhatsappBlocks.
+    const seedPhones = new Set<string>();
     const toolCtx: any = {
       supabase,
       userId,
@@ -131,7 +136,10 @@ serve(async (req) => {
           // cliente" sin que Alan haya llamado list_clients/get_client en el turno.
           const c = conv.clients as any;
           const seedPhone = normalizePhone(c.phone);
-          if (c.full_name && seedPhone) clientRegistry.push({ name: c.full_name, phone: seedPhone });
+          if (c.full_name && seedPhone) {
+            clientRegistry.push({ name: c.full_name, phone: seedPhone });
+            seedPhones.add(seedPhone);
+          }
         }
       } catch (e) {
         console.error("active client lookup error:", e);
@@ -215,7 +223,7 @@ serve(async (req) => {
     // en la DB lo fabricó el modelo → lo neutralizamos para no mandarle un link muerto al cliente
     // (remax redirige los listings inexistentes a la home). Fail-open: cualquier error deja el texto
     // intacto. Es la red determinista que respalda la regla de prompt "copiá el url exacto".
-    const sanitizeFinal = async (text: string): Promise<string> => {
+    const sanitizeFinal = async (text: string, executedTools: string[] = []): Promise<string> => {
       // 1) Expansión de tarjetas: el modelo marca DÓNDE van con <<<PROPERTIES>>> y el server las arma
       //    (foto + link con ?associate) desde los resultados del turno, POR POSICIÓN — inmune a que el
       //    modelo invente/renumere/no reproduzca ids (causa raíz de 86ajangkb y del bug de burbujas
@@ -224,14 +232,27 @@ serve(async (req) => {
       //    colapsan burbujas vacías. Todo puro, no lanza.
       let working = text;
       try {
-        const { text: expanded, leftover } = expandCards(working, cardResults, agentCode);
+        const { text: expanded, leftover, hadMarker } = expandCards(working, cardResults, agentCode);
         working = expanded;
         if (leftover.length > 0) {
-          // El modelo buscó pero no puso (todos) los marcadores → anexamos las tarjetas restantes
-          // para que los resultados SIEMPRE se muestren (nunca una respuesta muda tras una búsqueda).
-          const tail = leftover.map((p) => renderPropertyCard(p, agentCode)).join(MSG_BREAK);
-          working = `${working}${MSG_BREAK}${tail}`;
-          console.warn("card-render: resultados anexados (marcador ausente/insuficiente)", { count: leftover.length });
+          // Red de seguridad para tarjetas sin ubicar (M7). Solo anexamos cuando:
+          //  (a) el modelo NO puso NINGÚN marcador (si puso <<<CARD>>>/<<<PROPERTIES>>>, eligió
+          //      deliberadamente qué mostrar: anexar el resto contradice su respuesta), Y
+          //  (b) el lote está FRESCO según la señal del tool result (toolCtx.cardBatchFresh): la
+          //      última tool de tarjetas del turno devolvió resultados (showing > 0) y el lote no
+          //      fue limpiado por una búsqueda posterior con 0 resultados (M6).
+          // La vieja heurística de puntuación ("la respuesta termina en ?") fallaba en ambas
+          // direcciones: suprimía tarjetas legítimas de respuestas que cerraban con pregunta y
+          // pegaba tarjetas viejas bajo un "no encontré" sin signo. Trade-off deliberado: una
+          // respuesta de solo conteo ("hay 172, ¿te muestro?") puede llevar tarjetas debajo —
+          // preferible a suprimir tarjetas legítimas de una búsqueda real.
+          if (!hadMarker && toolCtx.cardBatchFresh === true) {
+            const tail = leftover.map((p) => renderPropertyCard(p, agentCode)).join(MSG_BREAK);
+            working = `${working}${MSG_BREAK}${tail}`;
+            console.warn("card-render: resultados anexados (marcador ausente)", { count: leftover.length });
+          } else {
+            console.warn("card-render: leftover descartado (marcador parcial o lote no fresco)", { count: leftover.length, hadMarker, fresh: toolCtx.cardBatchFresh === true });
+          }
         }
         // Tarjetas de CONTACTO (<<<CONTACTS>>>): el modelo marca dónde va la lista y el server la
         // arma desde la última página de list_clients del turno (una tarjeta por burbuja). Fail-safe:
@@ -252,14 +273,21 @@ serve(async (req) => {
       try {
         const slugs = extractListingSlugs(working);
         if (slugs.length > 0) {
-          const candidateUrls = slugs.map((s) => `https://www.remax.com.ar/listings/${s}`);
-          const { data, error } = await supabase.from("properties").select("url").in("url", candidateUrls);
+          // Verificación por SLUG, no por igualdad exacta de URL: la DB puede tener variantes
+          // legítimas (http://, sin www, barra final, query params) que antes daban falso positivo
+          // y neutralizaban links reales. Prefetch con ilike %/listings/<slug>% (los slugs ya son
+          // [a-z0-9-] por la regex de extracción; sanitizePattern es defensa en profundidad) y
+          // después comparación EXACTA de slug contra las filas (validSlugSetFromUrls) — así un
+          // slug más largo de la DB no valida a un candidato más corto. Slugs realmente
+          // inexistentes siguen neutralizados igual que antes.
+          const orExpr = slugs
+            .map((s) => sanitizePattern(s))
+            .filter(Boolean)
+            .map((s) => `url.ilike.%/listings/${s}%`)
+            .join(",");
+          const { data, error } = await supabase.from("properties").select("url").or(orExpr);
           if (!error) {
-            const valid = new Set<string>();
-            for (const row of (data ?? []) as Array<{ url: string | null }>) {
-              const m = String(row.url ?? "").match(/\/listings\/([a-z0-9-]+)/i);
-              if (m) valid.add(m[1].toLowerCase());
-            }
+            const valid = validSlugSetFromUrls(((data ?? []) as Array<{ url: string | null }>).map((r) => r.url));
             const { text: cleaned, removed } = neutralizeFabricatedListings(working, valid);
             if (removed.length > 0) {
               console.warn("link-guardrail: listings inexistentes neutralizados", { count: removed.length, slugs: removed });
@@ -272,45 +300,125 @@ serve(async (req) => {
         console.error("link-guardrail error:", e);
       }
 
-      // 3) Guardarraíles de TELÉFONOS (86ajb5g8d + 86ajbr466), ambos contra el mismo set de números
-      //    reales (CRM del agente + los que tipeó en el turno). Fail-open.
-      //    a. WhatsApp: valida cada <<<WHATSAPP_TO:número>>>; inventado → corrige por nombre
-      //       (clientRegistry) o quita el botón.
+      // 3) Guardarraíles de TELÉFONOS (86ajb5g8d + 86ajbr466 + incidente de contactos inventados
+      //    en campañas), todos contra la MISMA agenda real (CRM del agente + lo que tipeó en el
+      //    turno). Fail-open.
+      //    a. WhatsApp por BLOQUE (marcador + borrador): gate estructural (sin list_clients/
+      //       get_client en el turno solo pasa el cliente activo sembrado), teléfono fuera de la
+      //       agenda → corrección por nombre COMPLETO o eliminación del bloque ENTERO, y validación
+      //       de identidad (el nombre saludado debe corresponder al dueño del teléfono).
       //    b. Listas de contactos: si la respuesta lista 3+ teléfonos que NO están en la agenda
       //       (lista fabricada, ej. "pasame 100 contactos" sin ejecutar la tool), los marca con ⚠️
       //       y avisa — el agente nunca usa números inventados sin saberlo.
+      let waRemovedBlocks = 0;
       try {
         const hasWaMarker = working.includes("<<<WHATSAPP_TO:");
         const phoneish = (working.match(/\+?\d[\d \t().\-]{8,16}\d/g) ?? []).length;
         if (hasWaMarker || phoneish >= 3) {
           const validPhones = new Set<string>();
+          // Dueño(s) reales de cada teléfono canónico (validación de identidad del Ticket 1).
+          const phoneOwners = new Map<string, string[]>();
           // (a) Teléfonos que el agente tipeó en el turno (leads nuevos que no están en el CRM).
+          //     Van también a seedPhones: eximen del gate estructural igual que el cliente activo
+          //     sembrado — "escribile al 3511234567" sin list_clients en el turno es legítimo, el
+          //     número lo puso el agente (B3, y prompt.ts: "el agente lo mencionó").
           for (const m of (Array.isArray(messages) ? messages : [])) {
             if (m?.role !== "user" || typeof m.content !== "string") continue;
             for (const tok of m.content.match(/[\d(+][\d\s()+-]{6,}\d/g) ?? []) {
               const canon = normalizePhone(tok);
-              if (canon) validPhones.add(canon);
+              if (canon) {
+                validPhones.add(canon);
+                seedPhones.add(canon);
+              }
             }
           }
-          // (b) Teléfonos reales del CRM del agente (scopeado por user_id).
-          const { data: phoneRows } = await supabase.from("clients").select("phone").eq("user_id", userId);
-          for (const row of (phoneRows ?? []) as Array<{ phone: string | null }>) {
+          // (b) Agenda COMPLETA del agente, paginada (PostgREST corta en ~1000 filas: un select sin
+          //     límite ignoraba los teléfonos más allá de la primera página). Una sola query sirve
+          //     al set de válidos Y al mapa teléfono→dueño. Scopeada por user_id.
+          const { rows: agendaRows, error: agendaErr } = await fetchAllClientContactRows(supabase, userId);
+          // Las filas que SÍ llegaron se usan siempre (en un error parcial suman señal); pero con
+          // error (total o parcial) NO se sanea: una agenda incompleta trataría como "inventados"
+          // teléfonos reales y eliminaría borradores legítimos (M1 — fail-open).
+          for (const row of agendaRows) {
             const canon = normalizePhone(row.phone);
-            if (canon) validPhones.add(canon);
+            if (!canon) continue;
+            validPhones.add(canon);
+            if (row.full_name) {
+              const names = phoneOwners.get(canon) ?? [];
+              names.push(row.full_name);
+              phoneOwners.set(canon, names);
+            }
           }
-          if (hasWaMarker) {
-            const { text: waText, neutralized, corrected } = validateAndCorrectWhatsapp(working, validPhones, clientRegistry);
-            if (neutralized > 0 || corrected > 0) console.warn("whatsapp-guardrail", { neutralized, corrected });
-            working = waText + whatsappNeutralizedNotice(neutralized);
-          }
-          const { text: verified, flagged, totalPhones } = verifyContactListPhones(working, validPhones);
-          if (flagged > 0) {
-            console.warn("contact-list-guardrail: teléfonos no verificados en lista", { flagged, totalPhones });
-            working = verified;
+          if (agendaErr) {
+            console.error("phone-guardrails: agenda incompleta — fail-open, texto intacto sin saneo", agendaErr);
+          } else {
+            // Texto PRE-saneo: el umbral de listas fabricadas se calcula sobre él (m6) para que
+            // los bloques que sanitizeWhatsappBlocks elimina sigan contando.
+            const preSaneo = working;
+            if (hasWaMarker) {
+              // Gate estructural: los destinatarios de una tanda solo pueden salir de list_clients/
+              // get_client ejecutadas EN ESTE turno (o del cliente sembrado / teléfonos tipeados).
+              const toolVerified = executedTools.includes("list_clients") || executedTools.includes("get_client");
+              const r = sanitizeWhatsappBlocks(working, { validPhones, phoneOwners, registry: clientRegistry, toolVerified, seedPhones });
+              if (r.removedBlocks || r.corrected || r.neutralizedMarkers) {
+                console.warn("whatsapp-guardrail", { removedBlocks: r.removedBlocks, corrected: r.corrected, neutralizedMarkers: r.neutralizedMarkers, toolVerified });
+              }
+              waRemovedBlocks = r.removedBlocks;
+              working = collapseEmptyBubbles(r.text)
+                + whatsappRemovedNotice(r.removedBlocks)
+                + whatsappCorrectedNotice(r.corrected)
+                + whatsappNeutralizedNotice(r.neutralizedMarkers);
+            }
+            const { text: verified, flagged, totalPhones } = verifyContactListPhones(working, validPhones, preSaneo);
+            if (flagged > 0) {
+              console.warn("contact-list-guardrail: teléfonos no verificados en lista", { flagged, totalPhones });
+              working = verified;
+            }
           }
         }
       } catch (e) {
         console.error("phone-guardrails error:", e);
+      }
+
+      // Reversión del marcado de campaña (M3 — mark_contacted auditable/reversible), FUERA del
+      // camino de marcadores: se revierte POR DIFERENCIA — los clientes de la(s) tanda(s) marcada(s)
+      // cuyo teléfono NO aparece en ningún bloque <<<WHATSAPP_TO>>> sobreviviente del texto final no
+      // recibieron un borrador válido → restauramos su last_contact_at previo y borramos sus filas
+      // del activity log, para que la rotación least_contacted no los saltee.
+      // Caso sin NINGÚN marcador en el texto final: revertimos solo si el saneo ELIMINÓ bloques (la
+      // tanda se escribió y se invalidó). Si el modelo nunca escribió borradores, NO se revierte:
+      // el agente puede haber pedido la tanda para contactarla por fuera de la app (llamadas,
+      // WhatsApp manual) — ahí el marcado es correcto y revertirlo rompería la rotación.
+      try {
+        const batch = toolCtx.markedBatch;
+        if (batch?.rows?.length) {
+          const surviving = new Set<string>();
+          for (const m of working.matchAll(/<<<WHATSAPP_TO:([^>]*)>>>/g)) {
+            const canon = normalizePhone(m[1]);
+            if (canon) surviving.add(canon);
+          }
+          if (surviving.size > 0 || waRemovedBlocks > 0) {
+            const toRevert = (batch.rows as Array<{ id: string; prev: string | null; phone: string | null }>)
+              .filter((b) => !(b.phone && surviving.has(b.phone)));
+            if (toRevert.length > 0) {
+              await Promise.all(toRevert.map((b) =>
+                supabase.from("clients").update({ last_contact_at: b.prev }).eq("id", b.id).eq("user_id", userId)));
+              const revertIds = new Set(toRevert.map((b) => b.id));
+              const logIds = ((batch.logs ?? []) as Array<{ id: string; client_id: string }>)
+                .filter((l) => revertIds.has(l.client_id))
+                .map((l) => l.id);
+              if (logIds.length) {
+                await supabase.from("client_activity_log").delete().in("id", logIds).eq("user_id", userId);
+              }
+              toolCtx.markedBatch = null;
+              const n = toRevert.length;
+              working += `${MSG_BREAK}↩️ Revertí el marcado de "contactados" de ${n} ${n === 1 ? "cliente" : "clientes"} de la tanda: no les quedó un borrador válido en esta respuesta, así que siguen pendientes en la rotación.`;
+              console.warn("mark-contacted revertido por diferencia", { reverted: n, batchSize: batch.rows.length, surviving: surviving.size, waRemovedBlocks });
+            }
+          }
+        }
+      } catch (revErr) {
+        console.error("mark-contacted revert error:", revErr);
       }
 
       return working;
@@ -359,7 +467,25 @@ serve(async (req) => {
         let streamFailed = false;
         let streamErrorMessage = "";
         try {
-          const result = await streamTurn(toolLoopDeps, { messages: currentMessages, emit, firstResponse: firstRes, sanitizeFinal });
+          const result = await streamTurn(toolLoopDeps, {
+            messages: currentMessages,
+            emit,
+            firstResponse: firstRes,
+            sanitizeFinal,
+            // maxIterations agotado sin ronda de texto final: la respuesta salió incompleta
+            // (con aviso visible anexado por streamTurn) → lo registramos en error_logs con
+            // las tools ejecutadas del turno para diagnóstico.
+            onMaxIterationsExhausted: (turnTools) => reportEdgeErrorBg({
+              context: "chat-maxIterations",
+              error: new Error("streamTurn agotó maxIterations sin ronda de texto final"),
+              userId,
+              metadata: {
+                conversationId: conversationId ?? null,
+                executedTools: turnTools,
+                userMessage: typeof userMessage === "string" ? userMessage.slice(0, 300) : null,
+              },
+            }),
+          });
           finalContent = result.content;
           executedTools = result.executedTools;
         } catch (err) {
@@ -434,7 +560,7 @@ serve(async (req) => {
               // El turno falló: no corre el supervisor (no tiene sentido evaluar el mensaje de error).
               notifyN8nWebhook({ type: "empty_response", conversationId: conversationId || null, userId, userMessage, alanResponse: finalContent, verdict: "error", reason: streamErrorMessage || "stream_error", score: 0, retryCount: 0 });
             } else if (finalContent) {
-              const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY, executedTools, priorContext });
+              const supervisorResult = await runSupervisorEval({ content: finalContent, userMessage, apiKey: LOVABLE_API_KEY, executedTools, priorContext, searchAppliedFilters: toolCtx.lastSearchAppliedFilters ?? null });
               logSupervisorResult({ supabaseUrl, supabaseServiceKey, conversationId: conversationId || null, userId, userMessage, finalContent, result: supervisorResult });
 
               const shouldNotify = supervisorResult.verdict === "error" || supervisorResult.verdict === "rejected";

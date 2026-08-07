@@ -30,12 +30,18 @@ export interface StreamTurnOptions {
   messages: any[];                 // mutado in-place con assistant tool_calls + tool results
   emit: (text: string) => void;    // recibe cada token de content para reenviar al cliente
   firstResponse?: Response;        // respuesta ya fetcheada para la iteración 0 (status ya validado)
-  maxIterations?: number;          // default 5
+  maxIterations?: number;          // default 7 (ver DEFAULT_MAX_ITERATIONS)
+  // Se invoca cuando el turno agota maxIterations sin ronda de texto final (respuesta incompleta).
+  // index.ts lo cablea a error_logs (reportEdgeErrorBg) con las tools ejecutadas del turno.
+  // Fail-open: si tira, no rompe el turno.
+  onMaxIterationsExhausted?: (executedTools: string[]) => void;
   // Saneador opcional de la ronda de texto FINAL antes de volcarla al cliente. La ronda final se
   // bufferiza (no se streamea token a token), así que es el punto natural para una validación
   // determinista del contenido (ej. neutralizar links de propiedad inventados — ver link-guardrail.ts).
-  // Recibe el texto final y devuelve el texto a emitir/persistir. Fail-open: si tira, se usa el original.
-  sanitizeFinal?: (text: string) => Promise<string> | string;
+  // Recibe el texto final + las tools ejecutadas en el turno (para gates estructurales, ej. el
+  // guardarraíl de WhatsApp exige list_clients/get_client) y devuelve el texto a emitir/persistir.
+  // Fail-open: si tira, se usa el original.
+  sanitizeFinal?: (text: string, executedTools?: string[]) => Promise<string> | string;
 }
 
 export interface StreamTurnResult {
@@ -44,26 +50,77 @@ export interface StreamTurnResult {
 }
 
 /**
- * Validación mínima de formato: si quedó un <<<DRAFT_START>>> sin su <<<DRAFT_END>>>,
- * devuelve el cierre faltante (si no, ""). Evita que el front parsee un borrador a medias.
- * Puro y testeable.
+ * Cierra cada <<<DRAFT_START>>> sin su <<<DRAFT_END>>> EN EL PUNTO del desbalance: antes del
+ * siguiente ===MSG_BREAK===, del siguiente <<<DRAFT_START>>> o al final del texto — no al final
+ * del texto entero (el cierre tiene que caer en la MISMA burbuja que el draft abierto, si no el
+ * front parsea un draft que se traga las burbujas siguientes).
+ *
+ * El escaneo respeta REGIONES de draft (mismo criterio que splitBubbles en el front): un draft
+ * balanceado que contiene ===MSG_BREAK=== adentro se copia intacto — antes el split incondicional
+ * por MSG_BREAK lo partía, le inventaba un cierre y dejaba el DRAFT_END real huérfano (renderizado
+ * crudo). Texto ya balanceado sale idéntico. Puro y testeable.
  */
-export function unbalancedDraftClose(content: string): string {
-  const opens = (content.match(/<<<DRAFT_START>>>/g) || []).length;
-  const closes = (content.match(/<<<DRAFT_END>>>/g) || []).length;
-  return opens > closes ? "\n<<<DRAFT_END>>>" : "";
+export function closeUnbalancedDrafts(content: string): string {
+  const DS = "<<<DRAFT_START>>>";
+  const DE = "<<<DRAFT_END>>>";
+  const MB = "===MSG_BREAK===";
+  if (!content.includes(DS)) return content;
+
+  let out = "";
+  let rest = content;
+  while (rest.length > 0) {
+    const ds = rest.indexOf(DS);
+    if (ds === -1) { out += rest; break; }
+    const after = ds + DS.length;
+    const de = rest.indexOf(DE, after);
+    const nextDs = rest.indexOf(DS, after);
+    if (de !== -1 && (nextDs === -1 || de < nextDs)) {
+      // Draft bien cerrado (puede contener MSG_BREAK): la región se copia entera, intacta.
+      const end = de + DE.length;
+      out += rest.slice(0, end);
+      rest = rest.slice(end);
+      continue;
+    }
+    // Draft sin cerrar: el cierre cae en el punto del desbalance — antes del próximo
+    // ===MSG_BREAK===, del próximo <<<DRAFT_START>>> o al final del texto.
+    const mb = rest.indexOf(MB, after);
+    const cuts = [mb, nextDs].filter((i) => i !== -1);
+    if (cuts.length === 0) {
+      out += rest + "\n" + DE;
+      break;
+    }
+    const cut = Math.min(...cuts);
+    out += rest.slice(0, cut) + "\n" + DE + "\n";
+    rest = rest.slice(cut);
+  }
+  return out;
 }
 
+/** Aviso visible cuando Gemini corta la respuesta por longitud (finish_reason: "length"). */
+export const TRUNCATION_NOTICE = "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
+
 /**
- * Sufijo a agregar cuando Gemini corta la respuesta por longitud (finish_reason: "length").
- * Cierra un <<<DRAFT_*>>> que haya quedado abierto y agrega un aviso visible. Puro y testeable.
+ * Texto final para una ronda truncada por longitud: cierra los <<<DRAFT_START>>> abiertos EN EL
+ * PUNTO del desbalance (mismo closeUnbalancedDrafts que la ronda final — antes este camino usaba
+ * el cierre viejo "un solo DRAFT_END al final del texto", que revivía el bug de la burbuja
+ * tragada) y agrega el aviso. Puro y testeable.
  */
-export function truncationSuffix(content: string): string {
-  return unbalancedDraftClose(content) + "\n\n⚠️ La respuesta se cortó por su longitud. Pedime que la continúe.";
+export function applyTruncation(content: string): string {
+  return closeUnbalancedDrafts(content) + TRUNCATION_NOTICE;
 }
 
 // Máximo de re-prompts por turno cuando el modelo fuga un tool-call como texto (ver abajo).
 const MAX_REPROMPTS = 2;
+
+// Máximo de iteraciones del tool-loop por turno. Subido de 5 a 7: los flujos reales de Alan
+// encadenan 4-6 tools (lookup de cliente + búsqueda + guardados + calendario) y con 5 el turno
+// quedaba sin ronda de texto final con más frecuencia de la esperada. Cada iteración extra solo
+// se usa si el modelo la pide (no encarece el caso típico).
+const DEFAULT_MAX_ITERATIONS = 7;
+
+// Aviso que se anexa al texto emitido/persistido cuando el turno agota maxIterations sin
+// llegar a una ronda de texto final (antes el preámbulo salía publicado sin advertencia).
+export const MAX_ITERATIONS_NOTICE = "⚠️ No llegué a completar la respuesta — pedímelo de nuevo y sigo desde acá.";
 
 /**
  * Detecta y remueve invocaciones de herramienta que el modelo "narró" como TEXTO en vez de usar el
@@ -169,7 +226,7 @@ export function stripLeakedReasoningTail(content: string): string {
 export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions): Promise<StreamTurnResult> {
   const { resilientAIFetch, executeTool, toolCtx, toolDefinitions } = deps;
   const { messages, emit } = opts;
-  const maxIterations = opts.maxIterations ?? 5;
+  const maxIterations = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
 
   const executedTools: string[] = [];
   let fullContent = "";
@@ -181,7 +238,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   // Aplica el saneador de la ronda final si fue provisto. Fail-open: cualquier error deja el texto intacto.
   const finalize = async (t: string): Promise<string> => {
     if (!opts.sanitizeFinal) return t;
-    try { return await opts.sanitizeFinal(t); } catch { return t; }
+    try { return await opts.sanitizeFinal(t, executedTools); } catch { return t; }
   };
 
   for (let iter = 0; iter < maxIterations; iter++) {
@@ -262,7 +319,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       // Ronda final truncada por límite de tokens: volcamos el contenido bufferizado + cierre de
       // marcadores abiertos + aviso, en vez de persistir/mostrar un borrador o tarjeta a medias.
       const safe = stripLeakedReasoningTail(assistantContent);
-      const flush = await finalize(safe + truncationSuffix(safe));
+      const flush = await finalize(applyTruncation(safe));
       fullContent += flush;
       safeEmit(flush);
       emittedFinal = true;
@@ -362,7 +419,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     // Luego, backstop: si el re-prompt no alcanzó (cap agotado) y sigue habiendo un "thought"
     // filtrado, recuperamos la respuesta en español descartando el bloque de razonamiento.
     const finalText = stripLeakedReasoningTail(stripLeakedInternals(finalText0, validToolNames));
-    const flush = await finalize(finalText + unbalancedDraftClose(finalText));
+    const flush = await finalize(closeUnbalancedDrafts(finalText));
     fullContent += flush;
     safeEmit(flush);
     emittedFinal = true;
@@ -370,11 +427,20 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   }
 
   // El turno agotó las iteraciones sin una ronda de texto final (todas terminaron en tool_calls).
-  // Para no dejar la pantalla muda, volcamos el último preámbulo que habíamos suprimido.
-  if (!emittedFinal && lastPreamble) {
-    const safe = await finalize(stripLeakedReasoningTail(lastPreamble));
-    fullContent += safe;
-    safeEmit(safe);
+  // Para no dejar la pantalla muda, volcamos el último preámbulo que habíamos suprimido — con el
+  // mismo cierre de drafts desbalanceados que la ronda final (antes este camino no lo aplicaba y
+  // un preámbulo con <<<DRAFT_START>>> a medias llegaba crudo al front). Además: antes el
+  // preámbulo salía publicado SIN aviso ni log, como si fuera la respuesta completa. Ahora
+  // (1) anexamos un aviso visible de respuesta incompleta y (2) avisamos vía
+  // onMaxIterationsExhausted para que el caller lo registre en error_logs con las tools del turno.
+  if (!emittedFinal) {
+    try { opts.onMaxIterationsExhausted?.(executedTools); } catch { /* observabilidad: nunca rompe el turno */ }
+    const base = lastPreamble
+      ? await finalize(closeUnbalancedDrafts(stripLeakedReasoningTail(lastPreamble)))
+      : "";
+    const flush = (base ? `${base}\n\n` : "") + MAX_ITERATIONS_NOTICE;
+    fullContent += flush;
+    safeEmit(flush);
   }
 
   return { content: fullContent, executedTools };

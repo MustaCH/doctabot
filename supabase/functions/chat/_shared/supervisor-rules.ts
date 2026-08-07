@@ -107,6 +107,63 @@ export function unexecutedWriteVerdict(
   return null;
 }
 
+// NOTA (M2): acá vivía whatsappWithoutContactToolVerdict (rechazo determinista por bloques
+// <<<WHATSAPP_TO>>> sin list_clients/get_client en el turno). Se ELIMINÓ: el supervisor evalúa el
+// texto YA saneado por sanitizeWhatsappBlocks, así que los únicos bloques que podía ver eran los
+// LEGÍTIMOS (cliente sembrado / teléfono tipeado) → 100% falsos positivos + webhook n8n en cada
+// WhatsApp normal. El daño real lo cubre el guardarraíl server-side, que es más fuerte (elimina
+// los bloques inventados antes de que lleguen al usuario) y loguea por console.warn.
+
+// Claims SUPERLATIVOS sobre resultados de búsqueda que NINGÚN filtro puede respaldar
+// ("se ajustan perfectamente", "100% de coincidencia", "garantizadas"): la tool solo garantiza
+// que los resultados matchean los filtros aplicados (applied_filters). Precisión > recall
+// (mismo criterio que WRITE_CLAIMS): regexes ancladas al contexto de resultados/propiedades
+// para no marcar prosa legítima. Incidente "172 que se ajustan perfectamente".
+const SEARCH_SUPERLATIVE_CLAIM =
+  /\b(se\s+ajustan|se\s+adaptan|encajan|coinciden|cumplen|matchean)\s+(perfectamente|al\s*100\s*%|exactamente\s+con\s+todo)|\b100\s*%\s+(de\s+)?(coincidencia|match|compatib)|\b(propiedades|resultados|opciones)\b[^.?!\n]{0,30}\bgarantizad[oa]s\b|\bmatch(es)?\s+perfectos?\b/i;
+
+// Claims de VIGENCIA ("activas", "vigentes", "disponibles hoy") sobre los resultados: solo los
+// respalda el filtro only_active de search_properties (default true; puede venir en false).
+const SEARCH_ACTIVE_CLAIM =
+  /\b(propiedades|publicaciones|avisos|resultados|opciones|listados?)\b[^.?!\n]{0,40}\b(activ[ao]s|vigentes|disponibles\s+hoy)\b|\b(todas?\s+)?(activ[ao]s|vigentes)\b[^.?!\n]{0,40}\b(propiedades|publicaciones|avisos|resultados|opciones)\b/i;
+
+/**
+ * Regla determinista de HONESTIDAD DE BÚSQUEDA: si la respuesta presenta resultados de
+ * search_properties con claims que los filtros realmente aplicados no respaldan, se rechaza.
+ *  - Superlativos ("perfectamente", "100%", "garantizadas"): ningún filtro los respalda → rejected.
+ *  - Vigencia ("activas/vigentes"): respaldado SOLO si applied_filters.only_active === true.
+ *    Con eco NULL la regla de vigencia NO se evalúa (m2): un eco ausente significa que la búsqueda
+ *    no llegó a correr o el contexto no lo propagó — rechazar por falta de eco generaba falsos
+ *    positivos (precisión > recall; el default real de la tool es only_active=true).
+ * Solo aplica cuando search_properties corrió en el turno (sin búsqueda no hay claim de resultados
+ * que evaluar). El supervisor solo loguea (ADR 0001): precisión > recall.
+ */
+export function unsupportedSearchClaimVerdict(
+  assistantContent: string,
+  executedTools: string[],
+  appliedFilters?: Record<string, unknown> | null,
+): { verdict: "rejected"; score: number; reason: string; category: string } | null {
+  const txt = assistantContent || "";
+  if (!txt || !(executedTools || []).includes("search_properties")) return null;
+  if (SEARCH_SUPERLATIVE_CLAIM.test(txt)) {
+    return {
+      verdict: "rejected",
+      score: 3,
+      reason: "Claim superlativo sobre los resultados de búsqueda ('se ajustan perfectamente'/'100%'/'garantizadas') que ningún filtro de search_properties respalda: la tool solo garantiza coincidencia con los filtros aplicados (applied_filters).",
+      category: "dato_inventado",
+    };
+  }
+  if (appliedFilters && SEARCH_ACTIVE_CLAIM.test(txt) && appliedFilters.only_active !== true) {
+    return {
+      verdict: "rejected",
+      score: 3,
+      reason: "Claim de vigencia ('activas'/'vigentes') sobre resultados de búsqueda sin respaldo del filtro only_active en applied_filters.",
+      category: "dato_inventado",
+    };
+  }
+  return null;
+}
+
 /** Categorías canónicas de los veredictos del supervisor (loop de mejora agregable).
  *  Ver ticket 86aj1f1up. */
 export const SUPERVISOR_CATEGORIES = [
