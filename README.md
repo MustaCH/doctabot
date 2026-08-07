@@ -52,6 +52,7 @@ SUPABASE_SERVICE_ROLE_KEY # acceso admin desde las functions
 SUPABASE_ANON_KEY         # validación de JWT del usuario
 GOOGLE_CLIENT_ID          # OAuth Calendar/Gmail
 GOOGLE_CLIENT_SECRET
+OAUTH_STATE_SECRET        # firma HMAC del state de OAuth — OBLIGATORIO antes de deployar google-calendar-auth (32+ bytes random)
 FIRECRAWL_API_KEY         # web_search / scrape_url / portales externos
 N8N_WEBHOOK_URL           # alertas de fallos del supervisor (opcional)
 ```

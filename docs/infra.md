@@ -68,6 +68,7 @@ git checkout main -- supabase/functions/chat
 Leídos en runtime con `Deno.env.get(...)`. **Nunca en el repo.** Necesarios para `chat`:
 - `GEMINI_API_KEY` (la function usa `LOVABLE_API_KEY` como alias legacy del mismo valor)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (Calendar/Gmail)
+- `OAUTH_STATE_SECRET` — **OBLIGATORIO setearlo ANTES de deployar `google-calendar-auth`**: firma HMAC-SHA256 del `state` de OAuth (`_shared/oauth-state.ts`). Sin él, el init devuelve 500 y el callback rechaza todo state (no hay fallback sin firmar, a propósito). Generar 32+ bytes random, ej.: `openssl rand -base64 48` y `supabase secrets set OAUTH_STATE_SECRET=<valor> --project-ref osrphpndujdelfyetoah`. Rotarlo invalida los states en vuelo (ventana de 10 min, impacto mínimo).
 - `N8N_WEBHOOK_URL` (opcional — si falta, no notifica). Canal de **telemetría cruda** a n8n: alertas del supervisor del chat (`chat/_shared/notifications.ts`) + pings de observabilidad (`observability.ts` → `edge_error`, `report-error` → `frontend_error`, `health-monitor` → `uptime_alert`). **El scraper ya NO lo usa** para sus avisos de corrida — ver `OVERLORD_TOKEN`.
 - `OVERLORD_TOKEN` (✅ **seteado en prod, confirmado 2026-06-18**; si faltara, el scraper no avisa pero no rompe). Token del **endpoint de Intake de OVERLORD** (`X-Overlord-Token`). Lo usa `scrape-properties` → `runCleanup` para notificar cada corrida (ver "Jobs programados y scraper"). Contrato: `OVERLORD/INSTRUCTIONS.md` §7.
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (auto-inyectados por la plataforma)
