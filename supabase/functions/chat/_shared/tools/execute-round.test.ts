@@ -73,4 +73,71 @@ describe("executeToolCalls", () => {
     expect(toolMessages).toHaveLength(1);
     expect(JSON.parse(toolMessages[0].content).error).toBeTruthy();
   });
+
+  // 86aj9w5kf: idempotencia de acciones externas dentro del turno.
+  describe("dedup anti doble-envío (86aj9w5kf)", () => {
+    const emailCall = (id: string) => ({ id, name: "send_email", arguments: '{"to":"cliente@mail.com","subject":"Hola","body":"Cuerpo"}' });
+
+    it("send_email duplicado en la misma ronda: ejecuta UNA vez y el segundo avisa que ya se hizo", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ success: true }));
+      const { toolMessages, executed } = await executeToolCalls(
+        [emailCall("c1"), emailCall("c2")],
+        { executeTool, toolCtx: {} },
+      );
+      expect(executeTool).toHaveBeenCalledTimes(1);
+      expect(executed).toEqual(["send_email"]);
+      expect(JSON.parse(toolMessages[1].content).error).toMatch(/ya se ejecutó/);
+    });
+
+    it("el dedup persiste entre rondas del mismo turno (mismo toolCtx)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ success: true }));
+      const toolCtx = {};
+      await executeToolCalls([emailCall("c1")], { executeTool, toolCtx });
+      const { executed } = await executeToolCalls([emailCall("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(1);
+      expect(executed).toEqual([]);
+    });
+
+    it("throw en tool externa: wording de estado desconocido (no 'reintentá') y bloquea el replay idéntico", async () => {
+      const executeTool = vi.fn(async () => { throw new Error("network boom"); });
+      const toolCtx = {};
+      const { toolMessages } = await executeToolCalls([emailCall("c1")], { executeTool, toolCtx });
+      const err = JSON.parse(toolMessages[0].content).error;
+      expect(err).toMatch(/estado desconocido/);
+      expect(err).not.toMatch(/Reintentá la acción/);
+
+      const second = await executeToolCalls([emailCall("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(1); // no re-ejecuta con estado desconocido
+      expect(JSON.parse(second.toolMessages[0].content).error).toMatch(/ya se ejecutó/);
+    });
+
+    it("un {error} limpio de la tool NO bloquea el reintento (el efecto no ocurrió)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ error: "Email de destinatario inválido" }));
+      const toolCtx = {};
+      await executeToolCalls([emailCall("c1")], { executeTool, toolCtx });
+      await executeToolCalls([emailCall("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(2);
+    });
+
+    it("las tools sin efecto externo no se dedupean (search_properties dos veces corre dos veces)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+      const call = (id: string) => ({ id, name: "search_properties", arguments: '{"zone":"centro"}' });
+      const { executed } = await executeToolCalls([call("c1"), call("c2")], { executeTool, toolCtx: {} });
+      expect(executeTool).toHaveBeenCalledTimes(2);
+      expect(executed).toEqual(["search_properties", "search_properties"]);
+    });
+
+    it("mismo tool externo con args DISTINTOS sí ejecuta ambos", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ success: true }));
+      const { executed } = await executeToolCalls(
+        [
+          { id: "c1", name: "send_email", arguments: '{"to":"a@mail.com","subject":"S","body":"B"}' },
+          { id: "c2", name: "send_email", arguments: '{"to":"b@mail.com","subject":"S","body":"B"}' },
+        ],
+        { executeTool, toolCtx: {} },
+      );
+      expect(executeTool).toHaveBeenCalledTimes(2);
+      expect(executed).toEqual(["send_email", "send_email"]);
+    });
+  });
 });

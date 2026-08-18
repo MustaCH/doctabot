@@ -606,24 +606,28 @@ describe("streamTurn", () => {
   // Riesgo LATENTE relacionado (no fue lo que pasó en este incidente — Nacho confirmó que no hubo
   // doble envío). Si un tool con side-effect externo corre en iter 0 y la llamada de IA de iter 1
   // falla, streamTurn tira DESPUÉS de que el efecto ya ocurrió → un reintento lo re-ejecutaría.
-  // Guard para que la idempotencia se contemple cuando se toque el tool-loop.
+  // Mitigado DENTRO del turno por el dedup de execute-round (86aj9w5kf): el hash queda en
+  // toolCtx.externalEffectHashes. El replay CROSS-turn (usuario reintenta el turno entero, toolCtx
+  // nuevo) sigue abierto — este guard lo documenta.
   it("la tool con side-effect ya se ejecutó cuando falla la llamada de IA post-tool (iter 1)", async () => {
     const resilientAIFetch = vi.fn()
       .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "send_email", '{"to":"cliente@mail.com","subject":"Hola","body":"Cuerpo"}', "tool_calls"), DONE]))
       .mockResolvedValueOnce(sseResponse([], false, 503)); // iter 1: fallo transitorio del proveedor
     const executeTool = vi.fn(async () => JSON.stringify({ success: true, message_id: "m1" }));
+    const toolCtx: Record<string, unknown> = {};
 
     await expect(
       streamTurn(
-        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { resilientAIFetch, executeTool, toolCtx, toolDefinitions },
         { messages: [{ role: "user", content: "envialo" }], emit: () => {} },
       ),
     ).rejects.toMatchObject({ status: 503 });
 
-    // El envío YA ocurrió (iter 0) antes de que el turno se cayera (iter 1): sin idempotencia,
-    // el reintento del usuario ejecutaría send_email una segunda vez → email duplicado.
+    // El envío YA ocurrió (iter 0) antes de que el turno se cayera (iter 1).
     expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(executeTool).toHaveBeenCalledWith("send_email", { to: "cliente@mail.com", subject: "Hola", body: "Cuerpo" }, {});
+    expect(executeTool).toHaveBeenCalledWith("send_email", { to: "cliente@mail.com", subject: "Hola", body: "Cuerpo" }, toolCtx);
+    // El hash quedó registrado: dentro del mismo turno un replay idéntico NO se re-ejecutaría.
+    expect((toolCtx.externalEffectHashes as Set<string>).size).toBe(1);
   });
 
   // Regresión del bug 86aj4276y: Gemini (OpenAI-compat) emite tool calls PARALELOS en una misma
