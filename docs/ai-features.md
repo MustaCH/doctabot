@@ -65,6 +65,11 @@ Todos fail-open (un error nunca rompe el turno) y testeados:
   Incluye una regla determinista de claims de búsqueda: el eco de `applied_filters` de la última
   `search_properties` del turno se le pasa al supervisor para detectar afirmaciones sin respaldo
   ("todas activas", "100% dentro del presupuesto") — `supervisor-rules.search-claims.test.ts`.
+  La llamada a Flash va por `fetchWithRetry` (429/5xx transitorios ya no loguean `error` ni
+  disparan la alerta n8n falsa), y los rechazos deterministas se loguean con el prefijo
+  `[determinista]` en el reason: `admin-stats` los separa del avgScore (que además filtra a 30
+  días y expone `avgScoreSampleSize`/`deterministicRejected`) — cálculo puro testeable en
+  `admin-stats/supervisor-stats.ts` (ticket 86aj9w5kq).
 
 `sanitizeFinal(text, executedTools)` es el punto de aplicación: la ronda final del stream se
 bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`, inyectado a

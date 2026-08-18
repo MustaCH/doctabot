@@ -4,6 +4,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ALAN_CONTEXT_FACTS } from "./alan-facts.ts";
 import { unactedReadVerdict, unexecutedWriteVerdict, unsupportedSearchClaimVerdict, buildPriorContextBlock, SUPERVISOR_CATEGORIES } from "./supervisor-rules.ts";
+import { fetchWithRetry } from "./retry.ts";
 
 export interface SupervisorResult {
   verdict: string;
@@ -41,11 +42,16 @@ export async function runSupervisorEval(params: {
     ?? unexecutedWriteVerdict(content, executedTools)
     ?? unsupportedSearchClaimVerdict(content, executedTools, params.searchAppliedFilters ?? null);
   if (hardReject) {
-    return { ...hardReject, retryCount: 0, latency: Date.now() - supervisorStart };
+    // Prefijo para que admin-stats pueda separar estos rechazos (score fijo 2-3) de los
+    // scores LLM 1-10 en avgScore sin necesitar una columna nueva (ticket 86aj9w5kq).
+    return { ...hardReject, reason: `[determinista] ${hardReject.reason}`, retryCount: 0, latency: Date.now() - supervisorStart };
   }
 
+  // fetchWithRetry: un 429/503 transitorio de Flash reintenta con backoff en vez de loguearse
+  // como `error` y disparar la alerta n8n falsa (ticket 86aj9w5kq). El AbortSignal se crea
+  // dentro del thunk → timeout fresco de 20s por intento.
   const evalRequest = (messages: any[]) =>
-    fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    fetchWithRetry(() => fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -74,7 +80,7 @@ export async function runSupervisorEval(params: {
       }),
       // Corre en background; si Gemini cuelga, abortamos en vez de colgar el waitUntil.
       signal: AbortSignal.timeout(20_000),
-    });
+    }));
 
   const systemPrompt = `Sos un supervisor de calidad para "Alan", un asistente de IA para agentes inmobiliarios de RE/MAX Docta (Córdoba, Argentina). Tu trabajo es evaluar si la respuesta de Alan es adecuada.
 

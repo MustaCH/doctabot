@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handleOptions } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
+import { computeScoreStats } from "./supervisor-stats.ts";
 
 // PIN is read from env (SUPER_ADMIN_PIN secret). Fallback kept ONLY for backwards
 // compatibility during the rollout — remove after confirming secret is set in production.
@@ -318,9 +319,14 @@ Deno.serve(async (req) => {
         supabaseAdmin.from("supervisor_logs").select("id", { count: "exact", head: true }).eq("verdict", "unevaluated"),
       ]);
 
-      const { data: scoreData } = await supabaseAdmin.from("supervisor_logs").select("score").not("score", "is", null);
-      const scores = (scoreData ?? []).map((r: any) => r.score).filter((s: number) => s > 0);
-      const avgScore = scores.length > 0 ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
+      // avgScore: 30d (consistente con daily) y SOLO scores LLM 1-10 — los rechazos
+      // deterministas (score fijo 2-3) se separan en computeScoreStats (ticket 86aj9w5kq).
+      const { data: scoreData } = await supabaseAdmin
+        .from("supervisor_logs")
+        .select("score, rejection_reason")
+        .not("score", "is", null)
+        .gte("created_at", sinceISO);
+      const scoreStats = computeScoreStats(scoreData ?? []);
 
       // Conteo por categoría (loop de mejora agregable). Ver ticket 86aj1f1up.
       const { data: catData } = await supabaseAdmin.from("supervisor_logs").select("category").not("category", "is", null);
@@ -346,7 +352,9 @@ Deno.serve(async (req) => {
         rejected: rejectedRes.count ?? 0,
         errors: errorRes.count ?? 0,
         unevaluated: unevaluatedRes.count ?? 0,
-        avgScore: Math.round(avgScore * 10) / 10,
+        avgScore: scoreStats.avgScore,
+        avgScoreSampleSize: scoreStats.sampleSize,
+        deterministicRejected: scoreStats.deterministicRejected,
         byCategory,
         daily: dailyMap,
       });
