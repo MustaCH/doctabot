@@ -25,6 +25,12 @@ export async function generateTitle(
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español para esta conversación. Solo el título, sin comillas ni puntuación al final. Debe ser descriptivo del tema principal." },
           { role: "user", content: `Usuario: ${userText.slice(0, 300)}\nAsistente: ${assistantContent.slice(0, 300)}` },
         ],
+        // Tope de salida: el título son ~10 tokens; sin cap, un desvío del modelo
+        // paga costo desproporcionado (ticket 86aj9w5kn). reasoning_effort "none" apaga el
+        // thinking de 2.5-flash — sus tokens cuentan DENTRO de max_tokens en el endpoint
+        // OpenAI-compat y con tope 24 dejarían el título vacío.
+        max_tokens: 24,
+        reasoning_effort: "none",
         stream: false,
       }),
       signal: AbortSignal.timeout(15_000),
@@ -97,6 +103,9 @@ export async function regenerateTitle(opts: {
           { role: "system", content: "Generá un título MUY CORTO (máximo 5 palabras) en español que capture el TEMA PRINCIPAL ACTUAL de la conversación. Solo el título, sin comillas ni puntuación al final. Debe reflejar de qué se está hablando ahora, no solo el saludo inicial." },
           { role: "user", content: `${clientHint}${transcript}` },
         ],
+        // Mismo tope y thinking-off que generateTitle (86aj9w5kn).
+        max_tokens: 24,
+        reasoning_effort: "none",
         stream: false,
       }),
       signal: AbortSignal.timeout(15_000),
