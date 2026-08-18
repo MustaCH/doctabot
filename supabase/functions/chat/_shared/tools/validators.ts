@@ -304,7 +304,7 @@ export function safePositiveInt(val: unknown): number | null {
 export function safeDbError(error: any): string {
   console.error("Tool DB error:", error?.code, error?.message);
   if (error?.code === "23505") return "Registro duplicado";
-  if (error?.code === "23503") return "Referencia inválida";
+  if (error?.code === "23503") return "Referencia inválida: el registro vinculado ya no existe (por ejemplo, una propiedad dada de baja del listado). Volvé a buscarlo y reintentá con uno vigente.";
   if (error?.code?.startsWith("23")) return "Error de validación";
   return "Error al procesar la solicitud";
 }

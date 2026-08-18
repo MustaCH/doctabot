@@ -1384,6 +1384,13 @@ export async function executeTool(
         if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map(p => p.title || p.address).join(", ")}. ¿Cuál querés vincular?`, properties: props });
         resolvedPropertyId = props[0].id;
       }
+      else {
+        // Path por UUID: el id puede venir de una búsqueda vieja y el scraper nocturno
+        // borra las propiedades que ya no ve en el listado → validar existencia antes
+        // del upsert para no reventar con FK 23503 (bug recurrente 86ak29y3q).
+        const { data: propRow } = await supabase.from("properties").select("id").eq("id", resolvedPropertyId).maybeSingle();
+        if (!propRow) return JSON.stringify({ error: "Esa propiedad ya no está publicada (se dio de baja del listado). Volvé a buscarla con search_properties y vinculá una versión vigente." });
+      }
       const validStatuses = ["sugerida", "enviada", "visitada", "descartada"];
       const status = validStatuses.includes(args.status) ? args.status : "sugerida";
       const notes = typeof args.notes === "string" ? args.notes.trim().slice(0, 2000) : null;
