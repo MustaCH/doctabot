@@ -70,6 +70,14 @@ Todos fail-open (un error nunca rompe el turno) y testeados:
   `[determinista]` en el reason: `admin-stats` los separa del avgScore (que además filtra a 30
   días y expone `avgScoreSampleSize`/`deterministicRejected`) — cálculo puro testeable en
   `admin-stats/supervisor-stats.ts` (ticket 86aj9w5kq).
+  Cobertura de reglas (86aj9w5mq): WRITE_CLAIMS incluye claims de `update_client` ("le cambié
+  el estado a hot", "marqué como hot"); READ_INTENTS cubre `list_client_properties` y
+  `list_client_events`, con dos matices de precisión: `list_client_properties` satisface
+  también el intent genérico de propiedades, y el intent de `list_clients` no matchea cuando
+  el pedido es sobre eventos/cumpleaños/propiedades DEL cliente (gap templado).
+- **Títulos con tope** (`title.ts`, 86aj9w5kn): `max_tokens: 24` + `reasoning_effort: "none"`
+  en ambas llamadas — ojo: el thinking de 2.5-flash cuenta DENTRO de `max_tokens` en el
+  endpoint OpenAI-compat; con tope y thinking prendido el título sale vacío.
 
 `sanitizeFinal(text, executedTools)` es el punto de aplicación: la ronda final del stream se
 bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`, inyectado a
