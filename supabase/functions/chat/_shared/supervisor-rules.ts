@@ -11,14 +11,35 @@ export const READ_INTENTS: Array<{ test: RegExp; tools: string[]; label: string 
   // Nota: usamos stems de verbo (list/mostr/busc…) y NO ponemos \b inmediatamente después,
   // porque \b no matchea tras una vocal acentuada ("buscá", "mostrá"): á no es \w.
   {
-    test: /\b(list|mostr|busc|ver|cu[aá]nt|cu[aá]l)[^.?!\n]{0,30}\bclientes?\b/i,
+    // Gap "templado": si entre el verbo y "clientes" aparece eventos/cumpleaños/propiedades,
+    // el pedido es sobre ESO del cliente (intents de abajo), no sobre listar clientes —
+    // "mostrame los eventos de mis clientes" no debe exigir list_clients (86aj9w5mq).
+    test: /\b(list|mostr|busc|ver|cu[aá]nt|cu[aá]l)(?:(?!\b(?:eventos?|cumplea[ñn]os|aniversarios?|propiedades)\b)[^.?!\n]){0,30}\bclientes?\b/i,
     tools: ["list_clients", "get_client"],
     label: "list_clients",
   },
   {
     test: /\b(busc|encontr|mostr|ver|hay|cu[aá]nt|cu[aá]l)[^.?!\n]{0,40}\b(propiedad|propiedades|deptos?|departamentos?|casas?|ph|lotes?|terrenos?|oficinas?|locales?|cocheras?)\b/i,
-    tools: ["search_properties", "search_external_portals"],
+    // list_client_properties también satisface este intent: "mostrame las propiedades de Ana"
+    // se responde bien con las guardadas del cliente, no solo con una búsqueda (86aj9w5mq).
+    tools: ["search_properties", "search_external_portals", "list_client_properties"],
     label: "search_properties",
+  },
+  // Propiedades GUARDADAS/vinculadas de un cliente (86aj9w5mq). Frases con "propiedades" +
+  // verbo también caen en el intent anterior (que ya acepta list_client_properties); este
+  // patrón cubre además las formas "qué propiedades le mandé/envié a X".
+  {
+    test: /\b(ver|mostr|list|cu[aá]l|qu[eé])[^.?!\n]{0,40}\bpropiedades (guardadas|vinculadas|enviadas|sugeridas)\b|\bqu[eé] propiedades le (mand|envi|mostr|guard|suger)/i,
+    tools: ["list_client_properties"],
+    label: "list_client_properties",
+  },
+  // Eventos/cumpleaños de clientes (86aj9w5mq). "cumpleaños/aniversario" solo existe en
+  // client_events; "eventos ... cliente" evita chocar con el intent de agenda propia
+  // ("mis eventos"), que exige el posesivo.
+  {
+    test: /\b(ver|mostr|list|record|cu[aá]l|qu[eé]|cu[aá]ndo)[^.?!\n]{0,30}\b(cumplea[ñn]os|aniversarios?)\b|\b(ver|mostr|list|cu[aá]l|qu[eé])[^.?!\n]{0,25}\beventos\b[^.?!\n]{0,30}\bclientes?\b/i,
+    tools: ["list_client_events"],
+    label: "list_client_events",
   },
   {
     test: /\b(ver|mostr|list|cu[aá]l)[^.?!\n]{0,20}\bfavoritos?\b/i,
@@ -81,6 +102,11 @@ export const WRITE_CLAIMS: Array<{ test: RegExp; tools: string[]; label: string 
   // Borrado fantasma: Alan dice que borró/eliminó un cliente/contacto pero no corrió ninguna
   // tool de borrado. Pretérito 1ª persona acentuado (borré/eliminé) → no marca ofertas ("¿lo borro?").
   { test: /\b(borré|eliminé)[^.?!\n]{0,40}\b(cliente|contacto|clientes|contactos)\b/i, tools: ["delete_client", "delete_all_clients"], label: "delete_client/delete_all_clients" },
+  // Update fantasma (86aj9w5mq): "le cambié el estado a hot" / "actualicé su presupuesto" sin
+  // update_client. Mismo anclaje en pretérito 1ª persona acentuado (no marca "¿le cambio el
+  // estado?"); "marqué como hot/frío" va aparte para no confundir con mark_contacted.
+  { test: /\b(cambié|actualicé|modifiqué)[^.?!\n]{0,40}\b(estado|status|perfil|presupuesto|datos|zonas?|tel[eé]fono|email)\b/i, tools: ["update_client"], label: "update_client" },
+  { test: /\bmarqué[^.?!\n]{0,30}\bcomo (hot|warm|cold|caliente|fr[ií]o|tibi[oa])\b/i, tools: ["update_client"], label: "update_client (status)" },
 ];
 
 /**

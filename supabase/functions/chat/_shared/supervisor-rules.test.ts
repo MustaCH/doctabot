@@ -36,6 +36,27 @@ describe("unactedReadVerdict", () => {
     expect(unactedReadVerdict("hola, cómo va", [])).toBeNull();
     expect(unactedReadVerdict("gracias!", [])).toBeNull();
   });
+
+  // 86aj9w5mq: list_client_properties / list_client_events cubiertos por READ_INTENTS.
+  it("propiedades guardadas / enviadas al cliente sin tool → rejected; con list_client_properties → null", () => {
+    expect(unactedReadVerdict("mostrame las propiedades guardadas de Ana", [])?.verdict).toBe("rejected");
+    expect(unactedReadVerdict("qué propiedades le mandé a Ana?", [])?.verdict).toBe("rejected");
+    expect(unactedReadVerdict("mostrame las propiedades guardadas de Ana", ["list_client_properties"])).toBeNull();
+    expect(unactedReadVerdict("qué propiedades le mandé a Ana?", ["list_client_properties"])).toBeNull();
+  });
+
+  it("'mostrame las propiedades de Ana' respondida con list_client_properties NO se rechaza (satisface el intent de propiedades)", () => {
+    expect(unactedReadVerdict("mostrame las propiedades de Ana", ["list_client_properties"])).toBeNull();
+  });
+
+  it("cumpleaños / eventos de clientes sin tool → rejected; con list_client_events → null", () => {
+    expect(unactedReadVerdict("cuándo es el cumpleaños de Marta?", [])?.verdict).toBe("rejected");
+    expect(unactedReadVerdict("mostrame los eventos de mis clientes", [])?.verdict).toBe("rejected");
+    expect(unactedReadVerdict("cuándo es el cumpleaños de Marta?", ["list_client_events"])).toBeNull();
+    expect(unactedReadVerdict("mostrame los eventos de mis clientes", ["list_client_events"])).toBeNull();
+    // La agenda PROPIA sigue siendo de list_calendar_events, no choca con este intent.
+    expect(unactedReadVerdict("qué tengo mañana", ["list_calendar_events"])).toBeNull();
+  });
 });
 
 describe("unexecutedWriteVerdict", () => {
@@ -89,6 +110,27 @@ describe("unexecutedWriteVerdict", () => {
     expect(
       unexecutedWriteVerdict("Listo, vinculé esta conversación al perfil de Armando 👤", ["link_conversation"]),
     ).toBeNull();
+  });
+
+  // 86aj9w5mq: update fantasma — claims de update_client.
+  it("'le cambié el estado a hot' sin update_client → rejected; con la tool → null", () => {
+    const v = unexecutedWriteVerdict("Listo, le cambié el estado a hot ✅", []);
+    expect(v?.verdict).toBe("rejected");
+    expect(v?.reason).toMatch(/update_client/);
+    expect(unexecutedWriteVerdict("Listo, le cambié el estado a hot ✅", ["update_client"])).toBeNull();
+  });
+
+  it("'actualicé su presupuesto/perfil' y 'marqué como hot' sin tool → rejected", () => {
+    expect(unexecutedWriteVerdict("Ya actualicé su presupuesto a USD 120.000.", [])?.verdict).toBe("rejected");
+    expect(unexecutedWriteVerdict("Actualicé el perfil de Marta con la zona nueva.", [])?.verdict).toBe("rejected");
+    expect(unexecutedWriteVerdict("Marqué a Juan como hot.", [])?.verdict).toBe("rejected");
+  });
+
+  it("ofertas de update NO se marcan (precisión): subjuntivo/pregunta sin acento pretérito", () => {
+    expect(unexecutedWriteVerdict("¿Querés que le cambie el estado a hot?", [])).toBeNull();
+    expect(unexecutedWriteVerdict("Puedo actualizar su presupuesto si me confirmás el monto.", [])).toBeNull();
+    // 'marqué como contactados' es de mark_contacted (list_clients), no de update_client.
+    expect(unexecutedWriteVerdict("Marqué a los 5 como contactados.", ["list_clients"])).toBeNull();
   });
 });
 
