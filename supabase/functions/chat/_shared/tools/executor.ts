@@ -28,6 +28,7 @@ import {
   prepareContactBatch,
   exactNameMatches,
   parseEmailList,
+  titleFallbackRegex,
 } from "./validators.ts";
 import {
   extractMeetLink,
@@ -250,7 +251,7 @@ export async function executeTool(
       const excludeZones = parseList(args.exclude_zones);
       const excludeNeighborhoods = parseList(args.exclude_neighborhoods);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean; skipPrice?: boolean }) => {
+      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; titleRegex?: string; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean; skipPrice?: boolean }) => {
         // only_active: publicación activa = listing_status 'active' O NULL (filas legacy
         // anteriores a la columna). Aplica a count y data por igual.
         if (onlyActive) q = q.or("listing_status.eq.active,listing_status.is.null");
@@ -261,7 +262,10 @@ export async function executeTool(
         for (const z of excludeZones) q = q.not("zone", "ilike", `%${z}%`);
         for (const n of excludeNeighborhoods) q = q.not("zone_neighborhood", "ilike", `%${n}%`);
         if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
-        if (locality && opts?.useLocalityAsTitle) q = q.ilike("title", `%${locality}%`);
+        // title_fallback con word-boundary (imatch = ~*): "centro" ya no matchea "Centro de
+        // Distribución" por substring. El caller solo activa el flag con un titleRegex válido
+        // (término ≥4 chars y fuera de la blocklist) — ver titleFallbackRegex (86aj9w5mz).
+        if (locality && opts?.useLocalityAsTitle && opts?.titleRegex) q = q.filter("title", "imatch", opts.titleRegex);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
         if (city) q = q.ilike("zone_city", `%${city}%`);
         if (titleSearch) q = q.ilike("title", `%${titleSearch}%`);
@@ -361,15 +365,18 @@ export async function executeTool(
       // lo etiquetamos para que Alan lo aclare en vez de presentarlo como match exacto. Ver 86aj1f1w6.
       let titleFallbackTerm: string | null = null;
 
-      // Fallback: if locality was provided but got 0 results, retry searching in title
-      if (!error && (!data || data.length === 0) && locality && !titleSearch) {
+      // Fallback: if locality was provided but got 0 results, retry searching in title.
+      // Gate anti-espurios (86aj9w5mz): término ≥4 chars y fuera de la blocklist, match con
+      // word-boundary — si titleFallbackRegex da null, el fallback NO dispara.
+      const localityRegex = titleFallbackRegex(locality);
+      if (!error && (!data || data.length === 0) && locality && localityRegex && !titleSearch) {
         const fbBase = applyFilters(
           supabase.from("properties").select("*", { count: "exact", head: true }),
-          { useLocalityAsTitle: true }
+          { useLocalityAsTitle: true, titleRegex: localityRegex }
         );
         const fbData = applyFilters(
           supabase.from("properties").select("*"),
-          { useLocalityAsTitle: true }
+          { useLocalityAsTitle: true, titleRegex: localityRegex }
         ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
         const [fbCountRes, fbDataRes] = await Promise.all([fbBase, fbData]);
         if (!fbDataRes.error && fbDataRes.data && fbDataRes.data.length > 0) {
@@ -380,8 +387,9 @@ export async function executeTool(
         }
       }
 
-      // Fallback: if neighborhood was provided but got 0 results, retry in title
-      if (!error && (!data || data.length === 0) && neighborhood && !titleSearch && !locality) {
+      // Fallback: if neighborhood was provided but got 0 results, retry in title (mismo gate)
+      const neighborhoodRegex = titleFallbackRegex(neighborhood);
+      if (!error && (!data || data.length === 0) && neighborhood && neighborhoodRegex && !titleSearch && !locality) {
         const fbBase2 = applyFilters(
           supabase.from("properties").select("*", { count: "exact", head: true }),
           { useLocalityAsTitle: true }
@@ -390,10 +398,10 @@ export async function executeTool(
           supabase.from("properties").select("*"),
           { useLocalityAsTitle: true }
         ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
-        // For this fallback, search neighborhood term in title
+        // For this fallback, search neighborhood term in title (word-boundary, no substring)
         const [fbCountRes2, fbDataRes2] = await Promise.all([
-          fbBase2.ilike("title", `%${neighborhood}%`),
-          fbData2.ilike("title", `%${neighborhood}%`),
+          fbBase2.filter("title", "imatch", neighborhoodRegex),
+          fbData2.filter("title", "imatch", neighborhoodRegex),
         ]);
         if (!fbDataRes2.error && fbDataRes2.data && fbDataRes2.data.length > 0) {
           totalCount = fbCountRes2.count ?? 0;
@@ -404,16 +412,18 @@ export async function executeTool(
       }
 
       // Fallback: zona provista sin resultados → el término puede ser un desarrollo/loteo
-      // cuyo nombre vive en el título (no en el campo zone). Reintentamos buscándolo en title.
-      if (!error && (!data || data.length === 0) && zone && !titleSearch && !locality && !neighborhood) {
+      // cuyo nombre vive en el título (no en el campo zone). Reintentamos buscándolo en title
+      // con el mismo gate anti-espurios ('centro'/'san' no disparan; word-boundary).
+      const zoneRegex = titleFallbackRegex(zone);
+      if (!error && (!data || data.length === 0) && zone && zoneRegex && !titleSearch && !locality && !neighborhood) {
         const fbBaseZ = applyFilters(
           supabase.from("properties").select("*", { count: "exact", head: true }),
           { skipZone: true }
-        ).ilike("title", `%${zone}%`);
+        ).filter("title", "imatch", zoneRegex);
         const fbDataZ = applyFilters(
           supabase.from("properties").select("*"),
           { skipZone: true }
-        ).ilike("title", `%${zone}%`).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
+        ).filter("title", "imatch", zoneRegex).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
         const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
         if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
           totalCount = fbCountResZ.count ?? 0;

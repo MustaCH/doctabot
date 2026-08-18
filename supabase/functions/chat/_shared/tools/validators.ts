@@ -300,6 +300,33 @@ export function safePositiveInt(val: unknown): number | null {
   return !isNaN(n) && n >= 0 ? n : null;
 }
 
+/**
+ * Términos demasiado genéricos para el title_fallback de search_properties (86aj9w5mz):
+ * como substring matchean cualquier cosa ("centro" → "Centro de Distribución"). Se comparan
+ * normalizados (lowercase, sin acentos).
+ */
+export const TITLE_FALLBACK_BLOCKLIST = new Set([
+  "casa", "casas", "depto", "deptos", "departamento", "departamentos", "duplex", "lote", "lotes",
+  "local", "locales", "campo", "cochera", "terreno", "terrenos", "oficina", "oficinas",
+  "centro", "norte", "sur", "este", "oeste", "zona", "barrio", "country", "cordoba",
+  "capital", "nueva", "nuevo", "villa", "alta", "alto", "bajo", "general", "cerro", "avenida", "calle",
+]);
+
+/**
+ * Patrón POSIX (~* / imatch) para el title_fallback: word-boundary (\m…\M) con el término
+ * escapado. Devuelve null si el término es muy corto (<4 chars) o está en la blocklist —
+ * en ese caso el fallback NO debe dispararse (86aj9w5mz: 'san' matcheaba "descansando").
+ */
+export function titleFallbackRegex(term: unknown): string | null {
+  if (typeof term !== "string") return null;
+  const t = term.trim();
+  if (t.length < 4) return null;
+  const normalized = t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (TITLE_FALLBACK_BLOCKLIST.has(normalized)) return null;
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `\\m${escaped}\\M`;
+}
+
 /** Map DB errors to safe user-facing messages */
 export function safeDbError(error: any): string {
   console.error("Tool DB error:", error?.code, error?.message);
