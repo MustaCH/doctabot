@@ -1,7 +1,7 @@
 # Infraestructura — doctabot (Alan)
 
 > Dueño: **DevOps** (`/devops`). Fuente única de verdad de **cómo se deploya, dónde corre, qué env vars necesita y qué hacer cuando algo se rompe**.
-> Última actualización: 2026-06-18.
+> Última actualización: 2026-08-18.
 
 ## Hosting
 
@@ -9,7 +9,7 @@
 |-------|-------------|-------|
 | **Frontend** (PWA React/Vite) | **VPS via Dokploy** (`server.ignaciopoletti.dev`) | Build con Dockerfile en el repo. **Auto-deploy con cada push a `main`** (Dokploy app "Doctabot", id `UjIs40YosJu3aFdyPt84R`, proyecto RemaxDocta, env production). Trigger manual: `POST /api/trpc/application.deploy` con `{"json":{"applicationId":"UjIs40YosJu3aFdyPt84R"}}`. |
 | **Backend** (Edge Functions + Postgres) | **Supabase Cloud** | Proyecto **Doctabot** ref `osrphpndujdelfyetoah` (org QiuAutomations, región **sa-east-1**). |
-| **DB** | Postgres de Supabase (`osrphpndujdelfyetoah`) | Esquema en `supabase/migrations/`. 44 migraciones aplicadas al 2026-06-12. |
+| **DB** | Postgres de Supabase (`osrphpndujdelfyetoah`) | Esquema en `supabase/migrations/`. 57 archivos de migración locales al 2026-08-18; las últimas tres (`oauth_states`, `clients_status_check`, `clients_indexes`, sprint hardening 2026-08-06) están **aplicadas en remoto** (registradas 2026-08-07 vía `list_migrations`). |
 
 ## ⚠️ Situación de proyectos Supabase (importante)
 
@@ -33,7 +33,9 @@ supabase functions deploy chat --project-ref osrphpndujdelfyetoah
 
 - El CLI bundlea `index.ts` + todo `supabase/functions/chat/_shared/**` automáticamente.
 - `verify_jwt` se respeta desde `config.toml` (`[functions.chat] verify_jwt = false` — chat hace su propia auth en `authenticateRequest`).
-- Otras functions deployadas en el proyecto: `google-calendar-auth`, `morning-matches`, `transcribe`, `admin-stats`, `scrape-properties`, `parse-client-import`, `send-push-notification`, `sync-calendar-event`, `test-webhook`.
+- Otras functions deployadas en el proyecto: `google-calendar-auth`, `morning-matches`, `transcribe`, `admin-stats`, `scrape-properties`, `parse-client-import`, `send-push-notification`, `sync-calendar-event`, `report-error`, `health-monitor`, `test-webhook`.
+
+> **Estado de deploy al 2026-08-07 (sprint hardening, verificado en vivo 2026-08-18):** se redeployaron 4 functions — `chat` **v43**, `google-calendar-auth` **v5** (OAuth state HMAC, requiere `OAUTH_STATE_SECRET`), `transcribe` **v5** (tope de audio 10MB con error claro), `scrape-properties` **v9** (guardarraíl de aborto del cleanup). `morning-matches` va por **v13**.
 
 ### Verificación post-deploy
 
@@ -80,7 +82,7 @@ Leídos en runtime con `Deno.env.get(...)`. **Nunca en el repo.** Necesarios par
 - ✅ **`send-push-notification` 500 — RESUELTO 2026-06-12.** La migración había seteado una VAPID keypair distinta y con la private rota en el proyecto nuevo → `importVapidKeys` reventaba → 500. **Fix:** se regeneró una keypair VAPID nueva (web-push format), se setearon `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` en el proyecto nuevo, y se actualizó el fallback del front ([use-push-notifications.ts](../src/hooks/use-push-notifications.ts)). Public key nueva: `BMP92PAdZwTWRt_0CkGLXf3VOoC8dJCG-mizz1i4vnZzTlEYBNo6tYgv5XhA17phjted4yD3zwgFOsICad4Ve5c`.
   - ⚠️ **Consecuencia:** las subscriptions creadas con la keypair anterior quedaron inválidas (push service responde 403). **Los usuarios deben reactivar notificaciones** (toggle off/on) para re-suscribirse con la key nueva. Las 11 subs viejas seguirán dando 403 hasta que el usuario re-suscriba; conviene limpiarlas (`delete from push_subscriptions where created_at < '2026-06-12'`) para evitar ruido de 403.
   - Generar una VAPID keypair (si hace falta a futuro): `node` con `crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'})` → public = base64url(`0x04`||x||y) (65 bytes), private = jwk.d (32 bytes). **Nunca imprimir la private**; setear con `supabase secrets set --env-file`.
-- 🟠 **`send-push-notification` corre con `verify_jwt: true` en prod → rompe el sync de la VAPID key (detectado 2026-06-13, bug 86aj18u6f).** El front llama a `get_vapid_key` **sin** `Authorization` para mantenerse en sync con la public key del server; con `verify_jwt: true` el gateway lo rechaza (401) y el front cae al **fallback hardcodeado** ([use-push-notifications.ts](../src/hooks/use-push-notifications.ts)). Mientras el fallback == la env del server (hoy ambos `BMP92…`) funciona, pero es frágil: un bundle cacheado con un fallback viejo crea subs con una key que no matchea → push service responde **403** ("the VAPID credentials in the authorization header do not correspond to the credentials used to create the subscriptions"). **Fix staged:** se agregó `[functions.send-push-notification] verify_jwt = false` a `config.toml`. **Requiere redeploy** (lo corre Nacho): `supabase functions deploy send-push-notification --project-ref osrphpndujdelfyetoah`. Los dispatchers (`chat`, `morning-matches`) llaman con service key, así que `verify_jwt=false` no los afecta.
+- ✅ **`send-push-notification` con `verify_jwt: true` — RESUELTO: en prod ya corre con `verify_jwt: false` (v6; verificado en vivo 2026-08-18 vía `list_edge_functions`).** Historia del bug (2026-06-13, 86aj18u6f): El front llama a `get_vapid_key` **sin** `Authorization` para mantenerse en sync con la public key del server; con `verify_jwt: true` el gateway lo rechaza (401) y el front cae al **fallback hardcodeado** ([use-push-notifications.ts](../src/hooks/use-push-notifications.ts)). Mientras el fallback == la env del server (hoy ambos `BMP92…`) funciona, pero es frágil: un bundle cacheado con un fallback viejo crea subs con una key que no matchea → push service responde **403** ("the VAPID credentials in the authorization header do not correspond to the credentials used to create the subscriptions"). **Fix staged:** se agregó `[functions.send-push-notification] verify_jwt = false` a `config.toml`. **Requiere redeploy** (lo corre Nacho): `supabase functions deploy send-push-notification --project-ref osrphpndujdelfyetoah`. Los dispatchers (`chat`, `morning-matches`) llaman con service key, así que `verify_jwt=false` no los afecta.
   - **Cómo verificar la VAPID key del server** (read-only, sin tocar secrets): `get_vapid_key` con un bearer válido (anon key del proyecto sirve, pasa el `verify_jwt`):
     ```bash
     curl -s -X POST "https://osrphpndujdelfyetoah.supabase.co/functions/v1/send-push-notification" \
@@ -125,12 +127,13 @@ Todo se dispara con **`pg_cron` + `pg_net`** desde la DB de Supabase (no hay cro
 > **Observabilidad:** tabla `match_runs` (RLS ON sin policies, solo service_role — patrón `error_logs`) con una fila por corrida (`running|success|partial|error` + contadores). Para chequear salud: `select status, users_processed, buyer_match_groups, seller_match_groups from match_runs order by started_at desc limit 1`.
 > **Self-invoke:** usa la service key como Bearer; `morning-matches` sigue con `verify_jwt=true` (endpoint gateado, no abierto). El cron sigue disparando orchestrator con su bearer anon (body sin `batchTimestamp` → orchestrator).
 
-📌 **Drift en el historial de migraciones (detectado 2026-06-17, pendiente de reconciliar):** `supabase migration list --linked` muestra desalineación de la sesión /devops del 2026-06-14 (aplicó vía MCP, que registra con timestamp fresco): los archivos locales `20260614120000_error_logs` y `20260614120100_health_monitor_cron` figuran **pendientes** pero su contenido **ya está aplicado** en remoto bajo las versiones `20260614212206` / `20260614212418` (orphans sin archivo local). `match_runs` se aplicó vía MCP también (2026-06-17), así que el archivo `20260617000000` queda igual de "phantom-pending". **No hacer `supabase db push` a ciegas** (re-correría el `cron.schedule` del health-monitor → cron duplicado). Reconciliar con `supabase migration repair --status applied <versión-archivo>` + `--status reverted <versión-orphan>` en una ventana tranquila.
+📌 **Drift en el historial de migraciones (detectado 2026-06-17, pendiente de reconciliar):** `supabase migration list --linked` muestra desalineación de la sesión /devops del 2026-06-14 (aplicó vía MCP, que registra con timestamp fresco): los archivos locales `20260614120000_error_logs` y `20260614120100_health_monitor_cron` figuran **pendientes** pero su contenido **ya está aplicado** en remoto bajo las versiones `20260614212206` / `20260614212418` (orphans sin archivo local). `match_runs` se aplicó vía MCP también (2026-06-17), así que el archivo `20260617000000` queda igual de "phantom-pending". El patrón se repitió con las migraciones del sprint 2026-08-06: los archivos locales `20260806*` (`oauth_states`, `clients_status_check`, `clients_indexes`) figuran en remoto bajo versiones `20260807*` (aplicadas vía CLI/MCP con timestamp fresco) — mismo drift, mismo cuidado. **No hacer `supabase db push` a ciegas** (re-correría el `cron.schedule` del health-monitor → cron duplicado). Reconciliar con `supabase migration repair --status applied <versión-archivo>` + `--status reverted <versión-orphan>` en una ventana tranquila.
 
 ### Scraper de propiedades — arquitectura (dos piezas)
 
 1. **Scraper crudo (VPS/Dokploy):** `http://remaxdocta-scrapingdocta-…sslip.io/api/scrape`. Expone `?mode=checkMaxPages&operationId=N` y `?startPage&endPage&operationId`. Es el que pega contra la data de RE/MAX Docta. **Single point of failure**: si esta app del VPS se cae, el scraping falla aunque Supabase esté sano.
 2. **Edge Function `scrape-properties` (Supabase):** orquesta. Modo orquestador (sin `operationId`) arranca la cadena; modo worker scrapea 20 páginas por invocación y **se auto-encadena** (`selfInvoke`) hasta cubrir las 3 operaciones (Venta, Alquiler, Alq. temporario). Upsert en `properties` (onConflict `external_id`) + `last_seen_at`; al final `runCleanup` borra las no vistas y notifica a OVERLORD vía el endpoint de Intake.
+   - **Guardarraíl del cleanup (v9, 2026-08-07 — `cleanup-guard.ts`, unit-testeado):** el delete masivo de propiedades "stale" se **ABORTA** si la corrida es sospechosa: % a borrar > 30% del catálogo (`CLEANUP_MAX_DELETE_RATIO`), o errores de página > 5% del total (`CLEANUP_MAX_PAGE_ERROR_RATIO`; sin `totalPages` conocido, cualquier error de página aborta — criterio binario conservador). Al abortar no se borra nada, queda log `⛔ Cleanup ABORTADO` en `scraping_logs` y se reintenta en la próxima corrida. Evita que una corrida parcial (VPS flaqueando) vacíe el catálogo.
 
 ### Monitoreo del scraper
 

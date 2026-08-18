@@ -31,20 +31,24 @@ npm test           # Vitest (una corrida)
 
 3. **Reglas de comportamiento canónicas: una sola fuente.** Los hechos/reglas duras de Alan (marcadores, enums de cliente, confirmación de email, prioridad Docta, contenido web no confiable, etc.) viven en `_shared/alan-facts.ts` (`ALAN_CONTEXT_FACTS`). Tanto el system prompt (`_shared/prompt.ts`) como el supervisor (`_shared/supervisor.ts`) los importan de ahí: para cambiar una regla canónica editás `alan-facts.ts` y se refleja en los dos. La prosa instruccional detallada (el "cómo") sigue viviendo en `prompt.ts`; el supervisor solo evalúa contra los hechos canónicos.
 
-4. **Marcadores de formato que el front parsea — no romper:**
-   - `===MSG_BREAK===` → separa la respuesta en burbujas de chat.
-   - `<<<DRAFT_START>>>` … `<<<DRAFT_END>>>` → borradores copiables (email/WhatsApp).
-   - `<<<WHATSAPP_TO:+549...>>>` → botón "Enviar por WhatsApp".
-   - `[REFERENCIA]` … `[FIN REFERENCIA]` → texto citado por el usuario.
-   Tanto el prompt como `sse.ts` y `stream-chat.ts` dependen de estos strings exactos.
+4. **Marcadores de formato — no romper:**
+   - Los escribe el modelo y los parsea el front:
+     - `===MSG_BREAK===` → separa la respuesta en burbujas de chat.
+     - `<<<DRAFT_START>>>` … `<<<DRAFT_END>>>` → borradores copiables (email/WhatsApp).
+     - `<<<WHATSAPP_TO:+549...>>>` → botón "Enviar por WhatsApp".
+     - `[REFERENCIA]` … `[FIN REFERENCIA]` → texto citado por el usuario.
+   - Server-side (el modelo solo marca DÓNDE van; el server los expande en `sanitizeFinal` antes de emitir, por posición — nunca confiarle identificadores al modelo):
+     - `<<<PROPERTIES>>>` → tarjetas de propiedad (`_shared/card-render.ts`).
+     - `<<<CONTACTS>>>` → tarjetas de contacto.
+   El parseo del front vive en `src/lib/draft-parse.ts` (`parseDraftSegments`, `splitBubbles` — compartido entre streaming y recarga — y `stripAllMarkers`) + `src/lib/stream-chat.ts`. El backend depende de los strings exactos en `prompt.ts` y `sse.ts`.
 
-5. **IA = Gemini directo (endpoint OpenAI-compatible), no Lovable Gateway.** En `chat/index.ts` vas a ver una variable `LOVABLE_API_KEY` que es solo un alias de `GEMINI_API_KEY` (legado). Modelos: `gemini-2.5-pro` para el turno, `gemini-2.5-flash` para supervisor/títulos/transcripción.
+5. **IA = Gemini directo (endpoint OpenAI-compatible), no Lovable Gateway.** En `chat/index.ts` vas a ver una variable `LOVABLE_API_KEY` que es solo un alias de `GEMINI_API_KEY` (legado). Modelos: `gemini-3.5-flash` para el turno principal (tool-loop), `gemini-2.5-flash` para supervisor/títulos/transcripción. Gotchas de la migración a 3.x (`thought_signature`, `finish_reason:"stop"` en rondas de tools) → ver [docs/ai-features.md](./docs/ai-features.md).
 
-6. **Streaming real, supervisor post-hoc.** El turno se streamea token a token vía `_shared/stream-turn.ts` (driver con tool loop); cada token se reenvía al cliente. El supervisor (`_shared/supervisor.ts`) corre **después** de cerrar el stream, en background (`EdgeRuntime.waitUntil`), y **no bloquea ni reescribe** lo que ve el usuario — solo evalúa y loguea (ver ADR 0001). El catch de `index.ts` (cuando `streamTurn` tira) persiste un mensaje de error estático y no corre el supervisor.
+6. **Streaming real, guardarraíles deterministas, supervisor post-hoc.** El turno se streamea token a token vía `_shared/stream-turn.ts` (driver con tool loop, tope de 7 iteraciones); cada token se reenvía al cliente, pero la **ronda final se bufferiza** y pasa por `sanitizeFinal(text, executedTools)` (definido en `index.ts`) **antes** de emitirse/persistirse: expande las tarjetas server-side y aplica guardarraíles deterministas (links de propiedad, bloques de WhatsApp, listas de contactos) — todos fail-open. El supervisor (`_shared/supervisor.ts`) corre **después** de cerrar el stream, en background (`EdgeRuntime.waitUntil`), y **no bloquea ni reescribe** lo que ve el usuario — solo evalúa y loguea (ver ADR 0001). El catch de `index.ts` (cuando `streamTurn` tira) persiste un mensaje de error estático y no corre el supervisor.
 
 7. **Validación de inputs de tools** centralizada en `_shared/tools/validators.ts`. Reutilizá `sanitizePattern`, `safePositiveInt`, `UUID_REGEX`, `normalizeClientStatus`, etc. en vez de validar a mano.
 
-8. **Estados / tipos de cliente son cerrados:** status `hot|warm|cold`, client_type `buyer|seller|both`. Nunca uses `active/inactive/prospect/closed`. Hay sinónimos normalizados en `normalizeClientStatus`.
+8. **Estados / tipos de cliente son cerrados:** status `hot|warm|cold`, client_type `buyer|seller|both`. Nunca uses `active/inactive/prospect/closed`. Hay sinónimos normalizados en `normalizeClientStatus`, y la DB lo garantiza además con un CHECK (`clients_status_check`, default `warm`) — un status inválido revienta el insert aunque la validación en código falle.
 
 9. **Zona horaria:** todo en Córdoba (UTC-3). Hay helpers de fecha; evitá inventar otro cálculo de timezone.
 
@@ -55,7 +59,7 @@ npm test           # Vitest (una corrida)
 
 ## Tests
 
-Vitest. Hay tests en `src/lib/*.test.ts` (matching, contactos) y en `supabase/functions/_shared/*.test.ts` (cors, http, validation). Si tocás lógica con test asociado, corré `npm test` antes de dar por terminado.
+Vitest, ~525 tests en 36 suites. Viven en `src/lib/*.test.ts` (draft-parse, matching, contactos, contratos de tarjetas), `src/components/` + `src/hooks/`, y `supabase/functions/**` (stream-turn, guardarraíles de WhatsApp/links, executor.search, validators, supervisor-rules, oauth-state, cleanup-guard, etc.). Si tocás lógica con test asociado, corré `npm test` antes de dar por terminado. Gotcha: `src/components/PropertyCard.test.tsx` importa el client generado y necesita `VITE_SUPABASE_URL` (sin `.env` local esa suite falla en colección; el resto corre igual).
 
 ## Seguridad
 
