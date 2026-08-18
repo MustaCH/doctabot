@@ -550,7 +550,15 @@ export async function executeTool(
       if (!args.property_id || !UUID_REGEX.test(args.property_id)) {
         return JSON.stringify({ error: "ID de propiedad inválido" });
       }
-      const { error } = await supabase.from("favorites").insert({ user_id: userId, property_id: args.property_id });
+      // Mismo hueco que save_property_to_client (86ak29y3q): el id puede estar stale
+      // si el scraper borró la propiedad → validar existencia antes de escribir (FK 23503).
+      const { data: favProp } = await supabase.from("properties").select("id").eq("id", args.property_id).maybeSingle();
+      if (!favProp) return JSON.stringify({ error: "Esa propiedad ya no está publicada (se dio de baja del listado). Volvé a buscarla con search_properties." });
+      // Re-favoritear es idempotente (86ajjn29n): avisamos si ya estaba, y el upsert
+      // sobre la unique (user_id,property_id) cubre la carrera del doble insert (23505).
+      const { data: existingFav } = await supabase.from("favorites").select("property_id").eq("user_id", userId).eq("property_id", args.property_id).maybeSingle();
+      if (existingFav) return JSON.stringify({ success: true, message: "Esa propiedad ya estaba en favoritos." });
+      const { error } = await supabase.from("favorites").upsert({ user_id: userId, property_id: args.property_id }, { onConflict: "user_id,property_id" });
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ success: true, message: "Propiedad agregada a favoritos" });
     }

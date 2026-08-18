@@ -79,6 +79,44 @@ describe("save_property_to_client — propiedad borrada por el scraper (path por
   });
 });
 
+describe("add_favorite — idempotencia y propiedad borrada (ticket 86ajjn29n)", () => {
+  it("propiedad inexistente → error claro 'ya no está publicada', sin escribir en favorites", async () => {
+    const supabase = makeSupabase({
+      properties: { maybeSingleResult: { data: null } },
+    });
+    const out = JSON.parse(await executeTool("add_favorite", { property_id: PROP_ID }, baseCtx(supabase)));
+
+    expect(out.error).toMatch(/ya no está publicada/);
+    expect(supabase.calls.some((c) => c.table === "favorites")).toBe(false);
+  });
+
+  it("ya favoriteada → success con 'ya estaba en favoritos', sin upsert", async () => {
+    const supabase = makeSupabase({
+      properties: { maybeSingleResult: { data: { id: PROP_ID } } },
+      favorites: { maybeSingleResult: { data: { property_id: PROP_ID } } },
+    });
+    const out = JSON.parse(await executeTool("add_favorite", { property_id: PROP_ID }, baseCtx(supabase)));
+
+    expect(out.success).toBe(true);
+    expect(out.message).toMatch(/ya estaba en favoritos/);
+    expect(supabase.calls.some((c) => c.table === "favorites" && c.m === "upsert")).toBe(false);
+  });
+
+  it("nueva → success 'agregada' con upsert idempotente (onConflict user_id,property_id)", async () => {
+    const supabase = makeSupabase({
+      properties: { maybeSingleResult: { data: { id: PROP_ID } } },
+      favorites: { maybeSingleResult: { data: null } },
+    });
+    const out = JSON.parse(await executeTool("add_favorite", { property_id: PROP_ID }, baseCtx(supabase)));
+
+    expect(out.success).toBe(true);
+    expect(out.message).toMatch(/agregada a favoritos/);
+    const upsert = supabase.calls.find((c) => c.table === "favorites" && c.m === "upsert");
+    expect(upsert?.a[0]).toEqual({ user_id: "u1", property_id: PROP_ID });
+    expect(upsert?.a[1]?.onConflict).toBe("user_id,property_id");
+  });
+});
+
 describe("safeDbError — red de seguridad para 23503", () => {
   it("devuelve un mensaje accionable, no el literal 'Referencia inválida' pelado", () => {
     const msg = safeDbError({ code: "23503", message: "violates foreign key constraint" });
