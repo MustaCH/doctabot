@@ -78,6 +78,17 @@ function toCardStub(ctx: any, property: any): any {
 const CARD_MERGE_CAP = 30;
 
 /**
+ * Valida que el cliente exista y pertenezca al user. Las edge functions usan service_role
+ * (bypass RLS): sin este check, un client_id UUID ajeno colgaría filas (eventos/notas) del
+ * cliente de OTRO agente. Devuelve la fila o null (ticket 86aj9w5ke; patrón de
+ * save_property_to_client).
+ */
+async function assertClientOwned(supabase: any, userId: string, clientId: string): Promise<{ id: string; full_name: string | null } | null> {
+  const { data } = await supabase.from("clients").select("id, full_name").eq("id", clientId).eq("user_id", userId).maybeSingle();
+  return data ?? null;
+}
+
+/**
  * Arranca un LOTE de tarjetas para `toolName`. Semántica (M9):
  *  - MISMA tool que el lote existente (búsquedas sucesivas) → REEMPLAZA ("última búsqueda gana"):
  *    dos search_properties en el mismo turno no deben volcar las tarjetas de ambas.
@@ -1563,7 +1574,12 @@ export async function executeTool(
         }
       }
       if (!resolvedClientId || !UUID_REGEX.test(resolvedClientId)) return JSON.stringify({ error: "Se requiere client_id o client_name" });
-      
+      // Pertenencia ANTES de cualquier efecto (incluido el sync a Calendar de más abajo):
+      // el path por UUID directo no pasaba por ninguna query scopeada (86aj9w5ke).
+      if (!(await assertClientOwned(supabase, userId, resolvedClientId))) {
+        return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+      }
+
       const title = typeof args.title === "string" ? args.title.trim().slice(0, 300) : null;
       if (!title) return JSON.stringify({ error: "El título es requerido" });
       const eventDate = typeof args.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.event_date) ? args.event_date : null;
@@ -1696,6 +1712,11 @@ export async function executeTool(
         }
       }
       if (!clientId || !UUID_REGEX.test(clientId)) return JSON.stringify({ error: "Se necesita un client_id o client_name válido" });
+      // Pertenencia en el path por UUID directo (86aj9w5ke): sin esto, service_role permite
+      // colgar notas del cliente de otro agente.
+      if (!(await assertClientOwned(supabase, userId, clientId))) {
+        return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+      }
       const content = typeof args.content === "string" ? args.content.trim().slice(0, 2000) : null;
       if (!content) return JSON.stringify({ error: "El contenido de la nota es requerido" });
       const isAction = args.is_action === true;
