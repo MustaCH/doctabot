@@ -1003,11 +1003,19 @@ export async function executeTool(
         ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
         : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
-      const calRes = await fetch(calUrl, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(eventBody),
-      });
+      // try/catch propio (patrón send_email, ticket 86aj9w5kh): un throw de red acá NO debe subir
+      // al catch genérico ("reintentá") porque el evento pudo haberse creado igual → duplicado.
+      let calRes: Response;
+      try {
+        calRes = await fetch(calUrl, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(eventBody),
+        });
+      } catch (err) {
+        console.error("Calendar create fetch error:", err);
+        return JSON.stringify({ error: "Error de red al crear el evento: estado desconocido (puede haberse creado o no). Verificá en Google Calendar antes de reintentar, para no duplicarlo." });
+      }
       if (!calRes.ok) {
         const err = await calRes.text();
         console.error("Calendar create error:", err);
@@ -1036,11 +1044,18 @@ export async function executeTool(
         attendees: Array.isArray(args.attendees) ? args.attendees : undefined,
       });
 
-      const calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(eventBody),
-      });
+      // try/catch propio (patrón send_email, ticket 86aj9w5kh): ver create_calendar_event.
+      let calRes: Response;
+      try {
+        calRes = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(eventBody),
+        });
+      } catch (err) {
+        console.error("Meet event create fetch error:", err);
+        return JSON.stringify({ error: "Error de red al crear la reunión: estado desconocido (puede haberse creado o no). Verificá en Google Calendar antes de reintentar, para no duplicarla." });
+      }
       if (!calRes.ok) {
         const err = await calRes.text();
         console.error("Meet event create error:", err);
@@ -1137,9 +1152,16 @@ export async function executeTool(
         orderBy: "startTime",
       });
 
-      const calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      // try/catch propio (86aj9w5kh): lectura sin riesgo de duplicado → mensaje de reintento simple.
+      let calRes: Response;
+      try {
+        calRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } catch (err) {
+        console.error("Calendar list fetch error:", err);
+        return JSON.stringify({ error: "Error de red al consultar Google Calendar. Reintentá en un momento." });
+      }
       if (!calRes.ok) return JSON.stringify({ error: "Error al obtener eventos de Google Calendar" });
       const data = await calRes.json();
       const events = (data.items ?? []).map((e: any) => ({
@@ -1162,9 +1184,16 @@ export async function executeTool(
       const eventId = typeof args.event_id === "string" ? args.event_id.trim() : null;
       if (!eventId) return JSON.stringify({ error: "ID de evento requerido" });
 
-      const getRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      // try/catch propio (86aj9w5kh): el GET es lectura → reintento simple.
+      let getRes: Response;
+      try {
+        getRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } catch (err) {
+        console.error("Calendar update GET fetch error:", err);
+        return JSON.stringify({ error: "Error de red al consultar el evento. Reintentá en un momento." });
+      }
       if (!getRes.ok) return JSON.stringify({ error: "Evento no encontrado" });
       await getRes.json(); // consume body
 
@@ -1181,11 +1210,18 @@ export async function executeTool(
         if (ed) patch.end = { dateTime: ed.toISOString(), timeZone: "America/Argentina/Cordoba" };
       }
 
-      const patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
+      // try/catch propio (86aj9w5kh): el PATCH es escritura → estado desconocido, que verifique.
+      let patchRes: Response;
+      try {
+        patchRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+      } catch (err) {
+        console.error("Calendar update PATCH fetch error:", err);
+        return JSON.stringify({ error: "Error de red al actualizar el evento: estado desconocido (pudo haberse aplicado o no). Verificá el evento en Google Calendar antes de reintentar." });
+      }
       if (!patchRes.ok) return JSON.stringify({ error: "Error al actualizar el evento" });
       const updated = await patchRes.json();
       return JSON.stringify({ success: true, event_id: updated.id, html_link: updated.htmlLink, message: `Evento actualizado correctamente.` });
