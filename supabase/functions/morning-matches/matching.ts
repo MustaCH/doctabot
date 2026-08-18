@@ -77,15 +77,29 @@ export function extractClientZonesFromNotes(notes: string): string[] {
   return [...new Set(zones)];
 }
 
+/** Zonas "contenedoras" demasiado genéricas para matchear por substring o palabra: 'córdoba'
+ *  está contenida en 'nueva córdoba', 'alta córdoba', etc. — solo valen por igualdad exacta.
+ *  (Mantener en sync con src/lib/property-matching.ts.) Ticket 86aj9w5mw. */
+const CONTAINER_ZONES = new Set([
+  "cordoba", "córdoba", "cordoba capital", "córdoba capital", "capital", "sierras", "centro",
+]);
+
 export function zonesMatch(propertyZone: string, clientZone: string): boolean {
   const pz = propertyZone.trim().toLowerCase();
   const cz = clientZone.trim().toLowerCase();
-  if (pz === cz || pz.includes(cz) || cz.includes(pz)) return true;
-  // Strict partial word matching: both words must be 4+ chars and similar length
+  if (pz === cz) return true;
+  // Zonas contenedoras: cortan acá — como substring o palabra afirmaban zona equivocada
+  // ('córdoba' matcheaba 'nueva córdoba' y 'villa carlos paz'). Ver 86aj9w5mw.
+  if (CONTAINER_ZONES.has(pz) || CONTAINER_ZONES.has(cz)) return false;
+  // includes() con umbral: un término <5 chars es demasiado ambiguo como substring.
+  if ((cz.length >= 5 && pz.includes(cz)) || (pz.length >= 5 && cz.includes(pz))) return true;
+  // Strict partial word matching: both words must be 4+ chars and similar length.
+  // Las palabras contenedoras también se excluyen acá: sin esto, 'nueva córdoba' vs
+  // 'alta córdoba' matchearían por la palabra compartida 'córdoba' (86aj9w5mw).
   const pzWords = pz.split(/\s+/);
   const czWords = cz.split(/\s+/);
-  return pzWords.some((w) => w.length >= 4 && czWords.some((cw) => {
-    if (cw.length < 4) return false;
+  return pzWords.some((w) => w.length >= 4 && !CONTAINER_ZONES.has(w) && czWords.some((cw) => {
+    if (cw.length < 4 || CONTAINER_ZONES.has(cw)) return false;
     const shorter = w.length <= cw.length ? w : cw;
     const longer = w.length > cw.length ? w : cw;
     return longer.includes(shorter) && shorter.length / longer.length >= 0.75;

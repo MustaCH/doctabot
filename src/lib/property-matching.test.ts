@@ -205,8 +205,27 @@ describe("zonesMatch", () => {
     expect(zonesMatch("Nueva Córdoba", " nueva córdoba ")).toBe(true);
   });
 
-  it("matches by substring containment", () => {
-    expect(zonesMatch("nueva cordoba", "cordoba")).toBe(true);
+  it("matches by substring containment for specific zones (≥5 chars, no contenedoras)", () => {
+    expect(zonesMatch("Barrio Manantiales", "manantiales")).toBe(true);
+  });
+
+  // 86aj9w5mw: zonas contenedoras solo valen por igualdad exacta — como substring o
+  // palabra compartida afirmaban zona equivocada.
+  it("'cordoba' NO matchea 'nueva cordoba' / 'alta cordoba' (contenedora)", () => {
+    expect(zonesMatch("nueva cordoba", "cordoba")).toBe(false);
+    expect(zonesMatch("alta córdoba", "córdoba")).toBe(false);
+    expect(zonesMatch("córdoba", "villa carlos paz")).toBe(false);
+    expect(zonesMatch("nueva córdoba", "alta córdoba")).toBe(false); // palabra compartida 'córdoba'
+  });
+
+  it("contenedoras idénticas siguen matcheando por igualdad exacta", () => {
+    expect(zonesMatch("Córdoba", "córdoba")).toBe(true);
+    expect(zonesMatch("capital", "Capital")).toBe(true);
+  });
+
+  it("substring <5 chars no matchea (umbral) — 'desc' ya no matchea 'descanso'", () => {
+    expect(zonesMatch("descanso", "desc")).toBe(false); // substring corto, y word-ratio 0.5 < 0.75
+    expect(zonesMatch("urca norte", "urca")).toBe(true); // palabra IDÉNTICA ≥4: sigue valiendo
   });
 
   it("does not match unrelated zones", () => {
