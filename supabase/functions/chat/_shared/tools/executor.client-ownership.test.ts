@@ -85,6 +85,28 @@ describe("pertenencia de cliente en path UUID directo (86aj9w5ke)", () => {
     expect(supabase.calls.some((c) => c.table === "client_notes" && c.m === "insert")).toBe(true);
   });
 
+  // 86aj9w5nt: due_at de tareas (lo consume daily-followups).
+  it("create_client_note con is_action y due_at persiste el vencimiento; sin is_action se ignora", async () => {
+    const supabase = makeSupabase({
+      clients: { maybeSingleResult: { data: { id: OWN_ID, full_name: "Ana Pérez" } } },
+      client_notes: { singleResult: { data: { id: "n1", content: "Llamar", is_action: true, is_done: false, due_at: "2026-08-25T12:00:00.000Z", created_at: "2026-08-18" } } },
+    });
+    const out = JSON.parse(await executeTool("create_client_note", { client_id: OWN_ID, content: "Llamar", is_action: true, due_at: "2026-08-25" }, baseCtx(supabase)));
+
+    expect(out.success).toBe(true);
+    const insert = supabase.calls.find((c) => c.table === "client_notes" && c.m === "insert");
+    expect(typeof insert?.a[0]?.due_at).toBe("string");
+    expect(insert?.a[0]?.due_at).toMatch(/^2026-08-2[45]T/); // normalizado a ISO (TZ Córdoba)
+
+    const s2 = makeSupabase({
+      clients: { maybeSingleResult: { data: { id: OWN_ID, full_name: "Ana Pérez" } } },
+      client_notes: { singleResult: { data: { id: "n2", content: "Nota", is_action: false, is_done: false, created_at: "2026-08-18" } } },
+    });
+    await executeTool("create_client_note", { client_id: OWN_ID, content: "Nota", due_at: "2026-08-25" }, baseCtx(s2));
+    const insert2 = s2.calls.find((c) => c.table === "client_notes" && c.m === "insert");
+    expect(insert2?.a[0]?.due_at).toBeNull();
+  });
+
   it("path por client_name (match exacto, ya scopeado) sigue funcionando", async () => {
     const supabase = makeSupabase({
       clients: {

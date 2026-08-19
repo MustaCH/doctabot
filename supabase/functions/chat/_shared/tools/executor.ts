@@ -1730,13 +1730,20 @@ export async function executeTool(
       const content = typeof args.content === "string" ? args.content.trim().slice(0, 2000) : null;
       if (!content) return JSON.stringify({ error: "El contenido de la nota es requerido" });
       const isAction = args.is_action === true;
+      // due_at: vencimiento de la TAREA — lo consume daily-followups para recordar tareas
+      // vencidas (86aj9w5nt). Solo aplica con is_action=true; fecha inválida se ignora.
+      let dueAt: string | null = null;
+      if (isAction && typeof args.due_at === "string" && args.due_at.trim()) {
+        const parsed = normalizeDatetime(args.due_at.trim());
+        if (parsed) dueAt = parsed.toISOString();
+      }
       const { data, error } = await supabase
         .from("client_notes")
-        .insert({ client_id: clientId, user_id: userId, content, is_action: isAction, is_done: false })
-        .select("id, content, is_action, is_done, created_at")
+        .insert({ client_id: clientId, user_id: userId, content, is_action: isAction, is_done: false, due_at: dueAt })
+        .select("id, content, is_action, is_done, due_at, created_at")
         .single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ success: true, note: data, message: isAction ? `Tarea pendiente creada: "${content}"` : `Nota guardada: "${content}"` });
+      return JSON.stringify({ success: true, note: data, message: isAction ? `Tarea pendiente creada: "${content}"${dueAt ? ` (vence ${dueAt.slice(0, 10)})` : ""}` : `Nota guardada: "${content}"` });
     }
 
     case "list_client_notes": {

@@ -558,6 +558,7 @@ export const toolDefinitions = [
           client_name: { type: "string", description: "Nombre del cliente (se busca automáticamente si no tenés el ID)" },
           content: { type: "string", description: "Contenido de la nota o tarea" },
           is_action: { type: "boolean", description: "true si es una tarea/acción pendiente, false si es solo una nota informativa (default false)" },
+          due_at: { type: "string", description: "Vencimiento de la TAREA (solo con is_action=true), formato ISO 'YYYY-MM-DDTHH:mm' o 'YYYY-MM-DD'. Si el agente da un plazo ('el lunes', 'mañana'), calculalo con la fecha actual del contexto. Las tareas vencidas se recuerdan solas en el seguimiento diario." },
         },
         required: ["content"],
         additionalProperties: false,

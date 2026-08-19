@@ -108,6 +108,7 @@ Todo se dispara con **`pg_cron` + `pg_net`** desde la DB de Supabase (no hay cro
 |-----|----------------|--------------|----------|
 | `nightly-scrape-properties` | `30 3 * * *` | **00:30** | `net.http_post` → Edge Function `scrape-properties` (body `{}` = modo orquestador) |
 | `morning-property-matches` | `0 12 * * *` | 09:00 | `net.http_post` → `morning-matches` |
+| `daily-followups` | `0 11 * * *` | 08:00 | `net.http_post` → `daily-followups` (tareas vencidas + eventos 0-3d + clientes hot/warm sin seguimiento → mensaje "📋 Seguimientos" + push al AGENTE; dedup en `notified_followups`, tope 10+10 items por corrida — ticket 86aj9w5nt) |
 | `cleanup_old_logs_daily` | `0 6 * * *` | 03:00 | `cleanup_old_logs()` (limpia `scraping_logs` viejos) |
 
 > El cron pasa un bearer con la **anon key** (visible en `cron.job.command`) — es la public key, no la service role; OK.

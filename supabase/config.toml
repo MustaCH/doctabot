@@ -33,3 +33,8 @@ verify_jwt = false
 # health-monitor: lo dispara pg_cron (anon bearer). Endpoint interno de heartbeat.
 [functions.health-monitor]
 verify_jwt = false
+
+# daily-followups: lo dispara pg_cron con anon bearer (mismo patrón que morning-matches,
+# que queda gateado por verify_jwt=true: el gateway acepta cualquier JWT válido, incl. anon).
+[functions.daily-followups]
+verify_jwt = true
