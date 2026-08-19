@@ -37,7 +37,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, conversationId } = await req.json();
+    const { messages, conversationId, client_caps } = await req.json();
+    // Handshake de capacidades (86aj9w5nb): el goteo en vivo + evento de reemplazo "final"
+    // solo se activa si el front declara soportarlo — un bundle PWA viejo sigue recibiendo
+    // el protocolo histórico (ronda final volcada de una) sin degradación.
+    const supportsFinalEvent = Array.isArray(client_caps) && client_caps.includes("final_event");
     // Using Gemini API key directly (OpenAI-compatible endpoint) instead of Lovable AI Gateway
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
@@ -461,6 +465,16 @@ serve(async (req) => {
             clientOpen = false; // cliente desconectado; streamTurn sigue drenando Gemini
           }
         };
+        // Evento de REEMPLAZO (86aj9w5nb): el texto final SANEADO completo. El front descarta
+        // lo goteado en vivo y re-renderiza desde acá (mismo parseo que la recarga).
+        const emitFinal = (text: string) => {
+          if (!clientOpen) return;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ final: { content: text } })}\n\n`));
+          } catch {
+            clientOpen = false;
+          }
+        };
 
         let finalContent = "";
         let executedTools: string[] = [];
@@ -470,6 +484,8 @@ serve(async (req) => {
           const result = await streamTurn(toolLoopDeps, {
             messages: currentMessages,
             emit,
+            // Goteo en vivo solo con el handshake del front (ver client_caps arriba).
+            ...(supportsFinalEvent ? { emitFinal } : {}),
             firstResponse: firstRes,
             sanitizeFinal,
             // maxIterations agotado sin ronda de texto final: la respuesta salió incompleta

@@ -42,11 +42,102 @@ export interface StreamTurnOptions {
   // guardarraíl de WhatsApp exige list_clients/get_client) y devuelve el texto a emitir/persistir.
   // Fail-open: si tira, se usa el original.
   sanitizeFinal?: (text: string, executedTools?: string[]) => Promise<string> | string;
+  // Goteo en vivo de la ronda final (86aj9w5nb). Si está presente: el contenido de una ronda
+  // se gotea token a token vía `emit` una vez superado DRIP_HOLD_CHARS sin tool_calls (los
+  // tokens sensibles se retienen — ver LiveDripper), y al cerrar el turno se invoca SIEMPRE
+  // emitFinal(texto saneado) como evento de REEMPLAZO para el front. Sin esta opción, el
+  // comportamiento es el histórico (ronda final bufferizada y volcada de una).
+  emitFinal?: (text: string) => void;
 }
 
 export interface StreamTurnResult {
   content: string;
   executedTools: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Goteo en vivo de la ronda final (ticket 86aj9w5nb).
+//
+// El problema: una ronda no se sabe FINAL hasta que termina (si acumula tool_calls,
+// su preámbulo se suprime — 86aj1n43n), y la ronda final pasa por sanitizeFinal
+// (tarjetas server-side, link-guardrail, WhatsApp) que necesita el texto completo.
+// La solución en dos piezas:
+//   1. LiveDripper: gotea el contenido de una ronda EN VIVO recién después de
+//      DRIP_HOLD_CHARS sin tool_calls ni pinta de razonamiento filtrado (los
+//      preámbulos reales son cortos → siguen suprimidos), y DEJA DE GOTEAR ante
+//      el primer token sensible (marcadores server-side <<<PROPERTIES>>>/<<<CONTACTS>>>/
+//      <<<CARD:…>>> o un slug de remax): esa cola la entrega el reemplazo final.
+//   2. emitFinal: al cerrar el turno se emite SIEMPRE el texto final SANEADO como
+//      evento de reemplazo; el front descarta lo goteado y re-renderiza desde ahí
+//      (mismo camino de parseo que la recarga). Así el goteo es pura latencia
+//      percibida: el estado terminal es idéntico al de hoy.
+// ---------------------------------------------------------------------------
+
+/** Chars de contenido sin tool_calls antes de empezar a gotear. Los preámbulos de rondas
+ *  de herramientas son típicamente cortos: con este umbral casi nunca se muestran. */
+export const DRIP_HOLD_CHARS = 200;
+
+// Tokens que NO se gotean en vivo: los materializa/valida sanitizeFinal en el reemplazo.
+const DRIP_SENSITIVE_TOKENS = ["<<<PROPERTIES>>>", "<<<CONTACTS>>>", "<<<CARD:", "remax.com.ar/listings/"];
+
+/** Longitud del sufijo de `s` que es prefijo propio de algún token (para no gotear un token a medias). */
+function dripPartialSuffixLen(s: string): number {
+  let max = 0;
+  for (const t of DRIP_SENSITIVE_TOKENS) {
+    const maxK = Math.min(t.length - 1, s.length);
+    for (let k = maxK; k > max; k--) {
+      if (s.slice(s.length - k).toLowerCase() === t.slice(0, k).toLowerCase()) { max = k; break; }
+    }
+  }
+  return max;
+}
+
+export class LiveDripper {
+  private buf = "";
+  private started = false;
+  private stopped = false;   // token sensible visto: el resto de la ronda va solo en el reemplazo
+  private cancelled = false; // la ronda resultó de herramientas: no gotear más
+  private drippedAny = false;
+
+  constructor(private emitDelta: (text: string) => void) {}
+
+  /** true si ALGO se goteó en vivo durante el turno (decide si hace falta el reemplazo visual). */
+  get dripped(): boolean { return this.drippedAny; }
+
+  /** La ronda acumuló tool_calls: dejar de gotear (lo ya goteado lo pisa el reemplazo final). */
+  cancelRound(): void { this.cancelled = true; }
+
+  /** Arranque de una ronda nueva del mismo turno. */
+  resetRound(): void { this.buf = ""; this.started = false; this.stopped = false; this.cancelled = false; }
+
+  feed(delta: string): void {
+    if (this.cancelled || this.stopped) return;
+    this.buf += delta;
+    if (!this.started) {
+      if (this.buf.length < DRIP_HOLD_CHARS) return;
+      if (looksLikeLeakedReasoning(this.buf)) { this.stopped = true; return; }
+      this.started = true;
+    }
+    // ¿Apareció un token sensible completo? Gotear hasta su inicio y frenar el goteo de la ronda.
+    let cut = -1;
+    const lower = this.buf.toLowerCase();
+    for (const t of DRIP_SENSITIVE_TOKENS) {
+      const i = lower.indexOf(t.toLowerCase());
+      if (i !== -1 && (cut === -1 || i < cut)) cut = i;
+    }
+    if (cut !== -1) {
+      const safe = this.buf.slice(0, cut);
+      if (safe) { this.emitDelta(safe); this.drippedAny = true; }
+      this.stopped = true;
+      this.buf = "";
+      return;
+    }
+    // Sin token sensible: gotear todo salvo un posible prefijo parcial al final del buffer.
+    const hold = dripPartialSuffixLen(this.buf);
+    const safe = this.buf.slice(0, this.buf.length - hold);
+    if (safe) { this.emitDelta(safe); this.drippedAny = true; }
+    this.buf = this.buf.slice(safe.length);
+  }
 }
 
 /**
@@ -240,6 +331,10 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     if (!opts.sanitizeFinal) return t;
     try { return await opts.sanitizeFinal(t, executedTools); } catch { return t; }
   };
+  // Goteo en vivo (86aj9w5nb): activo solo si el caller proveyó emitFinal (handshake de
+  // capacidades con el front). Fail-open en ambos canales.
+  const dripper = opts.emitFinal ? new LiveDripper(safeEmit) : null;
+  const safeEmitFinal = (t: string) => { try { opts.emitFinal?.(t); } catch { /* cliente desconectado */ } };
 
   for (let iter = 0; iter < maxIterations; iter++) {
     let res: Response;
@@ -273,13 +368,17 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     const toolAccum = new Map<string, AccumulatedToolCall>();
     const lastKeyByIndex = new Map<number, string>();
 
+    dripper?.resetRound();
     const applyDelta = (d: { contentDelta?: string; toolCallDeltas?: any[]; finishReason?: string | null }) => {
       if (d.contentDelta) {
-        // No se emite ni se acumula en vivo: el contenido de la ronda se bufferiza y recién se
-        // vuelca (o se descarta, si la ronda termina en tool_calls) al conocer el finish_reason.
+        // El contenido de la ronda se bufferiza (se vuelca o descarta al conocer el finish).
+        // Con goteo activo (86aj9w5nb), además se gotea EN VIVO pasado el umbral sin tool_calls:
+        // el estado terminal lo fija igual el reemplazo emitFinal con el texto saneado.
         assistantContent += d.contentDelta;
+        if (toolAccum.size === 0) dripper?.feed(d.contentDelta);
       }
       if (d.toolCallDeltas) {
+        if (d.toolCallDeltas.length > 0) dripper?.cancelRound();
         for (const tcd of d.toolCallDeltas) {
           // Un delta con id es el inicio de un tool call nuevo (slot propio por id); uno sin id es
           // la continuación de los args del último call abierto en ese index.
@@ -321,7 +420,8 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       const safe = stripLeakedReasoningTail(assistantContent);
       const flush = await finalize(applyTruncation(safe));
       fullContent += flush;
-      safeEmit(flush);
+      if (dripper) safeEmitFinal(flush);
+      else safeEmit(flush);
       emittedFinal = true;
       break;
     }
@@ -421,7 +521,10 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     const finalText = stripLeakedReasoningTail(stripLeakedInternals(finalText0, validToolNames));
     const flush = await finalize(closeUnbalancedDrafts(finalText));
     fullContent += flush;
-    safeEmit(flush);
+    // Con goteo activo, el texto completo va como REEMPLAZO (emitFinal): re-emitirlo por el
+    // canal de deltas duplicaría lo ya goteado. Sin goteo, comportamiento histórico.
+    if (dripper) safeEmitFinal(flush);
+    else safeEmit(flush);
     emittedFinal = true;
     break;
   }
@@ -440,7 +543,8 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       : "";
     const flush = (base ? `${base}\n\n` : "") + MAX_ITERATIONS_NOTICE;
     fullContent += flush;
-    safeEmit(flush);
+    if (dripper) safeEmitFinal(flush);
+    else safeEmit(flush);
   }
 
   return { content: fullContent, executedTools };

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError, applyTruncation, TRUNCATION_NOTICE, closeUnbalancedDrafts, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail, MAX_ITERATIONS_NOTICE } from "./stream-turn";
+import { streamTurn, AIError, applyTruncation, TRUNCATION_NOTICE, closeUnbalancedDrafts, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail, MAX_ITERATIONS_NOTICE, LiveDripper, DRIP_HOLD_CHARS } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -719,5 +719,150 @@ describe("streamTurn", () => {
     );
 
     expect(res.content).toBe("texto original");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Goteo en vivo de la ronda final (ticket 86aj9w5nb)
+// ---------------------------------------------------------------------------
+
+describe("LiveDripper (86aj9w5nb)", () => {
+  const mk = () => {
+    const out: string[] = [];
+    const d = new LiveDripper((t) => out.push(t));
+    return { d, out };
+  };
+  const LONG = "x".repeat(DRIP_HOLD_CHARS);
+
+  it("retiene hasta el umbral y después gotea", () => {
+    const { d, out } = mk();
+    d.feed("hola corto");
+    expect(out).toEqual([]); // por debajo del umbral no sale nada
+    d.feed(LONG);
+    expect(out.join("").length).toBeGreaterThan(0);
+    expect(d.dripped).toBe(true);
+  });
+
+  it("una ronda cancelada (tool_calls) no gotea nada", () => {
+    const { d, out } = mk();
+    d.cancelRound();
+    d.feed(LONG + LONG);
+    expect(out).toEqual([]);
+    expect(d.dripped).toBe(false);
+  });
+
+  it("un prefijo con pinta de razonamiento (thought) frena el goteo de la ronda", () => {
+    const { d, out } = mk();
+    d.feed("thought\nI will call search_properties " + LONG);
+    expect(out).toEqual([]);
+  });
+
+  it("un token sensible corta el goteo: lo previo sale, el marcador y la cola NO", () => {
+    const { d, out } = mk();
+    d.feed(LONG + " te muestro:\n<<<PROPERTIES>>>\ncola que no debe gotear");
+    const emitted = out.join("");
+    expect(emitted).toContain("te muestro:");
+    expect(emitted).not.toContain("<<<PROPERTIES>>>");
+    expect(emitted).not.toContain("cola que no debe gotear");
+  });
+
+  it("un slug de remax parcial al final del buffer queda retenido", () => {
+    const { d, out } = mk();
+    d.feed(LONG + " mirá remax.com.ar/lis");
+    expect(out.join("")).not.toContain("remax.com.ar/lis");
+    // y si termina siendo un slug completo, sigue sin gotear (lo entrega el reemplazo final)
+    d.feed("tings/depto-falso todo esto queda para el final");
+    expect(out.join("")).not.toContain("listings");
+  });
+
+  it("resetRound arranca una ronda nueva con el estado limpio", () => {
+    const { d, out } = mk();
+    d.cancelRound();
+    d.feed(LONG);
+    expect(out).toEqual([]);
+    d.resetRound();
+    d.feed(LONG + " ahora sí");
+    expect(out.join("")).toContain("ahora sí");
+  });
+});
+
+describe("streamTurn con goteo en vivo (emitFinal, 86aj9w5nb)", () => {
+  const LONG_TEXT = "Encontré varias opciones que te pueden servir para la búsqueda que me pediste. ".repeat(5);
+
+  it("ronda final larga: gotea deltas EN VIVO y emite el reemplazo final SANEADO una sola vez", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk(LONG_TEXT, "stop"), DONE]));
+    const emitted: string[] = [];
+    const finals: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      {
+        messages: [{ role: "user", content: "buscá" }],
+        emit: (t) => emitted.push(t),
+        emitFinal: (t) => finals.push(t),
+        sanitizeFinal: (t) => t + " [SANEADO]",
+      },
+    );
+    expect(emitted.join("").length).toBeGreaterThan(0);          // hubo goteo en vivo
+    expect(finals).toHaveLength(1);                               // un solo reemplazo
+    expect(finals[0]).toContain("[SANEADO]");                    // con el texto saneado
+    expect(res.content).toBe(finals[0]);                          // lo persistido = el reemplazo
+    // el canal de deltas NO recibe el flush completo (evita duplicar lo goteado)
+    expect(emitted.join("")).not.toContain("[SANEADO]");
+  });
+
+  it("preámbulo corto de una ronda de tools NO se gotea (supresión del re-saludo intacta)", async () => {
+    const resilientAIFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse([contentChunk("Dale, busco..."), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]))
+      .mockResolvedValueOnce(sseResponse([contentChunk(LONG_TEXT, "stop"), DONE]));
+    const emitted: string[] = [];
+    const finals: string[] = [];
+    await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 3 })), toolCtx: {}, toolDefinitions },
+      { messages: [{ role: "user", content: "buscá" }], emit: (t) => emitted.push(t), emitFinal: (t) => finals.push(t) },
+    );
+    expect(emitted.join("")).not.toContain("Dale, busco");       // preámbulo suprimido
+    expect(finals).toHaveLength(1);
+    expect(finals[0]).not.toContain("Dale, busco");
+  });
+
+  it("marcador <<<PROPERTIES>>> no se gotea en vivo; llega materializado en el reemplazo", async () => {
+    const withMarker = LONG_TEXT + "\n<<<PROPERTIES>>>\ncierre del turno";
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk(withMarker, "stop"), DONE]));
+    const emitted: string[] = [];
+    const finals: string[] = [];
+    await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      {
+        messages: [{ role: "user", content: "buscá" }],
+        emit: (t) => emitted.push(t),
+        emitFinal: (t) => finals.push(t),
+        sanitizeFinal: (t) => t.replace("<<<PROPERTIES>>>", "[TARJETAS]"),
+      },
+    );
+    expect(emitted.join("")).not.toContain("<<<PROPERTIES>>>");
+    expect(finals[0]).toContain("[TARJETAS]");
+  });
+
+  it("sin emitFinal el comportamiento es el histórico (un solo flush por emit)", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk(LONG_TEXT, "stop"), DONE]));
+    const emitted: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+      { messages: [{ role: "user", content: "buscá" }], emit: (t) => emitted.push(t) },
+    );
+    expect(emitted).toHaveLength(1);
+    expect(res.content).toBe(LONG_TEXT);
+  });
+
+  it("maxIterations agotado con goteo activo: el aviso va por emitFinal", async () => {
+    const resilientAIFetch = vi.fn(async () => sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]));
+    const finals: string[] = [];
+    const res = await streamTurn(
+      { resilientAIFetch, executeTool: vi.fn(async () => JSON.stringify({ total_count: 0 })), toolCtx: {}, toolDefinitions },
+      { messages: [{ role: "user", content: "buscá" }], emit: () => {}, emitFinal: (t) => finals.push(t), maxIterations: 2 },
+    );
+    expect(finals).toHaveLength(1);
+    expect(finals[0]).toContain(MAX_ITERATIONS_NOTICE);
+    expect(res.content).toContain(MAX_ITERATIONS_NOTICE);
   });
 });

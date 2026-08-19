@@ -26,6 +26,7 @@ export async function streamChat({
   conversationId,
   onDelta,
   onNewMessage,
+  onFinal,
   onDone,
   signal,
 }: {
@@ -33,6 +34,13 @@ export async function streamChat({
   conversationId: string;
   onDelta: (text: string) => void;
   onNewMessage?: () => void;
+  /**
+   * Evento de REEMPLAZO (86aj9w5nb): el server goteó la ronda final en vivo y al cierre manda
+   * el texto final SANEADO completo (tarjetas expandidas, links verificados). El caller debe
+   * descartar lo streameado de esta respuesta y re-renderizar desde este contenido (mismo
+   * parseo que la recarga). Solo llega si declaramos la capacidad "final_event".
+   */
+  onFinal?: (content: string) => void;
   onDone: () => void;
   signal?: AbortSignal;
 }) {
@@ -49,7 +57,9 @@ export async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${authToken}`,
     },
-    body: JSON.stringify({ messages, conversationId }),
+    // client_caps: handshake con la edge function — "final_event" habilita el goteo en vivo
+    // de la ronda final + el evento de reemplazo (solo si el caller pasó onFinal).
+    body: JSON.stringify({ messages, conversationId, ...(onFinal ? { client_caps: ["final_event"] } : {}) }),
     signal,
   });
 
@@ -83,6 +93,11 @@ export async function streamChat({
       if (json === "[DONE]") { done = true; break; }
       try {
         const parsed = JSON.parse(json);
+        const finalContent = parsed.final?.content as string | undefined;
+        if (typeof finalContent === "string") {
+          onFinal?.(finalContent);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) markers.push(content);
       } catch {
@@ -101,6 +116,11 @@ export async function streamChat({
       if (json === "[DONE]") continue;
       try {
         const parsed = JSON.parse(json);
+        const finalContent = parsed.final?.content as string | undefined;
+        if (typeof finalContent === "string") {
+          onFinal?.(finalContent);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) markers.push(content);
       } catch { /* ignore */ }

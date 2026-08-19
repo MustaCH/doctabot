@@ -336,6 +336,7 @@ export function useChatMessages(
     let assistantContent = "";
     let allAssistantMessages: string[] = [];
     let needsNewBubble = false;
+    let assistantBubbles = 0; // burbujas assistant agregadas este turno (para el reemplazo onFinal)
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -381,12 +382,32 @@ export function useChatMessages(
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
+          // Conteo de burbujas assistant agregadas ESTE turno (lo usa el reemplazo onFinal):
+          // se abre una con startNew o con la primera delta del turno.
+          if (startNew || assistantBubbles === 0) assistantBubbles += 1;
           setMessages((prev) => {
             if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
             return [...prev, { role: "assistant" as const, content: snapshot }];
           });
+        },
+        // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
+        // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
+        // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
+        onFinal: (content) => {
+          setWorking(false);
+          if (!mountedRef.current) return;
+          const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
+          const toDrop = assistantBubbles;
+          setMessages((prev) => [
+            ...prev.slice(0, prev.length - toDrop),
+            ...finalBubbles.map((b) => ({ role: "assistant" as const, content: b })),
+          ]);
+          assistantBubbles = finalBubbles.length;
+          allAssistantMessages = finalBubbles.slice(0, -1);
+          assistantContent = finalBubbles[finalBubbles.length - 1] ?? "";
+          needsNewBubble = false;
         },
         onNewMessage: () => {
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
@@ -559,12 +580,32 @@ export function useChatMessages(
           const snapshot = assistantContent;
           const startNew = needsNewBubble;
           if (startNew) needsNewBubble = false;
+          // Conteo de burbujas assistant agregadas ESTE turno (lo usa el reemplazo onFinal):
+          // se abre una con startNew o con la primera delta del turno.
+          if (startNew || assistantBubbles === 0) assistantBubbles += 1;
           setMessages((prev) => {
             if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
             return [...prev, { role: "assistant" as const, content: snapshot }];
           });
+        },
+        // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
+        // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
+        // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
+        onFinal: (content) => {
+          setWorking(false);
+          if (!mountedRef.current) return;
+          const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
+          const toDrop = assistantBubbles;
+          setMessages((prev) => [
+            ...prev.slice(0, prev.length - toDrop),
+            ...finalBubbles.map((b) => ({ role: "assistant" as const, content: b })),
+          ]);
+          assistantBubbles = finalBubbles.length;
+          allAssistantMessages = finalBubbles.slice(0, -1);
+          assistantContent = finalBubbles[finalBubbles.length - 1] ?? "";
+          needsNewBubble = false;
         },
         onNewMessage: () => {
           if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());

@@ -106,6 +106,55 @@ describe("useChatMessages — indicador 'Alan trabajando' (isWorking)", () => {
     await act(async () => { await streamOpts.onDone(); resolveStream(); });
   });
 
+  // 86aj9w5nb: goteo en vivo + evento de reemplazo — el server manda el texto final SANEADO
+  // completo y el front descarta las burbujas streameadas y re-renderiza (parseo de recarga).
+  it("onFinal reemplaza las burbujas streameadas por el contenido saneado (con tarjetas/burbujas nuevas)", async () => {
+    const { result } = setup();
+    act(() => { void result.current.handleSend("buscá deptos"); });
+    await waitFor(() => expect(streamOpts).toBeTruthy());
+
+    // El caller declara la capacidad: streamChat recibió onFinal.
+    expect(typeof streamOpts.onFinal).toBe("function");
+
+    // Goteo en vivo: dos burbujas parciales.
+    act(() => streamOpts.onDelta("Te muestro 3 de 15 propiedades…"));
+    act(() => streamOpts.onNewMessage());
+    act(() => streamOpts.onDelta("cierre parcial"));
+    expect(result.current.messages.filter((m) => m.role === "assistant")).toHaveLength(2);
+
+    // Reemplazo final saneado: 3 burbujas (intro + tarjeta + cierre).
+    act(() => streamOpts.onFinal("Te muestro 3 de 15 propiedades que coinciden.===MSG_BREAK===🏠 Tarjeta expandida===MSG_BREAK===¿Te preparo un borrador?"));
+
+    const assistantMsgs = result.current.messages.filter((m) => m.role === "assistant");
+    expect(assistantMsgs).toHaveLength(3);
+    expect(assistantMsgs[0].content).toBe("Te muestro 3 de 15 propiedades que coinciden.");
+    expect(assistantMsgs[1].content).toBe("🏠 Tarjeta expandida");
+    expect(assistantMsgs[2].content).toBe("¿Te preparo un borrador?");
+    // Lo goteado parcial NO quedó duplicado.
+    expect(assistantMsgs.some((m) => m.content === "cierre parcial")).toBe(false);
+    // El mensaje del usuario sigue intacto antes de las burbujas.
+    const all = result.current.messages;
+    expect(all[all.length - 4].role).toBe("user");
+
+    await act(async () => { await streamOpts.onDone(); resolveStream(); });
+  });
+
+  it("onFinal sin goteo previo (respuesta corta) igual renderiza el contenido final", async () => {
+    const { result } = setup();
+    act(() => { void result.current.handleSend("hola"); });
+    await waitFor(() => expect(streamOpts).toBeTruthy());
+
+    // Sin deltas previas: el server no llegó a gotear (ronda corta) y manda solo el reemplazo.
+    act(() => streamOpts.onFinal("¡Hola! ¿En qué te ayudo?"));
+
+    const assistantMsgs = result.current.messages.filter((m) => m.role === "assistant");
+    expect(assistantMsgs).toHaveLength(1);
+    expect(assistantMsgs[0].content).toBe("¡Hola! ¿En qué te ayudo?");
+    expect(result.current.isWorking).toBe(false);
+
+    await act(async () => { await streamOpts.onDone(); resolveStream(); });
+  });
+
   // M1: entre setIsStreaming(true) y el streamChat hay awaits (getSession, persistAttachments,
   // insert). Si alguno tira y queda fuera del try, isStreaming se queda en true PARA SIEMPRE y el
   // input se deshabilita. Estos tests fijan que cualquier fallo ahí libera el estado.

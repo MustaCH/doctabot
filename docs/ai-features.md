@@ -79,6 +79,26 @@ Todos fail-open (un error nunca rompe el turno) y testeados:
   en ambas llamadas — ojo: el thinking de 2.5-flash cuenta DENTRO de `max_tokens` en el
   endpoint OpenAI-compat; con tope y thinking prendido el título sale vacío.
 
+## Streaming en vivo de la ronda final (86aj9w5nb)
+
+La latencia percibida del turno (5-21s sin ver nada) se resolvió con goteo en vivo + reemplazo:
+
+- **LiveDripper** (`stream-turn.ts`): gotea el contenido de una ronda recién después de
+  `DRIP_HOLD_CHARS` (200) sin tool_calls ni pinta de razonamiento filtrado — los preámbulos de
+  rondas de tools son cortos, así que la supresión anti-re-saludo (86aj1n43n) queda intacta.
+  Ante un token sensible (`<<<PROPERTIES>>>`/`<<<CONTACTS>>>`/`<<<CARD:`/slug de remax) DEJA de
+  gotear: esa cola la entrega solo el reemplazo (es el "bufferizá solo ante un slug" del AC).
+- **Evento `final` de reemplazo**: al cerrar el turno, el server emite SIEMPRE
+  `{"final":{"content":<texto saneado>}}` — con tarjetas expandidas, link-guardrail aplicado y
+  el aviso "⚠️ Quité N enlaces" como burbuja extra si corresponde. El front (stream-chat.ts →
+  onFinal en use-chat-messages) descarta las burbujas goteadas y re-renderiza con splitBubbles
+  (el MISMO camino que la recarga). Lo persistido = el reemplazo.
+- **Handshake de capacidades**: el front declara `client_caps: ["final_event"]` en el body;
+  sin esa cap (PWA vieja) el edge usa el protocolo histórico (ronda final bufferizada). Por eso
+  el deploy es seguro en cualquier orden y con bundles cacheados.
+- Caso raro aceptado: un preámbulo >200 chars que después resulta ronda de tools puede verse
+  unos segundos y ser pisado por el reemplazo (flicker); con el umbral casi nunca pasa.
+
 ## Matching propiedad↔cliente: núcleo compartido (86aj9w5p3 / T3.4)
 
 `supabase/functions/_shared/matching-core.ts` es la FUENTE ÚNICA de los primitivos de
