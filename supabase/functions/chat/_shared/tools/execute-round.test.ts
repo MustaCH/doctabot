@@ -111,11 +111,15 @@ describe("executeToolCalls", () => {
       expect(JSON.parse(second.toolMessages[0].content).error).toMatch(/ya se ejecutó/);
     });
 
-    it("un {error} limpio de la tool NO bloquea el reintento (el efecto no ocurrió)", async () => {
+    it("un {error} limpio de la tool NO marca el hash externo: el reintento con args CORREGIDOS ejecuta", async () => {
       const executeTool = vi.fn(async () => JSON.stringify({ error: "Email de destinatario inválido" }));
       const toolCtx = {};
       await executeToolCalls([emailCall("c1")], { executeTool, toolCtx });
-      await executeToolCalls([emailCall("c2")], { executeTool, toolCtx });
+      // Args corregidos (otro destinatario): ni el hash externo ni el corte de reintento lo frenan.
+      await executeToolCalls(
+        [{ id: "c2", name: "send_email", arguments: '{"to":"otro@mail.com","subject":"Hola","body":"Cuerpo"}' }],
+        { executeTool, toolCtx },
+      );
       expect(executeTool).toHaveBeenCalledTimes(2);
     });
 
@@ -138,6 +142,68 @@ describe("executeToolCalls", () => {
       );
       expect(executeTool).toHaveBeenCalledTimes(2);
       expect(executed).toEqual(["send_email", "send_email"]);
+    });
+  });
+
+  // 86ak2tkjg: un error permanente (ej. Calendar desconectado) no cambia por reintentarlo — el
+  // reintento idéntico se corta con un resultado sintético en vez de quemar iteraciones del loop.
+  describe("corte de reintento idéntico tras error (86ak2tkjg)", () => {
+    const calCall = (id: string) => ({ id, name: "create_calendar_event", arguments: '{"title":"Visita Ana","date":"2026-08-21T15:00"}' });
+
+    it("reintento idéntico tras {error} limpio → resultado sintético, SIN segunda ejecución real", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ error: "Google Calendar no está conectado" }));
+      const toolCtx = {};
+      const first = await executeToolCalls([calCall("c1")], { executeTool, toolCtx });
+      expect(JSON.parse(first.toolMessages[0].content).error).toMatch(/no está conectado/);
+
+      const second = await executeToolCalls([calCall("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(1); // la segunda NO ejecuta
+      const syntheticErr = JSON.parse(second.toolMessages[0].content).error;
+      expect(syntheticErr).toMatch(/ya falló con el mismo error/);
+      expect(syntheticErr).toMatch(/NO la reintentes/);
+      expect(syntheticErr).toMatch(/Google Calendar no está conectado/); // conserva el error original
+      expect(second.executed).toEqual([]);
+    });
+
+    it("el corte persiste ante reintentos repetidos en el mismo turno (3er intento tampoco ejecuta)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ error: "no conectado" }));
+      const toolCtx = {};
+      await executeToolCalls([calCall("c1")], { executeTool, toolCtx });
+      await executeToolCalls([calCall("c2")], { executeTool, toolCtx });
+      const third = await executeToolCalls([calCall("c3")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(third.toolMessages[0].content).error).toMatch(/ya falló/);
+    });
+
+    it("tool que devolvió DATOS nunca se corta (search_properties idéntica corre las veces que haga falta)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3, results: [] }));
+      const toolCtx = {};
+      const call = (id: string) => ({ id, name: "search_properties", arguments: '{"zone":"centro"}' });
+      await executeToolCalls([call("c1")], { executeTool, toolCtx });
+      const { executed } = await executeToolCalls([call("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(2);
+      expect(executed).toEqual(["search_properties"]);
+    });
+
+    it("reintento con args DISTINTOS tras un error sí ejecuta (solo se corta el idéntico)", async () => {
+      const executeTool = vi.fn(async () => JSON.stringify({ error: "cliente no encontrado" }));
+      const toolCtx = {};
+      await executeToolCalls([{ id: "c1", name: "get_client", arguments: '{"name":"Ana"}' }], { executeTool, toolCtx });
+      await executeToolCalls([{ id: "c2", name: "get_client", arguments: '{"name":"Ana Pérez"}' }], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(2);
+    });
+
+    it("un throw (error transitorio, ej. red) NO memoriza el corte: el reintento idéntico ejecuta", async () => {
+      const executeTool = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("network boom"))
+        .mockResolvedValueOnce(JSON.stringify({ success: true }));
+      const toolCtx = {};
+      const call = (id: string) => ({ id, name: "get_client", arguments: '{"name":"Ana"}' });
+      await executeToolCalls([call("c1")], { executeTool, toolCtx });
+      const { executed } = await executeToolCalls([call("c2")], { executeTool, toolCtx });
+      expect(executeTool).toHaveBeenCalledTimes(2);
+      expect(executed).toEqual(["get_client"]);
     });
   });
 });

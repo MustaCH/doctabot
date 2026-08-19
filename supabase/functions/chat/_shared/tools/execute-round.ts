@@ -46,9 +46,23 @@ export async function executeToolCalls(
     // Dedup anti doble-envío dentro del turno (86aj9w5kf): mismo name+args ya ejecutado (o en
     // estado desconocido tras un throw) → NO se re-ejecuta. El Set vive en toolCtx (per-turno).
     const seen: Set<string> | null = isExternal ? (toolCtx.externalEffectHashes ??= new Set<string>()) : null;
-    const dedupKey = isExternal ? `${tc.name}:${JSON.stringify(args)}` : null;
+    const callKey = `${tc.name}:${JSON.stringify(args)}`;
+    const dedupKey = isExternal ? callKey : null;
     if (seen && dedupKey && seen.has(dedupKey)) {
       toolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ error: "Esta acción externa ya se ejecutó en este mismo turno con los mismos datos: NO se repitió (anti doble-envío). Avisale al agente que ya está hecha; si de verdad hay que repetirla, que la pida de nuevo." }) });
+      continue;
+    }
+
+    // Corte de reintento idéntico tras error (86ak2tkjg): si ESTA misma tool con ESTOS mismos
+    // args ya devolvió un {error} limpio en el MISMO turno, el error es determinista (con args
+    // idénticos, reintentar no cambia nada — ej. Calendar desconectado) y re-ejecutarla solo
+    // quema iteraciones del tool-loop. Se devuelve un resultado sintético que corta el loop.
+    // Conservador: solo aplica a resultados de ERROR — nunca a tools que devolvieron datos —
+    // y solo a args IDÉNTICOS (un reintento con args corregidos sí se ejecuta). El Map vive en
+    // toolCtx (per-turno), igual que el dedup externo.
+    const prevError = (toolCtx.failedCallErrors as Map<string, string> | undefined)?.get(callKey);
+    if (prevError !== undefined) {
+      toolMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ error: `Esta herramienta ya falló con el mismo error en este mismo turno: NO la reintentes con los mismos datos (el error es permanente dentro del turno). Explicale el problema al agente u ofrecé una alternativa. Error original: ${prevError}` }) });
       continue;
     }
 
@@ -74,8 +88,13 @@ export async function executeToolCalls(
       if (parsed.success || !parsed.error) {
         executed.push(tc.name);
         if (seen && dedupKey) seen.add(dedupKey);
+      } else {
+        // Resultado con {error} limpio: la tool NO ejecutó el efecto (sin hash externo), pero el
+        // error queda memorizado para cortar un reintento IDÉNTICO en el mismo turno (86ak2tkjg).
+        // Un reintento con args distintos no se ve afectado. El Map se crea lazy en toolCtx
+        // (per-turno) para no mutar el ctx en turnos sin errores.
+        (toolCtx.failedCallErrors ??= new Map<string, string>()).set(callKey, String(parsed.error).slice(0, 300));
       }
-      // Resultado con {error} limpio: la tool NO ejecutó el efecto → reintentar es válido, sin hash.
     } catch {
       executed.push(tc.name);
       if (seen && dedupKey) seen.add(dedupKey);

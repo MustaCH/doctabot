@@ -139,10 +139,16 @@ deployar cambios de prompt/tools. **Correr los evals es el gate para tocar `prom
   gate global de CI en verde. Las 4 deficiencias del baseline (URLs fabricadas/dictadas ×2,
   update_client ante orden directa, auto-guardado sin confirmar) **se ARREGLARON el mismo día**
   (tickets 86ak2q724/72h/72z — ver commits) y sus casos corren verdes 3/3 sin `known_issue`.
-  Queda UN known_issue nuevo detectado al certificar: `cal-visita-sin-google` — con Calendar
-  desconectado el modelo a veces reintenta en loop la tool que falla de forma permanente hasta
-  agotar maxIterations (~1/3 de las corridas); candidato a ticket (relevar errores permanentes
-  al primer intento, o dedup de errores idénticos en execute-round).
+  El known_issue restante del baseline (`cal-visita-sin-google`: con Calendar desconectado el
+  modelo reintentaba en loop la tool que falla de forma permanente hasta agotar maxIterations)
+  **se ARREGLÓ el 2026-08-19** (ticket 86ak2tkjg) con dos capas: (1) corte determinista en
+  `execute-round.ts` — un reintento IDÉNTICO (misma tool + mismos args) tras un `{error}` limpio
+  del MISMO turno no se re-ejecuta: devuelve un resultado sintético que instruye no reintentar
+  (conservador: solo errores limpios memorizados en `toolCtx.failedCallErrors`; un throw
+  transitorio o una tool con datos nunca se cortan, y args corregidos sí ejecutan); (2) hecho
+  canónico en `alan-facts.ts`: errores de conexión/permiso (Calendar/Gmail) son permanentes en
+  el turno — avisar y ofrecer alternativa (create_client_event / borrador copiable). El caso
+  corre sin `known_issue` y pasó 3/3 con `EVAL_FILTER=cal EVAL_RUNS=3`.
 - **Semántica del gate (anti whack-a-mole):** con `EVAL_RUNS=1` (default) los tests por-caso
   solo REPORTAN y CI la gatea el pass-rate GLOBAL (≥0.85) — 44 casos probabilísticos a 1 rep
   tiran ~1 caso distinto por corrida aunque cada uno esté ~90%+. Con `EVAL_RUNS>1` o
