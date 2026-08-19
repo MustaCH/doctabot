@@ -212,10 +212,13 @@ tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite
 - **Executor:** `toolCtx.embedQuery` (inyectado por index.ts, timeout 4s, fail-open a null) se
   usa SOLO en el reintento por relevancia (title_fallback) — el término se embebe y viaja como
   `query_embedding`. La búsqueda principal (filtros estructurados) no embebe nada.
-- **Backfill:** `scripts/backfill-property-embeddings.mjs` (idempotente, `--dry-run` para
-  contar; escribe en `properties` reales → GATE). Al 2026-08-19: 3328 activas pendientes.
-  Las propiedades nuevas del scraper quedan sin embedding (degradan a trigram) hasta re-correr
-  el script — integrarlo al scraper es ticket aparte.
+- **Backfill EJECUTADO (2026-08-19, con OK):** `scripts/backfill-property-embeddings.mjs`
+  (idempotente, `--dry-run` para contar) — 3328/3328 activas embebidas, 0 fallos. Gotcha: la
+  tabla NO tiene columna `description`; el texto se arma con `buildEmbeddingText` (título,
+  tipo/operación, zona/barrio/localidad, dirección, dormitorios/ambientes/baños, m²) — replicar
+  ese armado cuando el scraper integre embeddings (ticket aparte; mientras tanto las propiedades
+  nuevas degradan a trigram sin romper nada). Smoke híbrido en prod: typo "manantiles" →
+  trigram 0.5 vs híbrido 0.542. Function `chat` deployada (v51, verify_jwt=false, smoke OK).
 - Mock de evals: ignora `query_embedding` a propósito (filas seed sin embedding ⇒ la RPC real
   degrada a trigram, que es lo que el mock ya calcula).
 
