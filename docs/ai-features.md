@@ -79,6 +79,32 @@ Todos fail-open (un error nunca rompe el turno) y testeados:
   en ambas llamadas — ojo: el thinking de 2.5-flash cuenta DENTRO de `max_tokens` en el
   endpoint OpenAI-compat; con tope y thinking prendido el título sale vacío.
 
+## Harness de evals offline (86aj9w5mg — keystone)
+
+`supabase/functions/chat/_shared/evals/` — mide el comportamiento REAL del modelo antes de
+deployar cambios de prompt/tools. **Correr los evals es el gate para tocar `prompt.ts` /
+`alan-facts.ts` / `definitions.ts`** (tickets tipo 86aj9w5n6).
+
+- **Arquitectura: modelo real, DB mockeada.** `runner.ts` arma el turno igual que
+  `index.ts` (`buildContextualPrompt` + `buildAIMessages` + bloque CLIENTE ACTIVO) y corre
+  `streamTurn` + `executeTool` REALES contra un Supabase in-memory (`mock-db.ts`, fixture en
+  `defaultDb()`). Google desconectado (`getCalendarToken → null`): email/calendar jamás pegan
+  afuera; el único efecto externo es la llamada a Gemini.
+- **Golden set** (`golden-set.json`, 42 casos): búsqueda, CRM, guardar-al-cliente, agenda,
+  email, WhatsApp, anti prompt-injection, formato/marcadores y regresiones históricas
+  (86aj42cb2 guardado fantasma, 86aj1n43n re-saludo, 86ajangkb links inventados). Las
+  expectativas son deterministas: `tools_include/exclude`, regexes, drafts balanceados, y
+  las reglas del supervisor (`supervisor_deterministic_clean`).
+- **Correr:** `npm run test:evals` (config `vitest.evals.config.ts`, env node). Requiere
+  `GEMINI_API_KEY` en el entorno — sin key se saltea con aviso. Vars: `EVAL_RUNS` (reps por
+  caso), `EVAL_MIN_PASS_RATE` (gate global de CI, default 0.85), `EVAL_CASE_MIN_RATE`,
+  `EVAL_STRICT=1`, `EVAL_FILTER=<tag|id>`, `EVAL_CONCURRENCY` (default 4).
+- **`npm test` NO pega a la API:** los evals viven en `*.eval.ts` (fuera del include normal);
+  el harness en sí se testea offline en `evals/harness.test.ts` (mock-db, evaluador, esquema
+  del golden set, y un turno end-to-end con el modelo stubbeado por SSE).
+- Pendiente: primera corrida real contra la API (Nacho setea `GEMINI_API_KEY` local) para
+  fijar el baseline de pass-rate.
+
 `sanitizeFinal(text, executedTools)` es el punto de aplicación: la ronda final del stream se
 bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`, inyectado a
 `streamTurn`). `executedTools` habilita chequeos condicionados a qué tools corrieron de verdad.
