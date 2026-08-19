@@ -57,6 +57,11 @@ describe.skipIf(!apiKey)("Golden set de Alan (turnos reales contra API, DB mocke
         if (rate >= CASE_MIN_RATE) {
           // eslint-disable-next-line no-console
           console.log(`🎉 [evals] known issue AHORA PASA (${rate.toFixed(2)}): ${c.id} — considerá quitarle known_issue (${c.known_issue})`);
+        } else {
+          // Detalle compacto para poder diagnosticar el known issue sin re-instrumentar.
+          const first = rs.find((r) => !r.pass);
+          // eslint-disable-next-line no-console
+          console.log(`[evals] known issue sigue rojo (${rate.toFixed(2)}): ${c.id}\n  fallas: ${first?.failures.join(" | ")}\n  tools: [${first?.executedTools.join(", ")}]\n  texto: ${first?.content.slice(0, 900)}`);
         }
         return;
       }
@@ -70,7 +75,8 @@ describe.skipIf(!apiKey)("Golden set de Alan (turnos reales contra API, DB mocke
   it(`pass-rate global ≥ ${MIN_PASS_RATE} (gate de CI, excluye known issues)`, () => {
     const knownIds = new Set(cases.filter((c) => c.known_issue).map((c) => c.id));
     const all = [...results.entries()].filter(([id]) => !knownIds.has(id)).flatMap(([, rs]) => rs);
-    expect(all.length).toBeGreaterThan(0);
+    // Un EVAL_FILTER que solo matchea known issues deja el set vacío: no hay nada que gatear.
+    if (all.length === 0) return;
     const rate = all.filter((r) => r.pass).length / all.length;
     const failing = [...results.entries()].filter(([id, rs]) => !knownIds.has(id) && rs.some((r) => !r.pass)).map(([id]) => id);
     expect(rate, `casos con fallas: ${failing.join(", ")}`).toBeGreaterThanOrEqual(MIN_PASS_RATE);
