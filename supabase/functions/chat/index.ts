@@ -112,6 +112,30 @@ serve(async (req) => {
     // WhatsApp que pasan el gate estructural cuando list_clients/get_client NO corrió en el turno
     // ("mandale un WhatsApp a este cliente" no necesita re-listar). Ver sanitizeWhatsappBlocks.
     const seedPhones = new Set<string>();
+    // Embedding de consulta para el hybrid search (86aj9w5pn): gemini-embedding-001 con
+    // outputDimensionality=768 — a <3072 dims el modelo devuelve el vector SIN normalizar
+    // (verificado con sonda), así que se normaliza L2 acá (la RPC compara por coseno contra
+    // embeddings backfilleados con la misma normalización). Fail-open: cualquier error o
+    // timeout devuelve null y la búsqueda sigue con trigram puro.
+    const embedQuery = async (text: string): Promise<number[] | null> => {
+      try {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent", {
+          method: "POST",
+          headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ content: { parts: [{ text }] }, taskType: "RETRIEVAL_QUERY", outputDimensionality: 768 }),
+          signal: AbortSignal.timeout(4_000),
+        });
+        if (!res.ok) return null;
+        const json = await res.json();
+        const values: unknown = json?.embedding?.values;
+        if (!Array.isArray(values) || values.length !== 768) return null;
+        const norm = Math.sqrt((values as number[]).reduce((a, v) => a + v * v, 0));
+        return norm > 0 ? (values as number[]).map((v) => v / norm) : null;
+      } catch {
+        return null;
+      }
+    };
+
     const toolCtx: any = {
       supabase,
       userId,
@@ -119,6 +143,7 @@ serve(async (req) => {
       cardResults,
       clientRegistry,
       getCalendarToken: () => getValidCalendarToken(supabase, userId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+      embedQuery,
     };
 
     // Cliente vinculado a la conversación: lo releemos UNA vez (join) en el critical path

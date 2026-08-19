@@ -10,10 +10,28 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
+      chat_rate_limits: {
+        Row: {
+          request_count: number
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          request_count?: number
+          user_id: string
+          window_start?: string
+        }
+        Update: {
+          request_count?: number
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       client_activity_log: {
         Row: {
           action_type: string
@@ -108,6 +126,7 @@ export type Database = {
           completed_at: string | null
           content: string
           created_at: string
+          due_at: string | null
           id: string
           is_action: boolean
           is_done: boolean
@@ -118,6 +137,7 @@ export type Database = {
           completed_at?: string | null
           content: string
           created_at?: string
+          due_at?: string | null
           id?: string
           is_action?: boolean
           is_done?: boolean
@@ -128,6 +148,7 @@ export type Database = {
           completed_at?: string | null
           content?: string
           created_at?: string
+          due_at?: string | null
           id?: string
           is_action?: boolean
           is_done?: boolean
@@ -299,6 +320,78 @@ export type Database = {
         }
         Relationships: []
       }
+      clients_dedup_backup_20260703: {
+        Row: {
+          address: string | null
+          birthday: string | null
+          budget_currency: string | null
+          budget_max: number | null
+          budget_min: number | null
+          client_type: string | null
+          company: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string | null
+          is_client: boolean | null
+          last_contact_at: string | null
+          notes: string | null
+          phone: string | null
+          preferred_zones: string | null
+          property_type_interest: string | null
+          source: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          address?: string | null
+          birthday?: string | null
+          budget_currency?: string | null
+          budget_max?: number | null
+          budget_min?: number | null
+          client_type?: string | null
+          company?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_client?: boolean | null
+          last_contact_at?: string | null
+          notes?: string | null
+          phone?: string | null
+          preferred_zones?: string | null
+          property_type_interest?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          address?: string | null
+          birthday?: string | null
+          budget_currency?: string | null
+          budget_max?: number | null
+          budget_min?: number | null
+          client_type?: string | null
+          company?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_client?: boolean | null
+          last_contact_at?: string | null
+          notes?: string | null
+          phone?: string | null
+          preferred_zones?: string | null
+          property_type_interest?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           client_id: string | null
@@ -342,6 +435,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      error_logs: {
+        Row: {
+          context: string | null
+          created_at: string
+          id: string
+          message: string
+          metadata: Json | null
+          source: string
+          stack: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json | null
+          source: string
+          stack?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json | null
+          source?: string
+          stack?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       favorites: {
         Row: {
@@ -442,20 +568,77 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          expires_at: string | null
           id: string
           is_active: boolean
+          max_uses: number | null
+          uses: number
         }
         Insert: {
           code: string
           created_at?: string
+          expires_at?: string | null
           id?: string
           is_active?: boolean
+          max_uses?: number | null
+          uses?: number
         }
         Update: {
           code?: string
           created_at?: string
+          expires_at?: string | null
           id?: string
           is_active?: boolean
+          max_uses?: number | null
+          uses?: number
+        }
+        Relationships: []
+      }
+      match_runs: {
+        Row: {
+          batch_id: string
+          buyer_match_groups: number
+          created_at: string
+          error_detail: string | null
+          finished_at: string | null
+          id: string
+          properties_scanned: number | null
+          seller_match_groups: number
+          started_at: string
+          status: string
+          user_errors: number
+          users_processed: number
+          users_total: number | null
+        }
+        Insert: {
+          batch_id: string
+          buyer_match_groups?: number
+          created_at?: string
+          error_detail?: string | null
+          finished_at?: string | null
+          id?: string
+          properties_scanned?: number | null
+          seller_match_groups?: number
+          started_at?: string
+          status?: string
+          user_errors?: number
+          users_processed?: number
+          users_total?: number | null
+        }
+        Update: {
+          batch_id?: string
+          buyer_match_groups?: number
+          created_at?: string
+          error_detail?: string | null
+          finished_at?: string | null
+          id?: string
+          properties_scanned?: number | null
+          seller_match_groups?: number
+          started_at?: string
+          status?: string
+          user_errors?: number
+          users_processed?: number
+          users_total?: number | null
         }
         Relationships: []
       }
@@ -497,6 +680,33 @@ export type Database = {
           },
         ]
       }
+      notified_followups: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          occurrence: string
+          ref_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          occurrence?: string
+          ref_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          occurrence?: string
+          ref_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notified_matches: {
         Row: {
           client_id: string
@@ -535,6 +745,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notified_seller_matches: {
+        Row: {
+          buyer_client_id: string
+          created_at: string
+          id: string
+          seller_client_id: string
+          user_id: string
+        }
+        Insert: {
+          buyer_client_id: string
+          created_at?: string
+          id?: string
+          seller_client_id: string
+          user_id: string
+        }
+        Update: {
+          buyer_client_id?: string
+          created_at?: string
+          id?: string
+          seller_client_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notified_seller_matches_buyer_client_id_fkey"
+            columns: ["buyer_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notified_seller_matches_seller_client_id_fkey"
+            columns: ["seller_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          nonce: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          nonce: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          nonce?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -576,6 +846,7 @@ export type Database = {
           created_at: string
           currency: string | null
           dimensions_land_m2: number | null
+          embedding: string | null
           entity_id: string | null
           entrepreneurship: Json | null
           expenses_currency: string | null
@@ -624,6 +895,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           dimensions_land_m2?: number | null
+          embedding?: string | null
           entity_id?: string | null
           entrepreneurship?: Json | null
           expenses_currency?: string | null
@@ -672,6 +944,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           dimensions_land_m2?: number | null
+          embedding?: string | null
           entity_id?: string | null
           entrepreneurship?: Json | null
           expenses_currency?: string | null
@@ -866,6 +1139,54 @@ export type Database = {
         }
         Relationships: []
       }
+      supervisor_logs_archive: {
+        Row: {
+          alan_response: string
+          archived_at: string
+          category: string | null
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          latency_ms: number | null
+          rejection_reason: string | null
+          retry_count: number | null
+          score: number | null
+          user_id: string | null
+          user_message: string
+          verdict: string
+        }
+        Insert: {
+          alan_response: string
+          archived_at?: string
+          category?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          rejection_reason?: string | null
+          retry_count?: number | null
+          score?: number | null
+          user_id?: string | null
+          user_message: string
+          verdict: string
+        }
+        Update: {
+          alan_response?: string
+          archived_at?: string
+          category?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          rejection_reason?: string | null
+          retry_count?: number | null
+          score?: number | null
+          user_id?: string | null
+          user_message?: string
+          verdict?: string
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           color: string
@@ -919,6 +1240,11 @@ export type Database = {
       admin_engagement_report: { Args: never; Returns: Json }
       admin_time_stats: { Args: never; Returns: Json }
       admin_user_reports: { Args: never; Returns: Json }
+      assert_admin_rpc_access: { Args: never; Returns: undefined }
+      check_chat_rate_limit: {
+        Args: { p_max: number; p_user_id: string; p_window_seconds: number }
+        Returns: boolean
+      }
       cleanup_old_logs: { Args: never; Returns: undefined }
       has_role: {
         Args: {
@@ -927,6 +1253,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      immutable_unaccent: { Args: { "": string }; Returns: string }
       is_conversation_owner: { Args: { conv_id: string }; Returns: boolean }
       search_properties_filtered: {
         Args: {
@@ -974,6 +1301,66 @@ export type Database = {
           zone_city: string
           zone_neighborhood: string
           zone_private_community: string
+        }[]
+      }
+      search_properties_relevance: {
+        Args: {
+          amb_max?: number
+          amb_min?: number
+          city_filter?: string
+          currency_filter?: string
+          docta_first?: boolean
+          exclude_neighborhoods?: string[]
+          exclude_office_filter?: string
+          exclude_zones?: string[]
+          filter_active?: boolean
+          locality_filter?: string
+          neighborhood_filter?: string
+          office_filter?: string
+          op_filter?: string
+          op_filter_like?: string
+          page_offset?: number
+          page_size?: number
+          price_max?: number
+          price_min?: number
+          property_types?: string[]
+          query_embedding?: string
+          rooms_max?: number
+          rooms_min?: number
+          search_term?: string
+          title_filter?: string
+          zones?: string[]
+        }
+        Returns: {
+          address: string
+          ambientes: number
+          banos: number
+          created_at: string
+          currency: string
+          entrepreneurship: Json
+          expenses_currency: string
+          expenses_price: number
+          habitaciones: number
+          id: string
+          is_entrepreneurship: boolean
+          listing_status: string
+          locality: string
+          m2_cover: number
+          m2_total: number
+          office: string
+          operation: string
+          photo: string
+          photos: string[]
+          price: number
+          price_exposure: boolean
+          property_type: string
+          relevance_score: number
+          title: string
+          total_count: number
+          url: string
+          zone: string
+          zone_city: string
+          zone_neighborhood: string
         }[]
       }
       validate_invitation_code: {

@@ -179,6 +179,10 @@ export async function executeTool(
     // Eco de la ÚLTIMA search_properties del turno (applied_filters): lo consume el supervisor
     // para la regla determinista de claims sin respaldo ("activas/perfectamente/100%").
     lastSearchAppliedFilters?: Record<string, unknown> | null;
+    // Hybrid search (86aj9w5pn): embedding L2-normalizado (768 dims) de un texto de consulta,
+    // o null si no se pudo (fail-open). Lo inyecta index.ts (Gemini gemini-embedding-001);
+    // lo usa el reintento por relevancia de search_properties para la RPC v3.
+    embedQuery?: (text: string) => Promise<number[] | null>;
   }
 ): Promise<string> {
   const { supabase, userId, conversationId, getCalendarToken } = ctx;
@@ -395,7 +399,20 @@ export async function executeTool(
                 ? { term: zone, clear: { zones: null } }
                 : null;
         if (fallback) {
-          const { data: fbData, error: fbError } = await runSearch({ ...fallback.clear, search_term: fallback.term });
+          // Hybrid search (86aj9w5pn): si el caller inyectó embedQuery (index.ts → Gemini
+          // embeddings), sumamos recall vectorial al reintento — la RPC v3 combina
+          // 0.6·trigram + 0.4·coseno por fila CON embedding backfilleado. Fail-open total:
+          // sin embedQuery, con error de la API o filas sin backfill, el reintento es el
+          // trigram puro de siempre.
+          let queryEmbedding: number[] | null = null;
+          if (typeof ctx.embedQuery === "function") {
+            try { queryEmbedding = await ctx.embedQuery(fallback.term); } catch { queryEmbedding = null; }
+          }
+          const { data: fbData, error: fbError } = await runSearch({
+            ...fallback.clear,
+            search_term: fallback.term,
+            ...(queryEmbedding ? { query_embedding: queryEmbedding } : {}),
+          });
           if (!fbError && fbData && fbData.length > 0) {
             data = fbData;
             totalCount = Number(fbData[0].total_count ?? 0);

@@ -308,3 +308,53 @@ describe("search_properties — lote de tarjetas: última búsqueda gana + dedup
     expect(ctx.lastSearchAppliedFilters?.only_active).toBe(false);
   });
 });
+
+// 86aj9w5pn: hybrid search — el reintento por relevancia pasa query_embedding a la RPC v3
+// cuando el ctx trae embedQuery; sin él (o con fallo), trigram puro como siempre (fail-open).
+describe("hybrid search en el reintento por relevancia (86aj9w5pn)", () => {
+  const fakeEmbedding = Array.from({ length: 768 }, () => 0.036);
+
+  it("con embedQuery: el reintento lleva search_term + query_embedding (embebido del término)", async () => {
+    // Primera llamada: 0 resultados por zona → dispara el fallback con el término.
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }, { rows: [prop("a", "REMAX Docta", "2026-01-01T00:00:00Z")], total: 1 }] });
+    const ctx = baseCtx(supabase);
+    const embedCalls: string[] = [];
+    ctx.embedQuery = async (t: string) => { embedCalls.push(t); return fakeEmbedding; };
+    const out = JSON.parse(await executeTool("search_properties", { zone: "Manantiales" }, ctx));
+    expect(embedCalls).toEqual(["Manantiales"]);
+    expect(supabase.rpcCalls).toHaveLength(2);
+    const retry = searchParams(supabase, 1);
+    expect(retry.search_term).toBe("Manantiales");
+    expect(retry.query_embedding).toEqual(fakeEmbedding);
+    expect(out.title_fallback_term ?? out.showing ?? out.total_count).toBeDefined();
+  });
+
+  it("sin embedQuery en el ctx: el reintento NO manda query_embedding (param ausente)", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }, { rows: [prop("a", "REMAX Docta", "2026-01-01T00:00:00Z")], total: 1 }] });
+    const ctx = baseCtx(supabase);
+    await executeTool("search_properties", { zone: "Manantiales" }, ctx);
+    const retry = searchParams(supabase, 1);
+    expect(retry.search_term).toBe("Manantiales");
+    expect("query_embedding" in retry).toBe(false);
+  });
+
+  it("embedQuery que tira o devuelve null: fail-open, el reintento sale igual sin embedding", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }, { rows: [prop("a", "REMAX Docta", "2026-01-01T00:00:00Z")], total: 1 }] });
+    const ctx = baseCtx(supabase);
+    ctx.embedQuery = async () => { throw new Error("embeddings API caída"); };
+    await executeTool("search_properties", { zone: "Manantiales" }, ctx);
+    expect(supabase.rpcCalls).toHaveLength(2);
+    expect("query_embedding" in searchParams(supabase, 1)).toBe(false);
+  });
+
+  it("la búsqueda principal (sin fallback) nunca llama embedQuery ni manda embedding", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [prop("a", "REMAX Docta", "2026-01-01T00:00:00Z")], total: 1 }] });
+    const ctx = baseCtx(supabase);
+    const embedCalls: string[] = [];
+    ctx.embedQuery = async (t: string) => { embedCalls.push(t); return fakeEmbedding; };
+    await executeTool("search_properties", { zone: "Centro" }, ctx);
+    expect(embedCalls).toEqual([]);
+    expect(supabase.rpcCalls).toHaveLength(1);
+    expect("query_embedding" in searchParams(supabase, 0)).toBe(false);
+  });
+});

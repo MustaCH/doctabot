@@ -197,6 +197,28 @@ tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite
   expone caching explícito") resultó falsa para la medición; migrar solo se justificaría si más
   adelante quisiéramos caching EXPLÍCITO (cachedContents con TTL), que es otro scope.
 
+## Retrieval etapa 2: pgvector + hybrid search (86aj9w5pn, 2026-08-19)
+
+- **Infra (migración `20260819210000`, aplicada con OK de Nacho):** extensión `vector`, columna
+  `properties.embedding vector(768)`, índice HNSW coseno.
+- **Embeddings:** `gemini-embedding-001` con `outputDimensionality=768` — ojo: a <3072 dims el
+  modelo devuelve el vector SIN normalizar (verificado con sonda; `text-embedding-004` ya no
+  existe, 404) → SIEMPRE normalizar L2 antes de guardar/consultar. Query: `RETRIEVAL_QUERY`;
+  documentos: `RETRIEVAL_DOCUMENT`.
+- **RPC v3 `search_properties_relevance`:** nuevo param opcional `query_embedding vector(768)`.
+  Con query y fila embebidas, `relevance_score = 0.6·trigram + 0.4·(1 − dist. coseno)`; sin
+  embedding (param NULL o fila sin backfill) el comportamiento es EXACTAMENTE la v2 (verificado
+  con smoke en prod: mismos resultados con y sin vector dummy sobre filas sin backfill).
+- **Executor:** `toolCtx.embedQuery` (inyectado por index.ts, timeout 4s, fail-open a null) se
+  usa SOLO en el reintento por relevancia (title_fallback) — el término se embebe y viaja como
+  `query_embedding`. La búsqueda principal (filtros estructurados) no embebe nada.
+- **Backfill:** `scripts/backfill-property-embeddings.mjs` (idempotente, `--dry-run` para
+  contar; escribe en `properties` reales → GATE). Al 2026-08-19: 3328 activas pendientes.
+  Las propiedades nuevas del scraper quedan sin embedding (degradan a trigram) hasta re-correr
+  el script — integrarlo al scraper es ticket aparte.
+- Mock de evals: ignora `query_embedding` a propósito (filas seed sin embedding ⇒ la RPC real
+  degrada a trigram, que es lo que el mock ya calcula).
+
 ## Inteligencia de mercado dinámica (86aj9w5pv, 2026-08-19)
 
 - **`market_stats(zone, property_type, operation)`**: mediana/rango (p25–p75) de precio y de

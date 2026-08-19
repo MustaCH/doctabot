@@ -236,6 +236,9 @@ function trigramSimilarity(a: string, b: string): number {
   return inter / (ta.size + tb.size - inter);
 }
 
+// Nota v3 (86aj9w5pn): la RPC real acepta además `query_embedding` (hybrid search). El mock lo
+// IGNORA a propósito — las filas seed no tienen embedding, y en la RPC real ese caso degrada a
+// trigram puro, que es exactamente lo que este mock calcula. Paridad sin simular vectores.
 function searchPropertiesRelevance(db: MockDb, p: Record<string, any>): { data: Row[]; error: null } {
   const term = norm(p.search_term ?? "");
   const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
