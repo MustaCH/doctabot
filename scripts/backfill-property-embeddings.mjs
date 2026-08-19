@@ -1,7 +1,8 @@
 // Backfill de embeddings de propiedades (ticket 86aj9w5pn) — CORRER SOLO CON OK DE NACHO:
 // escribe en la tabla `properties` REAL.
 //
-// Qué hace: para cada propiedad activa sin embedding, arma el texto (title + zone + description),
+// Qué hace: para cada propiedad activa sin embedding, arma el texto descriptivo (ver
+// buildEmbeddingText — la tabla no tiene columna description),
 // pide el embedding a Gemini (gemini-embedding-001, outputDimensionality=768, RETRIEVAL_DOCUMENT),
 // lo NORMALIZA L2 (a <3072 dims el modelo devuelve vectores sin normalizar) y lo guarda.
 //
@@ -43,8 +44,31 @@ async function embed(text) {
   return values.map((v) => v / norm);
 }
 
+// La tabla NO tiene columna description (el ticket la asumía): el texto del embedding se arma
+// con los campos descriptivos reales (título, tipo, operación, zona/barrio/localidad, dirección,
+// dormitorios/ambientes/baños, m²). Mismo armado que documentar para el scraper cuando se integre.
+const SELECT_COLS = "id,title,property_type,operation,zone,zone_neighborhood,locality,address,habitaciones,ambientes,banos,m2_total";
+
+export function buildEmbeddingText(r) {
+  const partes = [
+    r.title,
+    [r.property_type, r.operation ? `en ${r.operation}` : null].filter(Boolean).join(" "),
+    [r.zone, r.zone_neighborhood, r.locality].filter(Boolean).length
+      ? `Zona: ${[...new Set([r.zone, r.zone_neighborhood, r.locality].filter(Boolean))].join(", ")}`
+      : null,
+    r.address,
+    [
+      r.habitaciones != null ? `${r.habitaciones} dormitorios` : null,
+      r.ambientes != null ? `${r.ambientes} ambientes` : null,
+      r.banos != null ? `${r.banos} baños` : null,
+      r.m2_total != null ? `${r.m2_total} m2` : null,
+    ].filter(Boolean).join(", ") || null,
+  ];
+  return partes.filter(Boolean).join(". ").slice(0, 6000);
+}
+
 async function pendingPage() {
-  const url = `${SUPABASE_URL}/rest/v1/properties?select=id,title,zone,description&embedding=is.null&or=(listing_status.eq.active,listing_status.is.null)&limit=${BATCH}`;
+  const url = `${SUPABASE_URL}/rest/v1/properties?select=${SELECT_COLS}&embedding=is.null&or=(listing_status.eq.active,listing_status.is.null)&limit=${BATCH}`;
   const res = await fetch(url, { headers: sbHeaders });
   if (!res.ok) throw new Error(`select HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res.json();
@@ -71,7 +95,7 @@ if (!DRY_RUN) {
     const rows = await pendingPage();
     if (rows.length === 0) break;
     for (const r of rows) {
-      const text = [r.title, r.zone, r.description].filter(Boolean).join(". ").slice(0, 6000);
+      const text = buildEmbeddingText(r);
       if (!text) { failed += 1; continue; }
       try {
         const v = await embed(text);
