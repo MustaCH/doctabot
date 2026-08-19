@@ -1,41 +1,28 @@
-// Tests del ticket 86aj9w5mz: el title_fallback de search_properties no debe disparar para
-// términos genéricos (blocklist) ni cortos (<4 chars), y cuando dispara usa word-boundary
-// (imatch = ~* '\mterm\M') en vez de substring ('centro' matcheaba "Centro de Distribución").
+// Tests del gate del title_fallback (86aj9w5mz), reexpresado sobre la RPC v2 (86ak2q73x):
+// el fallback no debe disparar para términos genéricos (blocklist) ni cortos (<4 chars), y
+// cuando dispara reintenta la RPC con search_term=<término> (umbral de relevance_score en la
+// RPC, que absorbe typos) en vez del viejo imatch word-boundary, etiquetando match_mode.
 import { describe, it, expect } from "vitest";
 import { executeTool } from "./executor";
 import { titleFallbackRegex } from "./validators";
 
-type QB = { calls: Array<{ m: string; a: any[] }>; head: boolean; [k: string]: any };
+type RpcPage = { rows: any[]; total: number };
 
-function makeQB(resolve: (qb: QB) => { data?: any[] | null; count?: number | null; error?: any }): QB {
-  const qb: any = { calls: [], head: false };
-  const chain = (m: string) => (...a: any[]) => {
-    if (m === "select") qb.head = !!a[1]?.head;
-    qb.calls.push({ m, a });
-    return qb;
-  };
-  for (const m of ["select", "or", "not", "ilike", "eq", "is", "gte", "lte", "order", "limit", "range", "in", "filter"]) {
-    qb[m] = chain(m);
-  }
-  qb.then = (onF: any, onR: any) => Promise.resolve(resolve(qb)).then(onF, onR);
-  return qb;
-}
-
-function makeSupabase(cfg: { dataQueue: any[][]; count: number }) {
-  const created: QB[] = [];
-  const supabase = {
-    created,
+function makeSupabase(cfg: { rpcPages: RpcPage[] }) {
+  const rpcCalls: Array<{ name: string; params: Record<string, any> }> = [];
+  const pages = [...cfg.rpcPages];
+  return {
+    rpcCalls,
+    rpc(name: string, params: Record<string, any>) {
+      rpcCalls.push({ name, params });
+      const page = pages.length > 1 ? pages.shift()! : pages[0] ?? { rows: [], total: 0 };
+      const data = page.rows.map((r) => ({ relevance_score: 0.6, ...r, total_count: page.total }));
+      return Promise.resolve({ data, error: null });
+    },
     from(_table: string) {
-      const qb = makeQB((q) => {
-        if (q.head) return { count: cfg.count, data: null, error: null };
-        const data = cfg.dataQueue.length > 1 ? cfg.dataQueue.shift()! : cfg.dataQueue[0];
-        return { data, error: null };
-      });
-      created.push(qb);
-      return qb;
+      throw new Error("sin queries PostgREST en estos casos");
     },
   };
-  return supabase;
 }
 
 function baseCtx(supabase: any) {
@@ -60,9 +47,6 @@ const prop = {
   currency: "USD",
 };
 
-const imatchCalls = (supabase: any) =>
-  supabase.created.flatMap((qb: QB) => qb.calls.filter((c) => c.m === "filter" && c.a[1] === "imatch"));
-
 describe("titleFallbackRegex (validators)", () => {
   it("null para términos cortos (<4) y de blocklist (con y sin acento/mayúsculas)", () => {
     expect(titleFallbackRegex("san")).toBeNull();
@@ -79,43 +63,50 @@ describe("titleFallbackRegex (validators)", () => {
   });
 });
 
-describe("search_properties — gate del title_fallback (86aj9w5mz)", () => {
-  it("zona genérica ('centro') con 0 resultados NO dispara el fallback por título", async () => {
-    const supabase = makeSupabase({ dataQueue: [[]], count: 0 });
+describe("search_properties — gate del fallback por relevancia (86aj9w5mz sobre RPC v2)", () => {
+  it("zona genérica ('centro') con 0 resultados NO dispara el fallback (una sola llamada a la RPC)", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }] });
     const out = JSON.parse(await executeTool("search_properties", { zone: "centro" }, baseCtx(supabase)));
 
     expect(out.match_mode).toBeUndefined();
-    expect(imatchCalls(supabase)).toHaveLength(0);
+    expect(supabase.rpcCalls).toHaveLength(1);
   });
 
-  it("zona específica ('Manantiales') con 0 resultados dispara el fallback con imatch word-boundary", async () => {
-    const supabase = makeSupabase({ dataQueue: [[], [prop]], count: 5 });
+  it("zona específica ('Manantiales') con 0 resultados reintenta con search_term y sin filtro de zona", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }, { rows: [prop], total: 5 }] });
     const out = JSON.parse(await executeTool("search_properties", { zone: "Manantiales" }, baseCtx(supabase)));
 
     expect(out.match_mode).toBe("title_fallback");
     expect(out.searched_term).toBe("Manantiales");
-    const calls = imatchCalls(supabase);
-    expect(calls.length).toBeGreaterThan(0);
-    for (const c of calls) {
-      expect(c.a[0]).toBe("title");
-      expect(c.a[2]).toBe("\\mManantiales\\M");
-    }
-    // Nada quedó en ilike substring sobre title
-    const titleIlikes = supabase.created.flatMap((qb: QB) => qb.calls.filter((c) => c.m === "ilike" && c.a[0] === "title"));
-    expect(titleIlikes).toHaveLength(0);
+    expect(out.total_count).toBe(5);
+    expect(supabase.rpcCalls).toHaveLength(2);
+    const first = supabase.rpcCalls[0].params;
+    const retry = supabase.rpcCalls[1].params;
+    expect(first.zones).toEqual(["Manantiales"]);
+    expect(first.search_term).toBe("");
+    expect(retry.search_term).toBe("Manantiales");
+    expect(retry.zones).toBeNull(); // el término pasa de filtro exacto a búsqueda por relevancia
   });
 
-  it("locality genérica corta no dispara; locality específica sí, vía applyFilters con imatch", async () => {
-    const s1 = makeSupabase({ dataQueue: [[]], count: 0 });
+  it("locality genérica corta no dispara; locality específica sí, con el término sin acento", async () => {
+    const s1 = makeSupabase({ rpcPages: [{ rows: [], total: 0 }] });
     const out1 = JSON.parse(await executeTool("search_properties", { locality: "sur" }, baseCtx(s1)));
     expect(out1.match_mode).toBeUndefined();
-    expect(imatchCalls(s1)).toHaveLength(0);
+    expect(s1.rpcCalls).toHaveLength(1);
 
-    const s2 = makeSupabase({ dataQueue: [[], [prop]], count: 3 });
+    const s2 = makeSupabase({ rpcPages: [{ rows: [], total: 0 }, { rows: [prop], total: 3 }] });
     const out2 = JSON.parse(await executeTool("search_properties", { locality: "Saldán" }, baseCtx(s2)));
     expect(out2.match_mode).toBe("title_fallback");
-    // locality pasa por stripAccents antes del fallback → el patrón va sin acento
-    expect(imatchCalls(s2).length).toBeGreaterThan(0);
-    expect(imatchCalls(s2).every((c: any) => c.a[2] === "\\mSaldan\\M")).toBe(true);
+    // locality pasa por stripAccents antes del fallback → el término va sin acento
+    const retry = s2.rpcCalls[1].params;
+    expect(retry.search_term).toBe("Saldan");
+    expect(retry.locality_filter).toBe("");
+  });
+
+  it("con title explícito el fallback NO dispara aunque la búsqueda dé vacía", async () => {
+    const supabase = makeSupabase({ rpcPages: [{ rows: [], total: 0 }] });
+    const out = JSON.parse(await executeTool("search_properties", { zone: "Manantiales", title: "duplex" }, baseCtx(supabase)));
+    expect(out.match_mode).toBeUndefined();
+    expect(supabase.rpcCalls).toHaveLength(1);
   });
 });

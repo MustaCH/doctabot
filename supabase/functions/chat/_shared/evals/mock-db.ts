@@ -209,7 +209,105 @@ class QueryBuilder {
   }
 }
 
+// ---- RPC search_properties_relevance v2 (migración 20260819100000) ----
+// Réplica in-memory de la RPC que usa search_properties (executor): filtros con la misma
+// semántica (unaccent+ilike para ubicación, ilike plano para title/tipo/moneda/oficina,
+// exclude_office con office-IS-NULL-pasa), similarity trigram estilo pg_trgm (umbral 0.25 o
+// substring en título), orden (docta DESC, rel DESC, created_at DESC) y total_count window.
+
+const stripAccents = (s: string): string => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+const norm = (v: unknown): string => stripAccents(String(v ?? "").toLowerCase());
+
+function trigrams(s: string): Set<string> {
+  const grams = new Set<string>();
+  for (const w of s.split(/\s+/).filter(Boolean)) {
+    const padded = `  ${w} `;
+    for (let i = 0; i <= padded.length - 3; i++) grams.add(padded.slice(i, i + 3));
+  }
+  return grams;
+}
+
+/** similarity() de pg_trgm: |trigrams(a) ∩ trigrams(b)| / |unión|. */
+function trigramSimilarity(a: string, b: string): number {
+  const ta = trigrams(a), tb = trigrams(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const g of ta) if (tb.has(g)) inter += 1;
+  return inter / (ta.size + tb.size - inter);
+}
+
+function searchPropertiesRelevance(db: MockDb, p: Record<string, any>): { data: Row[]; error: null } {
+  const term = norm(p.search_term ?? "");
+  const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
+  const includes = (col: unknown, needle: string, unaccented: boolean) =>
+    (unaccented ? norm(col) : String(col ?? "").toLowerCase()).includes(unaccented ? norm(needle) : needle.toLowerCase());
+
+  const filtered = (db.tables["properties"] ?? []).filter((r) => {
+    if (p.filter_active !== false && !(r.listing_status === "active" || r.listing_status == null)) return false;
+    const zones = strArr(p.zones);
+    if (zones.length && !zones.some((z) => includes(r.zone, z, true))) return false;
+    if (strArr(p.exclude_zones).some((z) => includes(r.zone, z, true))) return false;
+    if (strArr(p.exclude_neighborhoods).some((n) => includes(r.zone_neighborhood, n, true))) return false;
+    if (p.locality_filter && !includes(r.locality, p.locality_filter, true)) return false;
+    if (p.neighborhood_filter && !includes(r.zone_neighborhood, p.neighborhood_filter, true)) return false;
+    if (p.city_filter && !includes(r.zone_city, p.city_filter, true)) return false;
+    if (p.op_filter && r.operation !== p.op_filter) return false;
+    if (p.op_filter_like && !includes(r.operation, p.op_filter_like, false)) return false;
+    const types = strArr(p.property_types);
+    if (types.length && !types.some((t) => includes(r.property_type, t, false))) return false;
+    if (p.title_filter && !includes(r.title, p.title_filter, false)) return false;
+    if (p.currency_filter && !includes(r.currency, p.currency_filter, false)) return false;
+    if (p.price_min != null && !(r.price != null && r.price >= p.price_min)) return false;
+    if (p.price_max != null && !(r.price != null && r.price <= p.price_max)) return false;
+    if (p.rooms_min != null && !(r.habitaciones != null && r.habitaciones >= p.rooms_min)) return false;
+    if (p.rooms_max != null && !(r.habitaciones != null && r.habitaciones <= p.rooms_max)) return false;
+    if (p.amb_min != null && !(r.ambientes != null && r.ambientes >= p.amb_min)) return false;
+    if (p.amb_max != null && !(r.ambientes != null && r.ambientes <= p.amb_max)) return false;
+    if (p.office_filter && !includes(r.office, p.office_filter, false)) return false;
+    if (p.exclude_office_filter && r.office != null && includes(r.office, p.exclude_office_filter, false)) return false;
+    return true;
+  });
+
+  const scored = filtered
+    .map((r) => ({
+      row: r,
+      rel: term === ""
+        ? 1.0
+        : Math.max(
+            trigramSimilarity(norm(r.title), term),
+            trigramSimilarity(norm(r.zone), term),
+            trigramSimilarity(norm(r.locality), term),
+            trigramSimilarity(norm(r.zone_neighborhood), term),
+          ),
+    }))
+    .filter((s) => term === "" || s.rel >= 0.25 || norm(s.row.title).includes(term));
+
+  const doctaFirst = p.docta_first !== false;
+  scored.sort((a, b) => {
+    const da = doctaFirst && String(a.row.office ?? "").toLowerCase().includes("docta") ? 1 : 0;
+    const dbb = doctaFirst && String(b.row.office ?? "").toLowerCase().includes("docta") ? 1 : 0;
+    if (da !== dbb) return dbb - da;
+    if (a.rel !== b.rel) return b.rel - a.rel;
+    const ca = String(a.row.created_at ?? ""), cb = String(b.row.created_at ?? "");
+    return ca === cb ? 0 : ca < cb ? 1 : -1;
+  });
+
+  const offset = Number(p.page_offset ?? 0);
+  const size = Number(p.page_size ?? 20);
+  const page = scored.slice(offset, offset + size);
+  return {
+    data: page.map((s) => ({ ...s.row, relevance_score: s.rel, total_count: scored.length })),
+    error: null,
+  };
+}
+
 /** Cliente supabase mockeado para inyectar como toolCtx.supabase. */
 export function mockSupabase(db: MockDb) {
-  return { from: (table: string) => new QueryBuilder(db, table) };
+  return {
+    from: (table: string) => new QueryBuilder(db, table),
+    rpc: (name: string, params: Record<string, any> = {}) => {
+      if (name === "search_properties_relevance") return Promise.resolve(searchPropertiesRelevance(db, params));
+      return Promise.resolve({ data: null, error: { message: `rpc ${name} no soportada por el mock de evals` } });
+    },
+  };
 }

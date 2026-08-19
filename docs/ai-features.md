@@ -165,9 +165,22 @@ bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`,
 - **`search_properties`**: `only_active` default true (solo publicaciones activas salvo pedido
   explícito); con `min/max_price` sin `currency` se asume **USD** (el mercado de venta opera en
   dólares; ARS explícito para alquileres); la respuesta ecoa `applied_filters`/`ignored_filters`
-  (nada de filtros "aplicados" imaginarios); `offset` = paginación real post-rankeo para "mostrame
-  más"; `exclude_office` + `docta_first` (prioridad Docta); `end_of_results` y `price_unset_count`
-  como señales explícitas. Tests de contrato: `executor.search.test.ts` (cliente Supabase mockeado).
+  (nada de filtros "aplicados" imaginarios); `exclude_office` + `docta_first` (prioridad Docta);
+  `end_of_results` y `price_unset_count` como señales explícitas. Tests de contrato:
+  `executor.search.test.ts` (mock de la RPC).
+- **Retrieval por RPC trigram (86ak2q73x, 2026-08-19)**: `search_properties` ya NO arma queries
+  PostgREST — hace UNA llamada a la RPC `search_properties_relevance` v2 (migración
+  `20260819100000`, paridad completa de filtros con la semántica histórica del executor:
+  ilike-substring para tipos, `exclude_office` con office-IS-NULL-pasa, `op_filter` exacto para
+  regímenes canónicos + `op_filter_like`). La RPC devuelve la página ordenada server-side
+  `(docta DESC, relevance DESC, created_at DESC)` + `total_count` (window) + `relevance_score`
+  por propiedad (expuesto en el JSON del tool). La paginación es `page_size`/`page_offset`
+  server-side (reemplaza el viejo pool + re-rankeo en memoria B1). El **title_fallback**
+  (86aj9w5mz) quedó reexpresado: mismo gate anti-espurios (`titleFallbackRegex`), pero el
+  reintento va con `search_term=<término>` y umbral de `relevance_score` (≥0.25 o substring en
+  título) — absorbe typos ('manantiles' → 'Manantiales'). Único count que sigue en PostgREST:
+  `price_unset_count` (la RPC no expresa `price IS NULL`). El mock de evals (`mock-db.ts`)
+  implementa la RPC in-memory con similarity trigram estilo pg_trgm.
 - **Tarjetas "última búsqueda gana"**: cada search re-siembra los resultados del turno; las
   tarjetas sin ubicar (leftover) solo se anexan si el modelo no puso NINGÚN marcador y el lote está
   fresco según la señal del tool (`cardBatchFresh`), con dedup — nunca tarjetas viejas bajo un "no

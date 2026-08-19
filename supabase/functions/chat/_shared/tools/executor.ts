@@ -18,7 +18,6 @@ import {
   addDaysISO,
   wrapUntrustedWebContent,
   UNTRUSTED_WEB_NOTICE,
-  rankProperties,
   neutralizeControlMarkers,
   sanitizeExternalPortalResult,
   normalizeOperation,
@@ -208,10 +207,9 @@ export async function executeTool(
       const min_habitaciones = safePositiveInt(args.min_habitaciones);
       const max_habitaciones = safePositiveInt(args.max_habitaciones);
       const limit = Math.min(Math.max(safePositiveInt(args.limit) ?? 5, 1), 50);
-      // Paginación ("mostrame más"): el pool se trae SIEMPRE desde 0 (rango [0, offset+pool)) y el
-      // offset se aplica DESPUÉS del re-rankeo Docta-first (B1). Si el offset desplazara el pool,
-      // el re-orden en memoria haría que cada página re-rankee un pool distinto → propiedades
-      // repetidas y salteadas entre páginas.
+      // Paginación ("mostrame más"): OFFSET server-side de la RPC — el orden (docta, relevance,
+      // created_at) es el mismo en todas las páginas, así que páginas consecutivas no se solapan
+      // ni saltean (sucesor del viejo esquema B1 de pool + re-rankeo en memoria).
       const offset = Math.max(0, safePositiveInt(args.offset) ?? 0);
       // only_active (default true): el scraper escribe listing_status='active'; filas legacy
       // pueden tener NULL y cuentan como activas. Tolerante al quirk Gemini de booleans string.
@@ -230,12 +228,6 @@ export async function executeTool(
         currency = "USD";
         currencyDefaulted = true;
       }
-      // POOL ampliado (limit*10, cap 300) ordenado por created_at DESC para re-rankear
-      // Docta-first EN MEMORIA antes de truncar (ver rankProperties: se decidió pool grande +
-      // rank en memoria en vez de ORDER BY por expresión, que PostgREST no soporta sin columna
-      // computada). Ver ticket 86aj1f0ve.
-      const poolLimit = Math.min(limit * 10, 300);
-
       // Criterios MÚLTIPLES (separados por coma) y EXCLUSIONES (86ajbjq22): un cliente puede tener
       // preferred_zones="Córdoba, Sierras" o property_type_interest="Casa, Departamento", y pedir
       // "en todos lados MENOS Nueva Córdoba y Centro". orSafe deja solo letras/números/espacios/guión
@@ -251,50 +243,73 @@ export async function executeTool(
       const excludeZones = parseList(args.exclude_zones);
       const excludeNeighborhoods = parseList(args.exclude_neighborhoods);
 
-      const applyFilters = (q: any, opts?: { skipLocality?: boolean; useLocalityAsTitle?: boolean; titleRegex?: string; skipZone?: boolean; skipMaxPrice?: boolean; skipMinRooms?: boolean; skipPrice?: boolean }) => {
-        // only_active: publicación activa = listing_status 'active' O NULL (filas legacy
-        // anteriores a la columna). Aplica a count y data por igual.
+      // Params de la RPC v2 `search_properties_relevance` (migración 20260819100000): UNA llamada
+      // trae página + total_count (window) con orden server-side (docta DESC, relevance DESC,
+      // created_at DESC) y paginación. Cada filtro replica 1:1 la semántica del viejo query-builder
+      // (ilike-substring para tipos, exclude_office con office-IS-NULL-pasa, only_active = active
+      // O NULL legacy, eq exacto para regímenes canónicos de operación con fallback ILIKE —
+      // ver tickets 86aj1f1fy / m1 / 86ak2q73x).
+      const rpcParams: Record<string, unknown> = {
+        search_term: "",
+        zones: zones.length > 1 ? zones : zone ? [zone] : null,
+        exclude_zones: excludeZones.length ? excludeZones : null,
+        exclude_neighborhoods: excludeNeighborhoods.length ? excludeNeighborhoods : null,
+        locality_filter: locality ?? "",
+        neighborhood_filter: neighborhood ?? "",
+        city_filter: city ?? "",
+        op_filter: canonicalOperation ?? "",
+        op_filter_like: operation && !canonicalOperation ? operation : "",
+        property_types: propertyTypes.length > 1 ? propertyTypes : property_type ? [property_type] : null,
+        title_filter: titleSearch ?? "",
+        price_min: min_price,
+        price_max: max_price,
+        currency_filter: currency ?? "",
+        rooms_min: min_habitaciones,
+        rooms_max: max_habitaciones,
+        amb_min: min_ambientes,
+        amb_max: max_ambientes,
+        office_filter: office ?? "",
+        exclude_office_filter: excludeOffice ?? "",
+        filter_active: onlyActive,
+        docta_first: doctaFirst,
+        page_size: limit,
+        page_offset: offset,
+      };
+      const runSearch = (overrides: Record<string, unknown>): Promise<{ data: any[] | null; error: any }> =>
+        supabase.rpc("search_properties_relevance", { ...rpcParams, ...overrides });
+
+      // price_unset_count ("a consultar"): la RPC no puede expresar price IS NULL, así que este
+      // ÚNICO count auxiliar sigue en PostgREST, replicando los filtros no-precio de la RPC
+      // (equivale al viejo skipPrice: sin min/max_price ni currency).
+      const countPriceUnset = async (): Promise<number> => {
+        let q = supabase.from("properties").select("*", { count: "exact", head: true });
         if (onlyActive) q = q.or("listing_status.eq.active,listing_status.is.null");
-        if (!opts?.skipZone) {
-          if (zones.length > 1) q = q.or(zones.map((z) => `zone.ilike.%${z}%`).join(","));
-          else if (zone) q = q.ilike("zone", `%${zone}%`);
-        }
+        if (zones.length > 1) q = q.or(zones.map((z) => `zone.ilike.%${z}%`).join(","));
+        else if (zone) q = q.ilike("zone", `%${zone}%`);
         for (const z of excludeZones) q = q.not("zone", "ilike", `%${z}%`);
         for (const n of excludeNeighborhoods) q = q.not("zone_neighborhood", "ilike", `%${n}%`);
-        if (locality && !opts?.skipLocality && !opts?.useLocalityAsTitle) q = q.ilike("locality", `%${locality}%`);
-        // title_fallback con word-boundary (imatch = ~*): "centro" ya no matchea "Centro de
-        // Distribución" por substring. El caller solo activa el flag con un titleRegex válido
-        // (término ≥4 chars y fuera de la blocklist) — ver titleFallbackRegex (86aj9w5mz).
-        if (locality && opts?.useLocalityAsTitle && opts?.titleRegex) q = q.filter("title", "imatch", opts.titleRegex);
+        if (locality) q = q.ilike("locality", `%${locality}%`);
         if (neighborhood) q = q.ilike("zone_neighborhood", `%${neighborhood}%`);
         if (city) q = q.ilike("zone_city", `%${city}%`);
         if (titleSearch) q = q.ilike("title", `%${titleSearch}%`);
         if (operation) {
-          // Igualdad exacta cuando el término es un régimen canónico (Venta/Alquiler/Alquiler
-          // temporario): así 'Alquiler' NO arrastra 'Alquiler temporario' (otro régimen legal).
-          // Fallback al ILIKE substring para términos no reconocidos. Ver ticket 86aj1f1fy.
-          const canonicalOp = normalizeOperation(operation);
-          if (canonicalOp) q = q.eq("operation", canonicalOp);
+          if (canonicalOperation) q = q.eq("operation", canonicalOperation);
           else q = q.ilike("operation", `%${operation}%`);
         }
         if (propertyTypes.length > 1) q = q.or(propertyTypes.map((t) => `property_type.ilike.%${t}%`).join(","));
         else if (property_type) q = q.ilike("property_type", `%${property_type}%`);
-        if (min_price !== null && !opts?.skipPrice) q = q.gte("price", min_price);
-        if (max_price !== null && !opts?.skipMaxPrice && !opts?.skipPrice) q = q.lte("price", max_price);
-        if (currency && !opts?.skipPrice) q = q.ilike("currency", `%${currency}%`);
-        if (min_ambientes !== null && !opts?.skipMinRooms) q = q.gte("ambientes", min_ambientes);
+        if (min_ambientes !== null) q = q.gte("ambientes", min_ambientes);
         if (max_ambientes !== null) q = q.lte("ambientes", max_ambientes);
-        if (min_habitaciones !== null && !opts?.skipMinRooms) q = q.gte("habitaciones", min_habitaciones);
+        if (min_habitaciones !== null) q = q.gte("habitaciones", min_habitaciones);
         if (max_habitaciones !== null) q = q.lte("habitaciones", max_habitaciones);
         if (office) q = q.ilike("office", `%${office}%`);
         if (excludeOffice) {
-          // m1: NOT ILIKE solo descarta filas con office NO nulo — office IS NULL también debe
-          // pasar el filtro ("que no sea de Docta" incluye las sin oficina cargada). Se sanea el
-          // término con el mismo criterio que orSafe para que el string de .or() no sea inyectable.
+          // m1: office IS NULL también pasa; término saneado para que el string de .or() no sea inyectable.
           const exOr = excludeOffice.replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
           if (exOr) q = q.or(`office.is.null,office.not.ilike.%${exOr}%`);
         }
-        return q;
+        const { count } = await q.is("price", null);
+        return count ?? 0;
       };
 
       // ECO DE FILTROS (honestidad de la búsqueda): applied_filters = lo que REALMENTE se aplicó
@@ -352,84 +367,39 @@ export async function executeTool(
         return JSON.stringify({ error: `Rango de precio inválido: min_price (${min_price}) es mayor que max_price (${max_price}). Corregí el rango y volvé a buscar.` });
       }
 
-      // Primary search. La query de datos trae un pool ordenado; la de count queda intacta
-      // (head:true → total_count real del universo, sin order ni pool).
-      let baseQuery = applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }));
-      let dataQuery = applyFilters(supabase.from("properties").select("*")).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
-
-      const [countResult, dataResult] = await Promise.all([baseQuery, dataQuery]);
-      let totalCount = countResult.count ?? 0;
-      let data = dataResult.data;
-      let error = dataResult.error;
-      // Cuando los resultados provienen de un reintento por título (no por zona/localidad exacta),
-      // lo etiquetamos para que Alan lo aclare en vez de presentarlo como match exacto. Ver 86aj1f1w6.
+      // Búsqueda principal: la RPC devuelve la página ya ordenada y paginada, con total_count
+      // (window sobre el universo filtrado) repetido en cada fila.
+      const { data: rpcData, error: rpcError } = await runSearch({});
+      let data: any[] | null = rpcData ?? null;
+      const error = rpcError;
+      let totalCount = data && data.length > 0 ? Number(data[0].total_count ?? 0) : 0;
+      // Cuando los resultados provienen de un reintento por relevancia (no por zona/localidad
+      // exacta), lo etiquetamos para que Alan lo aclare en vez de presentarlo como match exacto.
+      // Ver 86aj1f1w6.
       let titleFallbackTerm: string | null = null;
 
-      // Fallback: if locality was provided but got 0 results, retry searching in title.
-      // Gate anti-espurios (86aj9w5mz): término ≥4 chars y fuera de la blocklist, match con
-      // word-boundary — si titleFallbackRegex da null, el fallback NO dispara.
-      const localityRegex = titleFallbackRegex(locality);
-      if (!error && (!data || data.length === 0) && locality && localityRegex && !titleSearch) {
-        const fbBase = applyFilters(
-          supabase.from("properties").select("*", { count: "exact", head: true }),
-          { useLocalityAsTitle: true, titleRegex: localityRegex }
-        );
-        const fbData = applyFilters(
-          supabase.from("properties").select("*"),
-          { useLocalityAsTitle: true, titleRegex: localityRegex }
-        ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
-        const [fbCountRes, fbDataRes] = await Promise.all([fbBase, fbData]);
-        if (!fbDataRes.error && fbDataRes.data && fbDataRes.data.length > 0) {
-          totalCount = fbCountRes.count ?? 0;
-          data = fbDataRes.data;
-          error = fbDataRes.error;
-          titleFallbackTerm = locality;
-        }
-      }
-
-      // Fallback: if neighborhood was provided but got 0 results, retry in title (mismo gate)
-      const neighborhoodRegex = titleFallbackRegex(neighborhood);
-      if (!error && (!data || data.length === 0) && neighborhood && neighborhoodRegex && !titleSearch && !locality) {
-        const fbBase2 = applyFilters(
-          supabase.from("properties").select("*", { count: "exact", head: true }),
-          { useLocalityAsTitle: true }
-        );
-        const fbData2 = applyFilters(
-          supabase.from("properties").select("*"),
-          { useLocalityAsTitle: true }
-        ).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
-        // For this fallback, search neighborhood term in title (word-boundary, no substring)
-        const [fbCountRes2, fbDataRes2] = await Promise.all([
-          fbBase2.filter("title", "imatch", neighborhoodRegex),
-          fbData2.filter("title", "imatch", neighborhoodRegex),
-        ]);
-        if (!fbDataRes2.error && fbDataRes2.data && fbDataRes2.data.length > 0) {
-          totalCount = fbCountRes2.count ?? 0;
-          data = fbDataRes2.data;
-          error = fbDataRes2.error;
-          titleFallbackTerm = neighborhood;
-        }
-      }
-
-      // Fallback: zona provista sin resultados → el término puede ser un desarrollo/loteo
-      // cuyo nombre vive en el título (no en el campo zone). Reintentamos buscándolo en title
-      // con el mismo gate anti-espurios ('centro'/'san' no disparan; word-boundary).
-      const zoneRegex = titleFallbackRegex(zone);
-      if (!error && (!data || data.length === 0) && zone && zoneRegex && !titleSearch && !locality && !neighborhood) {
-        const fbBaseZ = applyFilters(
-          supabase.from("properties").select("*", { count: "exact", head: true }),
-          { skipZone: true }
-        ).filter("title", "imatch", zoneRegex);
-        const fbDataZ = applyFilters(
-          supabase.from("properties").select("*"),
-          { skipZone: true }
-        ).filter("title", "imatch", zoneRegex).order("created_at", { ascending: false }).range(0, offset + poolLimit - 1);
-        const [fbCountResZ, fbDataResZ] = await Promise.all([fbBaseZ, fbDataZ]);
-        if (!fbDataResZ.error && fbDataResZ.data && fbDataResZ.data.length > 0) {
-          totalCount = fbCountResZ.count ?? 0;
-          data = fbDataResZ.data;
-          error = fbDataResZ.error;
-          titleFallbackTerm = zone;
+      // Fallback por relevancia (86aj9w5mz reexpresado sobre la RPC, ticket 86ak2q73x): un término
+      // de ubicación sin resultados puede ser un desarrollo/loteo que vive en el título, o un typo.
+      // MISMO gate anti-espurios (titleFallbackRegex: ≥4 chars, fuera de la blocklist — 'centro'/
+      // 'san' no disparan); el matching pasa de imatch word-boundary a search_term con umbral de
+      // relevance_score (la RPC exige rel ≥ 0.25 o substring en título), que además absorbe typos
+      // ('manantiles' → 'Manantiales'). Precedencia histórica: locality > neighborhood > zone.
+      if (!error && (!data || data.length === 0) && !titleSearch) {
+        const fallback =
+          locality && titleFallbackRegex(locality)
+            ? { term: locality, clear: { locality_filter: "" } }
+            : neighborhood && !locality && titleFallbackRegex(neighborhood)
+              ? { term: neighborhood, clear: { neighborhood_filter: "" } }
+              : zone && !locality && !neighborhood && titleFallbackRegex(zone)
+                ? { term: zone, clear: { zones: null } }
+                : null;
+        if (fallback) {
+          const { data: fbData, error: fbError } = await runSearch({ ...fallback.clear, search_term: fallback.term });
+          if (!fbError && fbData && fbData.length > 0) {
+            data = fbData;
+            totalCount = Number(fbData[0].total_count ?? 0);
+            titleFallbackTerm = fallback.term;
+          }
         }
       }
 
@@ -439,42 +409,47 @@ export async function executeTool(
         // las tarjetas de una tool ANTERIOR debajo de un "no encontré".
         clearCardBatch(ctx);
         // M5: con offset > 0 y universo real > 0 no es "sin resultados": es el FIN de la
-        // paginación. Sin mensaje de sin-resultados ni relax_hints (serían falsos).
-        if (offset > 0 && totalCount > 0) {
-          return JSON.stringify({
-            end_of_results: true,
-            total_count: totalCount,
-            showing: 0,
-            applied_filters,
-            ...(ignored_filters.length ? { ignored_filters } : {}),
-            message: "No hay más resultados: ya se mostraron todas las propiedades de esta búsqueda.",
-          });
+        // paginación. Sin filas no hay total_count (es window de la página): el universo
+        // requiere una sonda aparte con page_offset=0.
+        if (offset > 0) {
+          const { data: probe } = await runSearch({ page_size: 1, page_offset: 0 });
+          const universe = probe && probe.length > 0 ? Number(probe[0].total_count ?? 0) : 0;
+          if (universe > 0) {
+            return JSON.stringify({
+              end_of_results: true,
+              total_count: universe,
+              showing: 0,
+              applied_filters,
+              ...(ignored_filters.length ? { ignored_filters } : {}),
+              message: "No hay más resultados: ya se mostraron todas las propiedades de esta búsqueda.",
+            });
+          }
         }
-        // 0 resultados: si había al menos un filtro numérico, reintentamos 1-2 counts `exact`
-        // relajando el filtro más probable (primero max_price, después min_habitaciones/ambientes)
-        // para que Alan ofrezca una relajación concreta ("hay N opciones si subís ~15%").
-        // Solo devolvemos hints con count>0. Ver ticket 86aj1f1fy.
+        // 0 resultados: si había al menos un filtro numérico, reintentamos 1-2 sondas de la RPC
+        // (page_size=1, solo para leer total_count) relajando el filtro más probable (primero
+        // max_price, después min_habitaciones/ambientes) para que Alan ofrezca una relajación
+        // concreta ("hay N opciones si subís ~15%"). Solo devolvemos hints con count>0. 86aj1f1fy.
         const hasNumericFilter = [min_price, max_price, min_ambientes, max_ambientes, min_habitaciones, max_habitaciones].some((v) => v !== null);
         const relax_hints: Array<{ drop: string; count: number }> = [];
+        const relaxCount = async (overrides: Record<string, unknown>): Promise<number> => {
+          const { data: rows } = await runSearch({ ...overrides, page_size: 1, page_offset: 0 });
+          return rows && rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
+        };
         if (hasNumericFilter) {
           if (max_price !== null) {
-            const { count } = await applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }), { skipMaxPrice: true });
-            if ((count ?? 0) > 0) relax_hints.push({ drop: "max_price", count: count ?? 0 });
+            const count = await relaxCount({ price_max: null });
+            if (count > 0) relax_hints.push({ drop: "max_price", count });
           }
           if (min_habitaciones !== null || min_ambientes !== null) {
-            const { count } = await applyFilters(supabase.from("properties").select("*", { count: "exact", head: true }), { skipMinRooms: true });
-            if ((count ?? 0) > 0) relax_hints.push({ drop: min_habitaciones !== null ? "min_habitaciones" : "min_ambientes", count: count ?? 0 });
+            const count = await relaxCount({ rooms_min: null, amb_min: null });
+            if (count > 0) relax_hints.push({ drop: min_habitaciones !== null ? "min_habitaciones" : "min_ambientes", count });
           }
         }
         // price_unset_count también en el camino de 0 resultados: un rango de precio puede haber
         // dejado afuera SOLO las "a consultar" — dato clave para que Alan ofrezca algo.
         let price_unset_count0 = 0;
         if (min_price !== null || max_price !== null) {
-          const { count: unsetCount } = await applyFilters(
-            supabase.from("properties").select("*", { count: "exact", head: true }),
-            { skipPrice: true },
-          ).is("price", null);
-          price_unset_count0 = unsetCount ?? 0;
+          price_unset_count0 = await countPriceUnset();
         }
         // M8: si la moneda se defaulteó a USD, un presupuesto en pesos pudo vaciar la búsqueda —
         // sugerimos revisar la moneda en el mensaje.
@@ -495,40 +470,26 @@ export async function executeTool(
       // price_unset_count: propiedades que cumplen el RESTO de los filtros pero tienen precio
       // NULL ("a consultar") — el gte/lte las excluye de total_count. Solo se calcula con filtro
       // de precio activo (sin filtro de precio ya integran total_count). Se computa sobre los
-      // filtros base (sin los fallbacks por título: caso borde, se prefiere simple y honesto).
+      // filtros base (sin el fallback por relevancia: caso borde, se prefiere simple y honesto).
       let price_unset_count = 0;
       if ((min_price !== null || max_price !== null) && !titleFallbackTerm) {
-        const { count: unsetCount } = await applyFilters(
-          supabase.from("properties").select("*", { count: "exact", head: true }),
-          { skipPrice: true },
-        ).is("price", null);
-        price_unset_count = unsetCount ?? 0;
+        price_unset_count = await countPriceUnset();
       }
 
-      // Re-rankeamos el pool COMPLETO Docta-first (salvo docta_first=false) y recién ahí aplicamos
-      // la paginación: primero se ordena el universo [0, offset+limit) y después se corta la página
-      // con .slice(offset) (B1 — el rankeo estable garantiza páginas consecutivas sin solapamiento
-      // ni salteos). total_count sigue siendo el universo real (count head:true).
-      const ranked = rankProperties(data, offset + limit, doctaFirst).slice(offset);
-      if (ranked.length === 0) {
-        // M5: offset más allá del final del pool — fin de la paginación, no "sin resultados".
-        clearCardBatch(ctx);
-        return JSON.stringify({
-          end_of_results: true,
-          total_count: totalCount,
-          showing: 0,
-          applied_filters,
-          ...(ignored_filters.length ? { ignored_filters } : {}),
-          message: "No hay más resultados: ya se mostraron todas las propiedades de esta búsqueda.",
-        });
-      }
-      const doctaCount = ranked.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
+      // La RPC ya ordenó (docta DESC, relevance DESC, created_at DESC) y paginó server-side:
+      // el orden es estable entre páginas sin pool ni re-rankeo en memoria (reemplaza a B1).
+      const doctaCount = data.filter((p: any) => p.office?.toLowerCase().includes("docta")).length;
       // Lote de tarjetas del turno: búsquedas sucesivas REEMPLAZAN ("última búsqueda gana"); si el
       // lote venía de OTRA tool con resultados, se fusiona con dedup — ver beginCardBatch (M9).
       beginCardBatch(ctx, "search_properties");
       // Cada resultado se registra y se devuelve como stub con `ref` (sin url/photo): el modelo
-      // muestra la propiedad emitiendo <<<CARD:ref>>>, no escribiendo la tarjeta. Ver toCardStub / 86ajangkb.
-      const results = ranked.map((p: any) => toCardStub(ctx, p));
+      // muestra la propiedad emitiendo <<<CARD:ref>>>, no escribiendo la tarjeta. Ver toCardStub /
+      // 86ajangkb. total_count es metadato de la window (no parte del shape de propiedad) y se
+      // separa; relevance_score SÍ se expone en cada resultado (AC de 86aj9w5nx).
+      const results = data.map((p: any) => {
+        const { total_count: _tc, ...row } = p;
+        return toCardStub(ctx, row);
+      });
 
       return JSON.stringify({
         total_count: totalCount,
