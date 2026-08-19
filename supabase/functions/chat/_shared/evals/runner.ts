@@ -46,6 +46,12 @@ export interface EvalCase {
   active_client?: ActiveClientInfo & { full_name: string };
   /** Filas extra para el mock (se MERGEAN sobre DEFAULT_DB por tabla). */
   db?: Record<string, Record<string, any>[]>;
+  /**
+   * Deficiencia REAL y conocida del modelo/prompt (xfail): el caso corre y se reporta,
+   * pero no falla CI ni entra al pass-rate global. Si empieza a PASAR, el reporte lo
+   * celebra para endurecerlo. El valor documenta el problema/ticket asociado.
+   */
+  known_issue?: string;
   expect: EvalExpect;
 }
 
@@ -71,11 +77,15 @@ export function defaultDb(): Record<string, Record<string, any>[]> {
       { id: "11111111-1111-4111-8111-000000000003", user_id: EVAL_USER_ID, full_name: "Marta López", is_client: true, status: "cold", client_type: "both", phone: null, email: null, birthday: "1980-05-03", notes: null },
       { id: "11111111-1111-4111-8111-000000000004", user_id: EVAL_USER_ID, full_name: "Susana Pérez", is_client: false, status: "warm", client_type: "buyer", phone: "+5493513333333", email: null, notes: null },
     ],
+    // OJO formato de zonas: en prod properties.zone/locality vienen NORMALIZADAS (lowercase,
+    // sin acentos) — el executor busca con stripAccents y el ilike de Postgres (y del mock)
+    // es sensible a acentos. Un fixture con "Nueva Córdoba" da 0 resultados y el modelo
+    // reintenta hasta agotar maxIterations (pasó en el baseline). Los títulos sí llevan acento.
     properties: [
-      { id: "22222222-2222-4222-8222-000000000001", title: "Depto 2 dorm Nueva Córdoba", zone: "Nueva Córdoba", locality: "Córdoba", operation: "Venta", property_type: "Departamento", price: 110000, currency: "USD", habitaciones: 2, m2_total: 75, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-2-dorm-nueva-cordoba-eval", photo: "p1.jpg", photos: ["p1.jpg"], address: "Bv. Illia 400", created_at: "2026-08-01T00:00:00Z" },
-      { id: "22222222-2222-4222-8222-000000000002", title: "Depto 1 dorm Nueva Córdoba con balcón", zone: "Nueva Córdoba", locality: "Córdoba", operation: "Venta", property_type: "Departamento", price: 135000, currency: "USD", habitaciones: 1, m2_total: 50, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-1-dorm-nc-eval", photo: "p2.jpg", photos: ["p2.jpg"], address: "Obispo Trejo 900", created_at: "2026-08-05T00:00:00Z" },
-      { id: "22222222-2222-4222-8222-000000000003", title: "Casa 3 dorm en Manantiales", zone: "Manantiales", locality: "Córdoba", operation: "Venta", property_type: "Casa", price: 185000, currency: "USD", habitaciones: 3, m2_total: 180, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/casa-3-dorm-manantiales-eval", photo: "p3.jpg", photos: ["p3.jpg"], address: "Manantiales etapa 2", created_at: "2026-08-03T00:00:00Z" },
-      { id: "22222222-2222-4222-8222-000000000004", title: "Depto 3 dorm Centro apto profesional", zone: "Centro", locality: "Córdoba", operation: "Alquiler", property_type: "Departamento", price: 550000, currency: "ARS", habitaciones: 3, m2_total: 90, office: "REMAX Sinergia", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-3-dorm-centro-eval", photo: "p4.jpg", photos: ["p4.jpg"], address: "27 de Abril 300", created_at: "2026-08-02T00:00:00Z" },
+      { id: "22222222-2222-4222-8222-000000000001", title: "Depto 2 dorm Nueva Córdoba", zone: "nueva cordoba", locality: "cordoba", operation: "Venta", property_type: "Departamento", price: 110000, currency: "USD", habitaciones: 2, m2_total: 75, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-2-dorm-nueva-cordoba-eval", photo: "p1.jpg", photos: ["p1.jpg"], address: "Bv. Illia 400", created_at: "2026-08-01T00:00:00Z" },
+      { id: "22222222-2222-4222-8222-000000000002", title: "Depto 1 dorm Nueva Córdoba con balcón", zone: "nueva cordoba", locality: "cordoba", operation: "Venta", property_type: "Departamento", price: 135000, currency: "USD", habitaciones: 1, m2_total: 50, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-1-dorm-nc-eval", photo: "p2.jpg", photos: ["p2.jpg"], address: "Obispo Trejo 900", created_at: "2026-08-05T00:00:00Z" },
+      { id: "22222222-2222-4222-8222-000000000003", title: "Casa 3 dorm en Manantiales", zone: "manantiales", locality: "cordoba", operation: "Venta", property_type: "Casa", price: 185000, currency: "USD", habitaciones: 3, m2_total: 180, office: "REMAX Docta", listing_status: "active", url: "https://www.remax.com.ar/listings/casa-3-dorm-manantiales-eval", photo: "p3.jpg", photos: ["p3.jpg"], address: "Manantiales etapa 2", created_at: "2026-08-03T00:00:00Z" },
+      { id: "22222222-2222-4222-8222-000000000004", title: "Depto 3 dorm Centro apto profesional", zone: "centro", locality: "cordoba", operation: "Alquiler", property_type: "Departamento", price: 550000, currency: "ARS", habitaciones: 3, m2_total: 90, office: "REMAX Sinergia", listing_status: "active", url: "https://www.remax.com.ar/listings/depto-3-dorm-centro-eval", photo: "p4.jpg", photos: ["p4.jpg"], address: "27 de Abril 300", created_at: "2026-08-02T00:00:00Z" },
     ],
     favorites: [
       { user_id: EVAL_USER_ID, property_id: "22222222-2222-4222-8222-000000000003" },

@@ -14,7 +14,9 @@ export const READ_INTENTS: Array<{ test: RegExp; tools: string[]; label: string 
     // Gap "templado": si entre el verbo y "clientes" aparece eventos/cumpleaños/propiedades,
     // el pedido es sobre ESO del cliente (intents de abajo), no sobre listar clientes —
     // "mostrame los eventos de mis clientes" no debe exigir list_clients (86aj9w5mq).
-    test: /\b(list|mostr|busc|ver|cu[aá]nt|cu[aá]l)(?:(?!\b(?:eventos?|cumplea[ñn]os|aniversarios?|propiedades)\b)[^.?!\n]){0,30}\bclientes?\b/i,
+    // El stem "list" excluye el adjetivo "listo/listos" (baseline de evals: "pasámelo
+    // listo para mandarle a un cliente" era un falso rechazo); "lista/listame/listá" siguen.
+    test: /\b(list(?!os?\b)|mostr|busc|ver|cu[aá]nt|cu[aá]l)(?:(?!\b(?:eventos?|cumplea[ñn]os|aniversarios?|propiedades)\b)[^.?!\n]){0,30}\bclientes?\b/i,
     tools: ["list_clients", "get_client"],
     label: "list_clients",
   },

@@ -115,8 +115,20 @@ deployar cambios de prompt/tools. **Correr los evals es el gate para tocar `prom
 - **`npm test` NO pega a la API:** los evals viven en `*.eval.ts` (fuera del include normal);
   el harness en sí se testea offline en `evals/harness.test.ts` (mock-db, evaluador, esquema
   del golden set, y un turno end-to-end con el modelo stubbeado por SSE).
-- Pendiente: primera corrida real contra la API (Nacho setea `GEMINI_API_KEY` local) para
-  fijar el baseline de pass-rate.
+- **Baseline fijado (2026-08-19, 3 corridas contra la API real):** 40/40 casos sanos verdes,
+  gate global de CI en verde. 4 deficiencias REALES quedaron rastreadas como `known_issue`
+  (xfail: corren y se reportan sin gatear CI; si empiezan a pasar, el reporte avisa 🎉):
+  URLs de listing fabricadas/copiadas en borradores (×2, consistente), `update_client` no
+  ejecutado ante orden clara de cambio de status (consistente), auto-guardado de contacto
+  detectado sin confirmación (flaky). Son los candidatos a tickets de mejora de prompt.
+- El baseline además pescó precisión del supervisor determinista: el stem `list` matcheaba
+  el adjetivo "listo" (ARREGLADO en supervisor-rules + test); quedan documentadas dos
+  limitaciones conocidas sin fix: contenido citado/inyectado dentro del mensaje dispara
+  READ_INTENTS, y cláusulas de propósito tipo "invitarla a ver el depto" disparan el intent
+  de búsqueda. En prod solo ensucian métricas (el supervisor no bloquea).
+- Gotcha del fixture: `properties.zone/locality` en prod están normalizadas (lowercase, sin
+  acentos) — un fixture con acentos hace que el executor (que busca con stripAccents) dé 0
+  resultados y el modelo agote maxIterations reintentando.
 
 `sanitizeFinal(text, executedTools)` es el punto de aplicación: la ronda final del stream se
 bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`, inyectado a

@@ -37,6 +37,14 @@ describe("unactedReadVerdict", () => {
     expect(unactedReadVerdict("gracias!", [])).toBeNull();
   });
 
+  // Hallazgo del baseline de evals: el stem "list" matcheaba el adjetivo "listo".
+  it("'listo/listos' (adjetivo) no dispara el intent de list_clients; 'lista/listame' sí", () => {
+    expect(unactedReadVerdict("pasámelo listo para mandarle a un cliente", [])).toBeNull();
+    expect(unactedReadVerdict("dejá todo listo para los clientes de mañana", [])).toBeNull();
+    expect(unactedReadVerdict("listame mis clientes", [])?.verdict).toBe("rejected");
+    expect(unactedReadVerdict("pasame la lista de clientes", [])?.verdict).toBe("rejected");
+  });
+
   // 86aj9w5mq: list_client_properties / list_client_events cubiertos por READ_INTENTS.
   it("propiedades guardadas / enviadas al cliente sin tool → rejected; con list_client_properties → null", () => {
     expect(unactedReadVerdict("mostrame las propiedades guardadas de Ana", [])?.verdict).toBe("rejected");

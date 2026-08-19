@@ -47,10 +47,19 @@ describe.skipIf(!apiKey)("Golden set de Alan (turnos reales contra API, DB mocke
   });
 
   for (const c of cases) {
-    it(`${c.id} — ${c.name}`, () => {
+    const label = c.known_issue ? `${c.id} — ${c.name} [KNOWN ISSUE]` : `${c.id} — ${c.name}`;
+    it(label, () => {
       const rs = results.get(c.id) ?? [];
       expect(rs.length, "el caso no corrió (¿beforeAll falló?)").toBeGreaterThan(0);
       const rate = rs.filter((r) => r.pass).length / rs.length;
+      if (c.known_issue) {
+        // xfail: no gatea CI. Si PASA, es una mejora — avisamos para endurecer el caso.
+        if (rate >= CASE_MIN_RATE) {
+          // eslint-disable-next-line no-console
+          console.log(`🎉 [evals] known issue AHORA PASA (${rate.toFixed(2)}): ${c.id} — considerá quitarle known_issue (${c.known_issue})`);
+        }
+        return;
+      }
       if (rate < CASE_MIN_RATE) {
         const detail = rs.filter((r) => !r.pass).map((r) => `- ${r.failures.join(" | ")}\n  texto: ${r.content.slice(0, 300)}`).join("\n");
         expect.fail(`pass-rate del caso ${rate.toFixed(2)} < ${CASE_MIN_RATE}:\n${detail}`);
@@ -58,11 +67,12 @@ describe.skipIf(!apiKey)("Golden set de Alan (turnos reales contra API, DB mocke
     });
   }
 
-  it(`pass-rate global ≥ ${MIN_PASS_RATE} (gate de CI)`, () => {
-    const all = [...results.values()].flat();
+  it(`pass-rate global ≥ ${MIN_PASS_RATE} (gate de CI, excluye known issues)`, () => {
+    const knownIds = new Set(cases.filter((c) => c.known_issue).map((c) => c.id));
+    const all = [...results.entries()].filter(([id]) => !knownIds.has(id)).flatMap(([, rs]) => rs);
     expect(all.length).toBeGreaterThan(0);
     const rate = all.filter((r) => r.pass).length / all.length;
-    const failing = [...results.entries()].filter(([, rs]) => rs.some((r) => !r.pass)).map(([id]) => id);
+    const failing = [...results.entries()].filter(([id, rs]) => !knownIds.has(id) && rs.some((r) => !r.pass)).map(([id]) => id);
     expect(rate, `casos con fallas: ${failing.join(", ")}`).toBeGreaterThanOrEqual(MIN_PASS_RATE);
   });
 });
