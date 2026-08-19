@@ -136,11 +136,17 @@ deployar cambios de prompt/tools. **Correr los evals es el gate para tocar `prom
   el harness en sí se testea offline en `evals/harness.test.ts` (mock-db, evaluador, esquema
   del golden set, y un turno end-to-end con el modelo stubbeado por SSE).
 - **Baseline fijado (2026-08-19, 3 corridas contra la API real):** 40/40 casos sanos verdes,
-  gate global de CI en verde. 4 deficiencias REALES quedaron rastreadas como `known_issue`
-  (xfail: corren y se reportan sin gatear CI; si empiezan a pasar, el reporte avisa 🎉):
-  URLs de listing fabricadas/copiadas en borradores (×2, consistente), `update_client` no
-  ejecutado ante orden clara de cambio de status (consistente), auto-guardado de contacto
-  detectado sin confirmación (flaky). Son los candidatos a tickets de mejora de prompt.
+  gate global de CI en verde. Las 4 deficiencias del baseline (URLs fabricadas/dictadas ×2,
+  update_client ante orden directa, auto-guardado sin confirmar) **se ARREGLARON el mismo día**
+  (tickets 86ak2q724/72h/72z — ver commits) y sus casos corren verdes 3/3 sin `known_issue`.
+  Queda UN known_issue nuevo detectado al certificar: `cal-visita-sin-google` — con Calendar
+  desconectado el modelo a veces reintenta en loop la tool que falla de forma permanente hasta
+  agotar maxIterations (~1/3 de las corridas); candidato a ticket (relevar errores permanentes
+  al primer intento, o dedup de errores idénticos en execute-round).
+- **Semántica del gate (anti whack-a-mole):** con `EVAL_RUNS=1` (default) los tests por-caso
+  solo REPORTAN y CI la gatea el pass-rate GLOBAL (≥0.85) — 44 casos probabilísticos a 1 rep
+  tiran ~1 caso distinto por corrida aunque cada uno esté ~90%+. Con `EVAL_RUNS>1` o
+  `EVAL_STRICT=1`, los por-caso gatean con su umbral (`EVAL_CASE_MIN_RATE`).
 - El baseline además pescó precisión del supervisor determinista: el stem `list` matcheaba
   el adjetivo "listo" (ARREGLADO en supervisor-rules + test); quedan documentadas dos
   limitaciones conocidas sin fix: contenido citado/inyectado dentro del mensaje dispara

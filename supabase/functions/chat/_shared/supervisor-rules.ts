@@ -181,7 +181,14 @@ export function unsupportedSearchClaimVerdict(
       category: "dato_inventado",
     };
   }
-  if (appliedFilters && SEARCH_ACTIVE_CLAIM.test(txt) && appliedFilters.only_active !== true) {
+  // Precisión (hallazgo del golden set, 2026-08-19): las frases NEGADAS de vigencia ("puede que
+  // ya no esté activa", "no figura vigente", "dejó de estar publicada") son honestidad, no un
+  // claim — se neutralizan antes de testear para no rechazar respuestas correctas de 0-resultados.
+  const withoutNegations = txt.replace(
+    /\b(ya\s+)?no\s+(est[áa][ns]?|est[ée][ns]?|figura[ns]?|sigue[ns]?|aparece[ns]?|se\s+encuentra[ns]?)\s+(m[áa]s\s+)?\w{0,20}\s?(activ\w+|vigente\w*|publicad\w+|disponible\w*)/gi,
+    "",
+  );
+  if (appliedFilters && SEARCH_ACTIVE_CLAIM.test(withoutNegations) && appliedFilters.only_active !== true) {
     return {
       verdict: "rejected",
       score: 3,

@@ -73,4 +73,32 @@ describe("unsupportedSearchClaimVerdict", () => {
       ),
     ).toBeNull();
   });
+
+  // Hallazgo del golden set (2026-08-19): las frases NEGADAS de vigencia son honestidad
+  // ("puede que ya no esté activa" tras 0 resultados), no un claim — no se rechazan.
+  it("negaciones de vigencia con only_active=false → null (no son claims)", () => {
+    const noActive = { only_active: false };
+    expect(
+      unsupportedSearchClaimVerdict(
+        "No encontré ese depto entre las opciones: puede que ya no esté activa la publicación. ¿Busco similares?",
+        ["search_properties"],
+        noActive,
+      ),
+    ).toBeNull();
+    expect(
+      unsupportedSearchClaimVerdict(
+        "Esa propiedad no figura vigente en el listado de resultados.",
+        ["search_properties"],
+        noActive,
+      ),
+    ).toBeNull();
+    // El claim POSITIVO con only_active=false sigue rechazándose.
+    expect(
+      unsupportedSearchClaimVerdict(
+        "Todas las publicaciones que te muestro están activas.",
+        ["search_properties"],
+        noActive,
+      )?.verdict,
+    ).toBe("rejected");
+  });
 });
