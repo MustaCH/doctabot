@@ -37,6 +37,7 @@ import {
 } from "./google.ts";
 import { CLIENT_EVENT_TYPES, CLIENT_EVENT_RECURRENCES } from "../alan-facts.ts";
 import { normalizePhone } from "../whatsapp-guardrail.ts";
+import { computeMarketStats, daysOnMarket, priceVsMedian } from "./market.ts";
 
 /**
  * Registra un cliente (name + teléfono canónico) en el registro por-turno que usa el guardarraíl de
@@ -512,6 +513,142 @@ export async function executeTool(
       const { data, error } = await supabase.from("properties").select("*").in("id", validIds);
       if (error) return JSON.stringify({ error: safeDbError(error) });
       return JSON.stringify({ properties: data, instruction: "Compará estas propiedades en una tabla markdown con las dimensiones: precio, m² totales, habitaciones, baños, zona/ubicación y precio por m² ($/m², calculalo cuando tengas precio y m²). Resaltá la mejor opción por criterio para ayudar al agente a manejar objeciones con datos." });
+    }
+
+    // ---- Inteligencia de mercado dinámica (86aj9w5pv) ----
+    // Valores de referencia calculados sobre `properties` REALES con fecha, en reemplazo de los
+    // precios hardcodeados que vivían en el prompt (viejos y afirmados con seguridad). Solo
+    // lectura; la tabla properties es compartida (listado de mercado), no se scopea por user.
+    case "market_stats": {
+      const stripAccents = (s: string | null) => s ? s.normalize("NFD").replace(/[̀-ͯ]/g, "") : s;
+      const zone = stripAccents(sanitizePattern(args.zone));
+      const property_type = sanitizePattern(args.property_type);
+      const operation = sanitizePattern(args.operation);
+      const canonicalOperation = normalizeOperation(operation);
+      if (!zone && !property_type) return JSON.stringify({ error: "Pasá al menos una zona o un tipo de propiedad para calcular valores de referencia." });
+      let q = supabase
+        .from("properties")
+        .select("price, currency, m2_total, created_at")
+        .or("listing_status.eq.active,listing_status.is.null")
+        .limit(1000);
+      if (zone) q = q.ilike("zone", `%${zone}%`);
+      if (property_type) q = q.ilike("property_type", `%${property_type}%`);
+      if (operation) {
+        if (canonicalOperation) q = q.eq("operation", canonicalOperation);
+        else q = q.ilike("operation", `%${operation}%`);
+      }
+      const { data, error } = await q;
+      if (error) return JSON.stringify({ error: safeDbError(error) });
+      const rows = data ?? [];
+      const filters = { zone: zone ?? null, property_type: property_type ?? null, operation: canonicalOperation ?? operation ?? null };
+      if (rows.length === 0) {
+        return JSON.stringify({ filters, sample: 0, message: "No hay propiedades publicadas que matcheen esos filtros: no se pueden calcular valores de referencia. Decílo con honestidad — NO inventes números de memoria." });
+      }
+      const stats = computeMarketStats(rows);
+      return JSON.stringify({
+        filters,
+        ...stats,
+        instruction: "Datos REALES de la base al día de hoy. Citá mediana y rango (p25–p75) con moneda y tamaño de muestra; si la muestra es chica (<8) aclaralo como referencia limitada. NUNCA mezcles USD con ARS ni afirmes valores que no estén en estos números.",
+      });
+    }
+
+    case "negotiation_brief": {
+      const stripAccents = (s: string | null) => s ? s.normalize("NFD").replace(/[̀-ͯ]/g, "") : s;
+      // Resolución de propiedad por id o título/dirección (mismo patrón que save_property_to_client).
+      let resolvedPropertyId = args.property_id;
+      if (!resolvedPropertyId || !UUID_REGEX.test(resolvedPropertyId)) {
+        if (!args.property_title) return JSON.stringify({ error: "Necesito el título/dirección o ID de la propiedad." });
+        const searchTitle = sanitizePattern(args.property_title);
+        const pattern = `%${searchTitle}%`;
+        const [byTitle, byAddress] = await Promise.all([
+          supabase.from("properties").select("id, title, address").ilike("title", pattern).limit(5),
+          supabase.from("properties").select("id, title, address").ilike("address", pattern).limit(5),
+        ]);
+        const seen = new Set<string>();
+        const props: Array<{ id: string; title: string | null; address: string | null }> = [];
+        for (const p of [...(byTitle.data ?? []), ...(byAddress.data ?? [])]) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          props.push(p);
+          if (props.length >= 5) break;
+        }
+        if (props.length === 0) return JSON.stringify({ error: `No encontré una propiedad con "${args.property_title}".` });
+        if (props.length > 1) return JSON.stringify({ error: `Encontré ${props.length} propiedades similares: ${props.map((p) => p.title || p.address).join(", ")}. ¿Cuál querés?`, properties: props });
+        resolvedPropertyId = props[0].id;
+      }
+      const { data: propRow, error: propErr } = await supabase.from("properties").select("*").eq("id", resolvedPropertyId).maybeSingle();
+      if (propErr) return JSON.stringify({ error: safeDbError(propErr) });
+      if (!propRow) return JSON.stringify({ error: "Esa propiedad ya no está publicada (se dio de baja del listado). Volvé a buscarla con search_properties." });
+
+      // Comps: misma zona + tipo + operación, activas, excluyendo la propiedad target.
+      let cq = supabase
+        .from("properties")
+        .select("id, price, currency, m2_total, created_at")
+        .or("listing_status.eq.active,listing_status.is.null")
+        .limit(1000);
+      const compZone = stripAccents(sanitizePattern(propRow.zone));
+      const compType = sanitizePattern(propRow.property_type);
+      if (compZone) cq = cq.ilike("zone", `%${compZone}%`);
+      if (compType) cq = cq.ilike("property_type", `%${compType}%`);
+      if (propRow.operation) cq = cq.eq("operation", propRow.operation);
+      const { data: compRows, error: compErr } = await cq;
+      if (compErr) return JSON.stringify({ error: safeDbError(compErr) });
+      const comps = (compRows ?? []).filter((r: { id: string }) => String(r.id) !== String(propRow.id));
+      const market = computeMarketStats(comps);
+
+      // Cliente (opcional): por id o nombre, SIEMPRE scopeado por user_id. Sin cliente el brief
+      // sale igual (solo comps); con cliente suma presupuesto real + qué visitó/descartó.
+      let clientBlock: Record<string, unknown> | null = null;
+      let resolvedClientId = args.client_id && UUID_REGEX.test(args.client_id) ? args.client_id : null;
+      if (!resolvedClientId && args.client_name) {
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).eq("is_client", true).ilike("full_name", `%${searchName}%`).limit(5);
+        if (!clients || clients.length === 0) return JSON.stringify({ error: `No encontré un cliente con el nombre "${args.client_name}".` });
+        if (clients.length > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map((c: { full_name: string | null }) => c.full_name).join(", ")}. ¿Cuál querés?`, clients });
+        resolvedClientId = clients[0].id;
+      }
+      if (resolvedClientId) {
+        const { data: client } = await supabase
+          .from("clients")
+          .select("id, full_name, status, client_type, budget_min, budget_max, budget_currency, preferred_zones, property_type_interest")
+          .eq("id", resolvedClientId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!client) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+        const { data: history } = await supabase
+          .from("client_properties")
+          .select("status, notes, created_at, properties(title, price, currency, zone, property_type)")
+          .eq("client_id", resolvedClientId)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(30);
+        type HistoryRow = { status: string; notes: string | null; properties: { title?: string | null; price?: number | null; currency?: string | null; zone?: string | null } | null };
+        const byStatus = (st: string) => ((history ?? []) as HistoryRow[])
+          .filter((h) => h.status === st)
+          .map((h) => ({ title: h.properties?.title ?? null, price: h.properties?.price ?? null, currency: h.properties?.currency ?? null, zone: h.properties?.zone ?? null, notes: h.notes ?? null }));
+        clientBlock = {
+          full_name: client.full_name,
+          status: client.status,
+          client_type: client.client_type,
+          budget: { min: client.budget_min ?? null, max: client.budget_max ?? null, currency: client.budget_currency ?? null },
+          preferred_zones: client.preferred_zones ?? null,
+          property_type_interest: client.property_type_interest ?? null,
+          visitadas: byStatus("visitada"),
+          descartadas: byStatus("descartada"),
+        };
+      }
+
+      // La property va SIN url/photo (misma razón que toCardStub: el link solo sale de tarjetas
+      // o generate_report — un brief no debe darle al modelo material para escribirlo a mano).
+      const { url: _url, photo: _photo, photos: _photos, ...propSafe } = propRow;
+      return JSON.stringify({
+        property: propSafe,
+        days_on_market: daysOnMarket(propRow.created_at),
+        market: { comps_sample: comps.length, ...market, median_days_on_market_comps: market.median_days_on_market },
+        price_vs_median_pct: priceVsMedian(propRow.price, propRow.currency, market),
+        client: clientBlock,
+        instruction: "Armá un brief de negociación en prosa (NO tarjeta con emojis): posición del precio vs la mediana de comps (citá % y tamaño de muestra), días en mercado de la propiedad vs la mediana de la zona, y — si hay cliente — su presupuesto real y qué visitó/descartó (usalo para anticipar objeciones). SOLO estos datos; si falta algo, decílo. Sin links (van por tarjetas o generate_report).",
+      });
     }
 
     // ---- Favorites ----

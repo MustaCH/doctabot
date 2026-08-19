@@ -197,6 +197,25 @@ tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite
   expone caching explícito") resultó falsa para la medición; migrar solo se justificaría si más
   adelante quisiéramos caching EXPLÍCITO (cachedContents con TTL), que es otro scope.
 
+## Inteligencia de mercado dinámica (86aj9w5pv, 2026-08-19)
+
+- **`market_stats(zone, property_type, operation)`**: mediana/rango (p25–p75) de precio y de
+  precio por m², días en mercado y fecha del dato más reciente, calculados sobre `properties`
+  REALES activas, agrupado por moneda (USD/ARS jamás se mezclan). Cálculo puro en
+  `tools/market.ts` (testeado offline); el case del executor solo hace la query (tabla
+  compartida de mercado, sin scope por user). 0 resultados → mensaje honesto sin números.
+- **`negotiation_brief(property_id|property_title, client_id|client_name?)`**: propiedad target
+  (sin url/photo — el link solo va por tarjetas/generate_report) + comps de su zona/tipo/operación
+  (excluyendo la target) + `price_vs_median_pct` + días en mercado + contexto del cliente
+  (presupuesto real, visitadas/descartadas de `client_properties`, scopeado por user_id).
+- **Prompt**: los precios hardcodeados "(2024-2025 aproximado)" del bloque MERCADO INMOBILIARIO
+  se REEMPLAZARON por perfiles cualitativos + regla dura "VALORES DE MERCADO — SOLO POR
+  HERRAMIENTA" (prohibido afirmar valores que no vengan de market_stats/negotiation_brief en el
+  turno). Hecho canónico actualizado en `alan-facts.ts`.
+- Tests: `market.test.ts` (stats puras) + `executor.market.test.ts` (contrato contra el mock
+  in-memory, incluye scoping cross-tenant del cliente). El mock de evals soporta las queries
+  (query-builder plano), así que los evals ejercitan las tools si el modelo las llama.
+
 ## Contratos de tools endurecidos (sprint 2026-08-06)
 
 - **`search_properties`**: `only_active` default true (solo publicaciones activas salvo pedido

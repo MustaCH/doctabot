@@ -55,6 +55,39 @@ export const toolDefinitions = [
   {
     type: "function",
     function: {
+      name: "market_stats",
+      description: "Valores de referencia REALES del mercado calculados sobre las propiedades publicadas en la base (mediana y rango de precio, precio por m², días en mercado, por moneda). Usala SIEMPRE que el agente pregunte precios de referencia de una zona, valuación, '¿está cara/barata?', 'cuánto vale el m² en X' — NUNCA respondas esos números de memoria.",
+      parameters: {
+        type: "object",
+        properties: {
+          zone: { type: "string", description: "Zona de Córdoba (ej: Nueva Córdoba, Centro, Manantiales). Al menos zone o property_type es requerido." },
+          property_type: { type: "string", description: "Tipo de propiedad: Departamento, Casa, Terreno, Local, Oficina, etc." },
+          operation: { type: "string", description: "Venta, Alquiler o Alquiler temporario. Default: todas." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "negotiation_brief",
+      description: "Brief de negociación de UNA propiedad concreta: posición de su precio vs los comparables reales de su zona/tipo (mediana, % arriba/abajo), días en mercado, y — si se pasa el cliente — su presupuesto real y qué propiedades visitó/descartó. Usala para preparar una negociación, manejar objeciones de precio o armar un CMA/ACM rápido.",
+      parameters: {
+        type: "object",
+        properties: {
+          property_id: { type: "string", description: "ID de la propiedad (de una búsqueda del turno)." },
+          property_title: { type: "string", description: "Título o dirección para buscarla si no tenés el ID." },
+          client_id: { type: "string", description: "ID del cliente (opcional: suma presupuesto real + historial visitadas/descartadas)." },
+          client_name: { type: "string", description: "Nombre del cliente si no tenés el ID (opcional)." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_favorites",
       description: "Obtener las propiedades favoritas del agente actual.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
