@@ -79,6 +79,19 @@ Todos fail-open (un error nunca rompe el turno) y testeados:
   en ambas llamadas — ojo: el thinking de 2.5-flash cuenta DENTRO de `max_tokens` en el
   endpoint OpenAI-compat; con tope y thinking prendido el título sale vacío.
 
+## Matching propiedad↔cliente: núcleo compartido (86aj9w5p3 / T3.4)
+
+`supabase/functions/_shared/matching-core.ts` es la FUENTE ÚNICA de los primitivos de
+matching (ZONE_PATTERNS_TITLE superset / ZONE_PATTERNS_NOTES conservador, `zonesMatch` +
+CONTAINER_ZONES, `normalizePropertyType`, `budgetCeilingFloor`, `minReasonsFor`,
+`notesSupplementReasons` con dedup por emoji líder). Lo importan `src/lib/property-matching.ts`
+(front) y `morning-matches/matching.ts` (cron) — antes estaban copiados y divergieron.
+Unificaciones deliberadas: el cron perdió su piso de presupuesto 0.85 (regla canónica =
+`budgetCeilingFloor`), el front adoptó `minReasonsFor` (solo-zona alcanza con 1 reason,
+86aj1f13j), y el fix del dedup `substring(0,2)`→`split(' ')[0]` (emojis de 3 unidades UTF-16).
+`src/lib/matching-parity.test.ts` exige identidad de referencia: re-copiar una implementación
+local rompe el test. Pendiente ("idealmente" del ticket): tabla `zones` con alias en Postgres.
+
 ## Harness de evals offline (86aj9w5mg — keystone)
 
 `supabase/functions/chat/_shared/evals/` — mide el comportamiento REAL del modelo antes de
