@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAIMessages, buildActiveClientBlock, SYSTEM_PROMPT, MAX_HISTORY_MESSAGES, MAX_HISTORY_CHARS } from "./prompt";
+import { buildAIMessages, buildActiveClientBlock, buildContextualPrompt, buildDateBlock, SYSTEM_PROMPT, MAX_HISTORY_MESSAGES, MAX_HISTORY_CHARS } from "./prompt";
 import { ALAN_CONTEXT_FACTS, MSG_BREAK } from "./alan-facts";
 
 describe("buildAIMessages", () => {
@@ -288,5 +288,21 @@ describe("tarjetas server-side: el modelo emite <<<PROPERTIES>>>, no escribe el 
   it("el system prompt aclara que la fidelidad de URL aplica FUERA de tarjetas", () => {
     expect(SYSTEM_PROMPT).toMatch(/fuera de (una )?tarjeta/i);
     expect(SYSTEM_PROMPT).toMatch(/NO incluyen "url"/i);
+  });
+});
+
+// 86aj9w5n8: el prompt contextual es ESTÁTICO por agente (prefijo cacheable); la fecha/hora
+// vive en su propio bloque y se compone AL FINAL del system message (index.ts / runner.ts).
+describe("prefijo estático + fecha al final (86aj9w5n8)", () => {
+  it("buildContextualPrompt NO contiene la fecha/hora (es estable entre llamadas)", () => {
+    const a = buildContextualPrompt("Nacho", "docta1");
+    expect(a).not.toContain("Fecha y hora actual");
+    expect(a).toBe(buildContextualPrompt("Nacho", "docta1")); // determinista
+  });
+
+  it("buildDateBlock trae la fecha/hora de Córdoba", () => {
+    const b = buildDateBlock();
+    expect(b).toContain("Fecha y hora actual en Argentina:");
+    expect(b).toMatch(/\d{1,2}:\d{2}/);
   });
 });

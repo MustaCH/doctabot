@@ -177,6 +177,26 @@ timeout de cada llamada se acota al presupuesto restante (piso 5s). Observabilid
 por deadline van a `error_logs` con contexto `chat-turnDeadline` (medir cuántos turnos reales lo
 tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite, como siempre).
 
+## Prompt caching (86aj9w5n8, 2026-08-19)
+
+- **Orden del system message** (index.ts + runner de evals, paridad): prefijo ESTÁTICO por agente
+  (`buildContextualPrompt`, ~17k tokens, ya sin fecha) → bloques por-conversación (CLIENTE ACTIVO,
+  campaña) → **fecha/hora AL FINAL** (`buildDateBlock`, cambia por minuto — antes vivía dentro del
+  prompt contextual).
+- **Instrumentación**: los requests del turno van con `stream_options: {include_usage: true}`;
+  `sse-parse` extrae `usage` (incl. `prompt_tokens_details.cached_tokens`), `streamTurn` lo
+  acumula por ronda y `index.ts` loguea `turn-usage` (greppeable en los logs de la función) con
+  promptTokens/cachedTokens/cacheRate/rounds por turno.
+- **Medición con sonda contra la API real** (2026-08-19): el endpoint OpenAI-compat SÍ expone
+  `cached_tokens` (la duda del ticket era infundada) y el caching implícito funciona: repeticiones
+  del prompt de ~17.9k tokens cachean **8175 tokens constantes** (granularidad de bloque del lado
+  de Google). Mover la fecha al final no cambió la medición de la sonda (mismo 8175 con la hora
+  variando en ambos layouts), pero deja el prefijo máximo estable; el número real de prod (con
+  tools y historial creciente) lo dará `turn-usage`.
+- **Decisión (AC 3): NO migrar al cliente nativo de Gemini** — la premisa ("el OpenAI-compat no
+  expone caching explícito") resultó falsa para la medición; migrar solo se justificaría si más
+  adelante quisiéramos caching EXPLÍCITO (cachedContents con TTL), que es otro scope.
+
 ## Contratos de tools endurecidos (sprint 2026-08-06)
 
 - **`search_properties`**: `only_active` default true (solo publicaciones activas salvo pedido

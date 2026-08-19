@@ -469,6 +469,41 @@ describe("streamTurn", () => {
     expect(res.content).toBe(MAX_ITERATIONS_NOTICE);
   });
 
+  // 86aj9w5n8: acumulación del usage del stream (include_usage) para medir prompt caching.
+  describe("usage del turno (86aj9w5n8)", () => {
+    const usageChunk = (prompt: number, cached: number, completion: number, finish: string | null = null) =>
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finish }], usage: { prompt_tokens: prompt, completion_tokens: completion, prompt_tokens_details: { cached_tokens: cached } } })}\n\n`;
+
+    it("suma el usage de todas las rondas y expone el detalle por ronda", async () => {
+      const resilientAIFetch = vi.fn()
+        .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), usageChunk(17800, 8000, 20), DONE]))
+        .mockResolvedValueOnce(sseResponse([contentChunk("Listo."), usageChunk(18100, 17700, 50, "stop"), DONE]));
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 1 }));
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {} },
+      );
+      expect(res.usage).toEqual({
+        promptTokens: 35900,
+        cachedTokens: 25700,
+        completionTokens: 70,
+        rounds: [
+          { promptTokens: 17800, cachedTokens: 8000 },
+          { promptTokens: 18100, cachedTokens: 17700 },
+        ],
+      });
+    });
+
+    it("sin usage en el stream, result.usage queda undefined (retrocompatible)", async () => {
+      const resilientAIFetch = vi.fn(async () => sseResponse([contentChunk("Hola.", "stop"), DONE]));
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool: vi.fn(), toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {} },
+      );
+      expect(res.usage).toBeUndefined();
+    });
+  });
+
   // 86aj9w5mm: presupuesto de tiempo TOTAL del turno — cierre elegante antes del wall-clock.
   describe("deadline del turno (86aj9w5mm)", () => {
     it("pasado el deadline NO arranca otra iteración: cierre con aviso + callback de observabilidad", async () => {

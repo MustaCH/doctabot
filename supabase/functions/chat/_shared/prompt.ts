@@ -499,14 +499,24 @@ Respecto a preguntas generales, legales o del mercado: Respondé siempre con tu 
 Estas son las reglas duras que no se negocian. Ante cualquier duda, prevalecen:
 ${ALAN_CONTEXT_FACTS}`;
 
-export /** Build the contextual system prompt with agent identity */
-function buildContextualPrompt(agentName: string | null, agentCode: string | null): string {
-  // Fecha/hora real de Córdoba vía Intl (sin el hack now-3h + timeZone:"UTC").
+/**
+ * Bloque de fecha/hora actual (Córdoba vía Intl, sin el hack now-3h + timeZone:"UTC").
+ * SEPARADO del prompt contextual a propósito (86aj9w5n8): cambia minuto a minuto, así que va al
+ * FINAL del system message — después del prefijo estático y de los bloques por-conversación —
+ * para no romper el prefijo cacheable del prompt caching implícito de Gemini. Lo componen
+ * index.ts y el runner de evals (paridad).
+ */
+export function buildDateBlock(): string {
   const now = new Date();
   const CORDOBA_TZ = "America/Argentina/Cordoba";
   const dateStr = now.toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: CORDOBA_TZ });
   const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: CORDOBA_TZ });
+  return `Fecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+}
 
+export /** Build the contextual system prompt with agent identity. ESTÁTICO por agente (sin
+fecha/hora — ver buildDateBlock): es el prefijo cacheable que se reenvía en cada iteración. */
+function buildContextualPrompt(agentName: string | null, agentCode: string | null): string {
   const agentContext = agentName
     ? `\n\n## IDENTIDAD DEL AGENTE HUMANO — LEER CON ATENCIÓN
 El agente inmobiliario que usa esta app se llama **${agentName}**${agentCode ? ` y su código de asociado RE/MAX es **${agentCode}**` : ""}.
@@ -540,7 +550,7 @@ Hola [cliente], soy ${agentName} de RE/MAX Docta. ...
 ¿Querés que ajuste algo?`
     : "";
 
-  return `${SYSTEM_PROMPT}${agentContext}\n\nFecha y hora actual en Argentina: ${dateStr}, ${timeStr}.`;
+  return `${SYSTEM_PROMPT}${agentContext}`;
 }
 
 /** Datos del cliente vinculado que se inyectan en el bloque CLIENTE ACTIVO. */

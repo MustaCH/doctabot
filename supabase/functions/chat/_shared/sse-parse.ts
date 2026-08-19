@@ -15,6 +15,10 @@ export interface StreamDelta {
   contentDelta?: string;
   toolCallDeltas?: ToolCallDelta[];
   finishReason?: string | null;
+  // usage del request (86aj9w5n8): viene en el último chunk cuando el caller pide
+  // stream_options.include_usage. cachedTokens = prompt_tokens_details.cached_tokens
+  // (medición real del prompt caching implícito de Gemini; 0 si no vino el detail).
+  usage?: { promptTokens: number; cachedTokens: number; completionTokens: number };
 }
 
 // Consume las líneas `data:` completas de `buffer`. Devuelve los deltas parseados,
@@ -47,9 +51,21 @@ export function drainSSE(buffer: string): { deltas: StreamDelta[]; rest: string;
     rest = after;
 
     const choice = parsed.choices?.[0];
-    if (!choice) continue;
+
+    // Chunk con usage (include_usage): lo emitimos aunque no traiga choice (OpenAI manda el
+    // usage en un chunk final con choices vacío; Gemini OpenAI-compat lo adjunta a un chunk
+    // con choice — cubrimos ambos).
+    if (!choice) {
+      if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
+        deltas.push({ usage: { promptTokens: parsed.usage.prompt_tokens, cachedTokens: parsed.usage.prompt_tokens_details?.cached_tokens ?? 0, completionTokens: parsed.usage.completion_tokens ?? 0 } });
+      }
+      continue;
+    }
 
     const d: StreamDelta = { finishReason: choice.finish_reason ?? null };
+    if (parsed.usage && typeof parsed.usage.prompt_tokens === "number") {
+      d.usage = { promptTokens: parsed.usage.prompt_tokens, cachedTokens: parsed.usage.prompt_tokens_details?.cached_tokens ?? 0, completionTokens: parsed.usage.completion_tokens ?? 0 };
+    }
     if (choice.delta?.content) d.contentDelta = choice.delta.content;
     if (Array.isArray(choice.delta?.tool_calls)) {
       d.toolCallDeltas = choice.delta.tool_calls.map((tc: any) => ({

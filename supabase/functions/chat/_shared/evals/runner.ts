@@ -10,7 +10,7 @@
 import { streamTurn } from "../stream-turn.ts";
 import { executeTool } from "../tools/executor.ts";
 import { toolDefinitions } from "../tools/definitions.ts";
-import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock, type ActiveClientInfo } from "../prompt.ts";
+import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock, buildDateBlock, type ActiveClientInfo } from "../prompt.ts";
 import { fetchWithRetry } from "../retry.ts";
 import { unactedReadVerdict, unexecutedWriteVerdict, unsupportedSearchClaimVerdict } from "../supervisor-rules.ts";
 import { createMockDb, mockSupabase, type MockDb } from "./mock-db.ts";
@@ -190,7 +190,9 @@ export async function runEvalCase(caseDef: EvalCase, opts: RunnerOpts): Promise<
     cardResults: [],
   };
 
-  const systemContent = [buildContextualPrompt(EVAL_AGENT_NAME, EVAL_AGENT_CODE), activeClientBlock].filter(Boolean).join("\n\n");
+  // Paridad con prod (86aj9w5n8): prefijo estático primero, bloques dinámicos después y la
+  // fecha/hora AL FINAL (en prod ese orden preserva el prefijo cacheable).
+  const systemContent = [buildContextualPrompt(EVAL_AGENT_NAME, EVAL_AGENT_CODE), activeClientBlock, buildDateBlock()].filter(Boolean).join("\n\n");
   const messages: any[] = [
     { role: "system", content: systemContent },
     ...buildAIMessages([...(caseDef.history ?? []), { role: "user", content: caseDef.user }]),

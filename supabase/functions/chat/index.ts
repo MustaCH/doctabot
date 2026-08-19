@@ -17,7 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders, MAX_MESSAGE_LENGTH, validateAttachmentSizes } from "./_shared/cors.ts";
 import { authenticateRequest } from "./_shared/auth.ts";
-import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock } from "./_shared/prompt.ts";
+import { buildContextualPrompt, buildAIMessages, buildActiveClientBlock, buildDateBlock } from "./_shared/prompt.ts";
 import { toolDefinitions } from "./_shared/tools/definitions.ts";
 import { executeTool, fetchAllClientContactRows } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
@@ -181,9 +181,13 @@ serve(async (req) => {
       console.error("recent outreach block error:", e);
     }
 
-    // Build prompt and messages
+    // Build prompt and messages. Orden pensado para el prompt caching implícito de Gemini
+    // (86aj9w5n8): primero el prefijo ESTÁTICO por agente (buildContextualPrompt, ~17k tokens),
+    // después los bloques por-conversación (cliente activo, campaña) y AL FINAL la fecha/hora
+    // (cambia minuto a minuto — antes iba dentro del prompt contextual y rompía el prefijo
+    // cacheable en cada turno).
     const contextualPrompt = buildContextualPrompt(agentName, agentCode);
-    const systemContent = [contextualPrompt, activeClientBlock, recentOutreachBlock].filter(Boolean).join("\n\n");
+    const systemContent = [contextualPrompt, activeClientBlock, recentOutreachBlock, buildDateBlock()].filter(Boolean).join("\n\n");
     const currentMessages: any[] = [
       { role: "system", content: systemContent },
       ...buildAIMessages(messages),
@@ -222,7 +226,10 @@ serve(async (req) => {
     // Gemini sin re-ejecutar tools (los resultados ya están en `messages`). Evita que un blip
     // transitorio en una continuación del tool-loop tumbe el turno entero. Ver 86aj1ncj4.
     const resilientAIFetch = async (body: Record<string, any>): Promise<Response> => {
-      const payload = JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS });
+      // include_usage (86aj9w5n8): el último chunk del stream trae usage con
+      // prompt_tokens_details.cached_tokens — la medición real del prompt caching implícito.
+      // Verificado contra la API real vía sonda: el endpoint OpenAI-compat lo acepta y lo emite.
+      const payload = JSON.stringify({ ...body, model: PRIMARY_MODEL, max_tokens: AI_MAX_TOKENS, stream_options: { include_usage: true } });
       return fetchWithRetry(() => fetch(AI_URL, {
         method: "POST",
         headers: aiHeaders,
@@ -530,6 +537,18 @@ serve(async (req) => {
           });
           finalContent = result.content;
           executedTools = result.executedTools;
+          // Medición del prompt caching implícito (86aj9w5n8): greppeable en los logs de la
+          // función como "turn-usage". cacheRate = cachedTokens/promptTokens del turno entero.
+          if (result.usage) {
+            const u = result.usage;
+            console.log("turn-usage", JSON.stringify({
+              promptTokens: u.promptTokens,
+              cachedTokens: u.cachedTokens,
+              completionTokens: u.completionTokens,
+              cacheRate: u.promptTokens > 0 ? Math.round((u.cachedTokens / u.promptTokens) * 100) / 100 : 0,
+              rounds: u.rounds,
+            }));
+          }
         } catch (err) {
           console.error("streamTurn error:", err);
           // Guardamos el error real para mandarlo al webhook (observabilidad — ver 86aj1ncj4).

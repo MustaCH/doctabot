@@ -64,6 +64,15 @@ export interface StreamTurnOptions {
 export interface StreamTurnResult {
   content: string;
   executedTools: string[];
+  // Usage agregado del turno (86aj9w5n8), presente si el stream trajo usage (include_usage):
+  // suma de todas las rondas + detalle por ronda, para medir el prompt caching implícito real
+  // (cachedTokens / promptTokens). El caller lo loguea; acá solo se acumula.
+  usage?: {
+    promptTokens: number;
+    cachedTokens: number;
+    completionTokens: number;
+    rounds: Array<{ promptTokens: number; cachedTokens: number }>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +344,8 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   const maxIterations = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
 
   const executedTools: string[] = [];
+  // Usage por ronda (86aj9w5n8): se llena solo si el stream trae usage (include_usage del caller).
+  const usageRounds: Array<{ promptTokens: number; cachedTokens: number; completionTokens: number }> = [];
   let fullContent = "";
   let lastPreamble = "";     // contenido de la última ronda suprimida (tool_calls); fallback si el turno no llega a una ronda de texto final
   let emittedFinal = false;  // true cuando ya volcamos una ronda final (texto o length)
@@ -422,6 +433,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
         }
       }
       if (d.finishReason) finishReason = d.finishReason;
+      if (d.usage) usageRounds.push(d.usage);
     };
 
     while (true) {
@@ -577,5 +589,13 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
     else safeEmit(flush);
   }
 
-  return { content: fullContent, executedTools };
+  const usage = usageRounds.length > 0
+    ? {
+        promptTokens: usageRounds.reduce((a, u) => a + u.promptTokens, 0),
+        cachedTokens: usageRounds.reduce((a, u) => a + u.cachedTokens, 0),
+        completionTokens: usageRounds.reduce((a, u) => a + u.completionTokens, 0),
+        rounds: usageRounds.map((u) => ({ promptTokens: u.promptTokens, cachedTokens: u.cachedTokens })),
+      }
+    : undefined;
+  return { content: fullContent, executedTools, ...(usage ? { usage } : {}) };
 }

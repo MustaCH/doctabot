@@ -45,3 +45,31 @@ describe("drainSSE", () => {
     expect(deltas[0].finishReason).toBe("tool_calls");
   });
 });
+
+// 86aj9w5n8: usage del stream (stream_options.include_usage) para medir prompt caching.
+describe("usage en el stream (86aj9w5n8)", () => {
+  it("extrae usage de un chunk CON choice (estilo Gemini OpenAI-compat)", () => {
+    const buf = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 17794, completion_tokens: 12, prompt_tokens_details: { cached_tokens: 8175 } } })}\n`;
+    const { deltas } = drainSSE(buf);
+    expect(deltas[0].usage).toEqual({ promptTokens: 17794, cachedTokens: 8175, completionTokens: 12 });
+    expect(deltas[0].finishReason).toBe("stop");
+  });
+
+  it("extrae usage de un chunk SIN choices (estilo OpenAI: chunk final solo-usage)", () => {
+    const buf = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 5 } })}\n`;
+    const { deltas } = drainSSE(buf);
+    expect(deltas).toEqual([{ usage: { promptTokens: 100, cachedTokens: 0, completionTokens: 5 } }]);
+  });
+
+  it("sin prompt_tokens_details, cachedTokens es 0 (no undefined)", () => {
+    const buf = `data: ${JSON.stringify({ choices: [{ delta: { content: "x" }, finish_reason: null }], usage: { prompt_tokens: 50, completion_tokens: 1 } })}\n`;
+    const { deltas } = drainSSE(buf);
+    expect(deltas[0].usage?.cachedTokens).toBe(0);
+  });
+
+  it("chunk sin usage ni choice se sigue ignorando (sin delta espurio)", () => {
+    const buf = `data: ${JSON.stringify({ choices: [] })}\n`;
+    const { deltas } = drainSSE(buf);
+    expect(deltas).toEqual([]);
+  });
+});
