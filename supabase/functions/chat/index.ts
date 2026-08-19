@@ -206,6 +206,18 @@ serve(async (req) => {
     const AI_TIMEOUT_MS = 60_000;
     const AI_MAX_TOKENS = 8192;
 
+    // Presupuesto de tiempo TOTAL del turno (86aj9w5mm): el timeout de arriba es POR llamada al
+    // modelo, no por turno — el peor caso (7 iteraciones × 60s + tools) superaba el wall-clock de
+    // la Edge Function y la plataforma mataba la función a mitad del stream: cliente colgado sin
+    // [DONE] ni catch, y la persistencia en background podía no correr. Doble mecanismo:
+    //  1. streamTurn no arranca otra iteración pasado el deadline (cierre elegante con aviso);
+    //  2. el timeout de cada llamada se acota al presupuesto restante (piso de 5s), así una
+    //     llamada en curso tampoco lo pincha por mucho.
+    // Default 120s, configurable por env. Supuesto documentado en el ticket: wall-clock ~150s
+    // (no verificado) — el default deja ~30s de margen para sanitizeFinal + cierre + background.
+    const TURN_BUDGET_MS = parseInt(Deno.env.get("CHAT_TURN_BUDGET_MS") ?? "120000", 10);
+    const TURN_DEADLINE_AT = Date.now() + TURN_BUDGET_MS;
+
     // Retry con backoff para transitorios (5xx/429/red/timeout). Seguro: re-pide la generación a
     // Gemini sin re-ejecutar tools (los resultados ya están en `messages`). Evita que un blip
     // transitorio en una continuación del tool-loop tumbe el turno entero. Ver 86aj1ncj4.
@@ -215,7 +227,7 @@ serve(async (req) => {
         method: "POST",
         headers: aiHeaders,
         body: payload,
-        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.max(5_000, Math.min(AI_TIMEOUT_MS, TURN_DEADLINE_AT - Date.now()))),
       }));
     };
 
@@ -494,6 +506,20 @@ serve(async (req) => {
             onMaxIterationsExhausted: (turnTools) => reportEdgeErrorBg({
               context: "chat-maxIterations",
               error: new Error("streamTurn agotó maxIterations sin ronda de texto final"),
+              userId,
+              metadata: {
+                conversationId: conversationId ?? null,
+                executedTools: turnTools,
+                userMessage: typeof userMessage === "string" ? userMessage.slice(0, 300) : null,
+              },
+            }),
+            // Presupuesto de tiempo total del turno (86aj9w5mm): cierre elegante con aviso al
+            // usuario en vez de morir por wall-clock. Registro en error_logs para medir cuántos
+            // turnos reales lo tocan.
+            deadlineAt: TURN_DEADLINE_AT,
+            onDeadlineExhausted: (turnTools) => reportEdgeErrorBg({
+              context: "chat-turnDeadline",
+              error: new Error(`streamTurn agotó el presupuesto de tiempo del turno (${TURN_BUDGET_MS}ms) sin ronda de texto final`),
               userId,
               metadata: {
                 conversationId: conversationId ?? null,

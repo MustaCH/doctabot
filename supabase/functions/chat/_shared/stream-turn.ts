@@ -48,6 +48,17 @@ export interface StreamTurnOptions {
   // emitFinal(texto saneado) como evento de REEMPLAZO para el front. Sin esta opción, el
   // comportamiento es el histórico (ronda final bufferizada y volcada de una).
   emitFinal?: (text: string) => void;
+  // Presupuesto de tiempo TOTAL del turno (86aj9w5mm): instante absoluto (epoch ms) a partir del
+  // cual NO se arranca otra iteración del tool-loop — cierre elegante con aviso al usuario antes
+  // de que el wall-clock de la plataforma mate la función a mitad del stream. La iteración en
+  // curso no se aborta (cada fetch ya tiene su timeout propio, que el caller acota al presupuesto
+  // restante — ver index.ts). Sin la opción, sin límite (comportamiento histórico; los evals no
+  // lo pasan). La iteración 0 no se chequea: su respuesta puede venir ya fetcheada (firstResponse).
+  deadlineAt?: number;
+  // Observabilidad del cierre por deadline (análogo a onMaxIterationsExhausted). Fail-open.
+  onDeadlineExhausted?: (executedTools: string[]) => void;
+  // Reloj inyectable para tests del deadline (default Date.now).
+  now?: () => number;
 }
 
 export interface StreamTurnResult {
@@ -213,6 +224,10 @@ const DEFAULT_MAX_ITERATIONS = 7;
 // llegar a una ronda de texto final (antes el preámbulo salía publicado sin advertencia).
 export const MAX_ITERATIONS_NOTICE = "⚠️ No llegué a completar la respuesta — pedímelo de nuevo y sigo desde acá.";
 
+// Aviso análogo cuando el turno agota su presupuesto de TIEMPO (deadlineAt, 86aj9w5mm): cierre
+// elegante antes de que la plataforma mate la función (que dejaría al cliente colgado sin [DONE]).
+export const TURN_DEADLINE_NOTICE = "⚠️ Me quedé sin tiempo para completar todo el pedido — lo que alcancé a hacer quedó hecho; pedime que siga y continúo desde acá.";
+
 /**
  * Detecta y remueve invocaciones de herramienta que el modelo "narró" como TEXTO en vez de usar el
  * canal de tool_calls (ej. `call:link_conversation{client_id:...}`). Solo reconoce NOMBRES de tools
@@ -336,7 +351,16 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   const dripper = opts.emitFinal ? new LiveDripper(safeEmit) : null;
   const safeEmitFinal = (t: string) => { try { opts.emitFinal?.(t); } catch { /* cliente desconectado */ } };
 
+  let deadlineHit = false;
   for (let iter = 0; iter < maxIterations; iter++) {
+    // Presupuesto de tiempo del turno (86aj9w5mm): pasado el deadline NO se arranca otra llamada
+    // al modelo — se corta acá y el cierre de abajo emite el aviso (+ el último preámbulo si lo
+    // hay). Iteración 0 exenta: su respuesta puede venir ya fetcheada (firstResponse) y drenarla
+    // es barato.
+    if (iter > 0 && opts.deadlineAt !== undefined && (opts.now?.() ?? Date.now()) >= opts.deadlineAt) {
+      deadlineHit = true;
+      break;
+    }
     let res: Response;
     if (iter === 0 && opts.firstResponse) {
       res = opts.firstResponse;
@@ -537,11 +561,17 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
   // (1) anexamos un aviso visible de respuesta incompleta y (2) avisamos vía
   // onMaxIterationsExhausted para que el caller lo registre en error_logs con las tools del turno.
   if (!emittedFinal) {
-    try { opts.onMaxIterationsExhausted?.(executedTools); } catch { /* observabilidad: nunca rompe el turno */ }
+    // Dos causas de turno incompleto: presupuesto de tiempo agotado (deadlineHit) o tope de
+    // iteraciones. Cada una con su aviso y su callback de observabilidad. Fail-open ambos.
+    if (deadlineHit) {
+      try { opts.onDeadlineExhausted?.(executedTools); } catch { /* observabilidad: nunca rompe el turno */ }
+    } else {
+      try { opts.onMaxIterationsExhausted?.(executedTools); } catch { /* observabilidad: nunca rompe el turno */ }
+    }
     const base = lastPreamble
       ? await finalize(closeUnbalancedDrafts(stripLeakedReasoningTail(lastPreamble)))
       : "";
-    const flush = (base ? `${base}\n\n` : "") + MAX_ITERATIONS_NOTICE;
+    const flush = (base ? `${base}\n\n` : "") + (deadlineHit ? TURN_DEADLINE_NOTICE : MAX_ITERATIONS_NOTICE);
     fullContent += flush;
     if (dripper) safeEmitFinal(flush);
     else safeEmit(flush);

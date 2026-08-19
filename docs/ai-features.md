@@ -166,6 +166,17 @@ deployar cambios de prompt/tools. **Correr los evals es el gate para tocar `prom
 bufferiza y pasa por ahí ANTES de emitirse/persistirse (definido en `index.ts`, inyectado a
 `streamTurn`). `executedTools` habilita chequeos condicionados a qué tools corrieron de verdad.
 
+**Presupuesto de tiempo total del turno (86aj9w5mm, 2026-08-19):** el timeout de 60s por llamada
+al modelo no acotaba el TURNO — el peor caso (7 iteraciones + tools) superaba el wall-clock de la
+Edge Function y la plataforma mataba la función a mitad del stream (cliente colgado sin `[DONE]`,
+persistencia en riesgo). Ahora `index.ts` fija `TURN_DEADLINE_AT` (default 120s, env
+`CHAT_TURN_BUDGET_MS`; wall-clock asumido ~150s, supuesto del ticket sin verificar) y (1)
+`streamTurn` no arranca otra iteración pasado el deadline — cierre elegante: vuelca el último
+preámbulo + `TURN_DEADLINE_NOTICE` y el stream cierra normal con `[DONE]` y persistencia; (2) el
+timeout de cada llamada se acota al presupuesto restante (piso 5s). Observabilidad: los cierres
+por deadline van a `error_logs` con contexto `chat-turnDeadline` (medir cuántos turnos reales lo
+tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite, como siempre).
+
 ## Contratos de tools endurecidos (sprint 2026-08-06)
 
 - **`search_properties`**: `only_active` default true (solo publicaciones activas salvo pedido

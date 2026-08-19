@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { streamTurn, AIError, applyTruncation, TRUNCATION_NOTICE, closeUnbalancedDrafts, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail, MAX_ITERATIONS_NOTICE, LiveDripper, DRIP_HOLD_CHARS } from "./stream-turn";
+import { streamTurn, AIError, applyTruncation, TRUNCATION_NOTICE, closeUnbalancedDrafts, stripLeakedToolCalls, stripLeakedInternals, looksLikeLeakedReasoning, stripLeakedReasoningTail, MAX_ITERATIONS_NOTICE, TURN_DEADLINE_NOTICE, LiveDripper, DRIP_HOLD_CHARS } from "./stream-turn";
 
 // Construye una Response cuyo body es un ReadableStream que emite los chunks SSE dados.
 function sseResponse(chunks: string[], ok = true, status = 200): Response {
@@ -467,6 +467,65 @@ describe("streamTurn", () => {
     expect(executeTool).toHaveBeenCalledTimes(2);
     // Sin preámbulo, el contenido queda solo con el aviso de respuesta incompleta.
     expect(res.content).toBe(MAX_ITERATIONS_NOTICE);
+  });
+
+  // 86aj9w5mm: presupuesto de tiempo TOTAL del turno — cierre elegante antes del wall-clock.
+  describe("deadline del turno (86aj9w5mm)", () => {
+    it("pasado el deadline NO arranca otra iteración: cierre con aviso + callback de observabilidad", async () => {
+      const resilientAIFetch = vi.fn(async () => sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]));
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+      const onDeadlineExhausted = vi.fn();
+      // Reloj inyectado: la primera consulta (chequeo de la iteración 1) ya está pasada de deadline.
+      let t = 0;
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {}, deadlineAt: 1_000, now: () => (t += 2_000), onDeadlineExhausted },
+      );
+      expect(resilientAIFetch).toHaveBeenCalledTimes(1); // la ronda 0 corrió; la 1 ya no
+      expect(executeTool).toHaveBeenCalledTimes(1);
+      expect(res.content).toContain(TURN_DEADLINE_NOTICE);
+      expect(res.content).not.toContain(MAX_ITERATIONS_NOTICE);
+      expect(onDeadlineExhausted).toHaveBeenCalledWith(["search_properties"]);
+    });
+
+    it("el cierre por deadline vuelca el último preámbulo suprimido antes del aviso", async () => {
+      const resilientAIFetch = vi.fn(async () =>
+        sseResponse([contentChunk("Buscando propiedades para vos… "), toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]),
+      );
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+      let t = 0;
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {}, deadlineAt: 1_000, now: () => (t += 2_000) },
+      );
+      expect(res.content).toContain("Buscando propiedades");
+      expect(res.content).toContain(TURN_DEADLINE_NOTICE);
+    });
+
+    it("con presupuesto de sobra el turno completa normal (el deadline no interfiere)", async () => {
+      const resilientAIFetch = vi.fn()
+        .mockResolvedValueOnce(sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]))
+        .mockResolvedValueOnce(sseResponse([contentChunk("Encontré 3 propiedades.", "stop"), DONE]));
+      const executeTool = vi.fn(async () => JSON.stringify({ total_count: 3 }));
+      const onDeadlineExhausted = vi.fn();
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {}, deadlineAt: 100_000, now: () => 0, onDeadlineExhausted },
+      );
+      expect(res.content).toBe("Encontré 3 propiedades.");
+      expect(res.content).not.toContain(TURN_DEADLINE_NOTICE);
+      expect(onDeadlineExhausted).not.toHaveBeenCalled();
+    });
+
+    it("sin la opción deadlineAt el comportamiento es el histórico (corta por maxIterations)", async () => {
+      const resilientAIFetch = vi.fn(async () => sseResponse([toolChunk(0, "c1", "search_properties", "{}", "tool_calls"), DONE]));
+      const executeTool = vi.fn(async () => JSON.stringify({ results: [] }));
+      const res = await streamTurn(
+        { resilientAIFetch, executeTool, toolCtx: {}, toolDefinitions },
+        { messages: [], emit: () => {}, maxIterations: 2 },
+      );
+      expect(res.content).toBe(MAX_ITERATIONS_NOTICE);
+    });
   });
 
   it("suprime el preámbulo de una ronda que termina en tool_calls (no re-saludo): solo muestra la ronda de texto final", async () => {
