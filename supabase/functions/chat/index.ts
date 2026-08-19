@@ -1,7 +1,7 @@
 // Chat edge function — thin orchestrator.
 // Heavy logic lives in ./_shared/*. See refactor notes:
 //   - prompt.ts            → SYSTEM_PROMPT + buildContextualPrompt + buildAIMessages
-//   - tools/definitions.ts → AI Gateway tool schemas (30 tools)
+//   - tools/definitions.ts → AI Gateway tool schemas (fuente única de la lista de tools)
 //   - tools/executor.ts    → executeTool dispatcher
 //   - tools/validators.ts  → input sanitizers
 //   - tools/google.ts      → Calendar/Gmail helpers

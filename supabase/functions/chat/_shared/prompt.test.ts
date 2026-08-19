@@ -161,9 +161,11 @@ describe("buildActiveClientBlock", () => {
 // no el comportamiento del modelo (que es probabilístico — eso se valida con repro manual).
 describe("regla de continuidad en turnos multi-herramienta (no re-saludar)", () => {
   it("el system prompt instruye a no volver a saludar tras ejecutar una herramienta", () => {
-    expect(SYSTEM_PROMPT).toContain("CONTINUIDAD DENTRO DE UN MISMO TURNO");
-    expect(SYSTEM_PROMPT).toMatch(/NUNCA vuelvas a saludar/i);
-    expect(SYSTEM_PROMPT).toMatch(/saludá una sola vez/i);
+    // Dedup 86aj9w5n6: la prosa vive UNA sola vez en la regla canónica (embebida al final
+    // del SYSTEM_PROMPT); el cuerpo del prompt conserva el puntero.
+    expect(SYSTEM_PROMPT).toContain("CONTINUIDAD Y PROCESO INTERNO");
+    expect(SYSTEM_PROMPT).toMatch(/NUNCA vuelve a saludar/i);
+    expect(SYSTEM_PROMPT).toMatch(/saluda UNA sola vez/i);
   });
 
   it("la regla canónica de continuidad está en alan-facts (la que evalúa el supervisor)", () => {
@@ -242,9 +244,11 @@ describe("regla de FIDELIDAD de URLs: copiar el url exacto, nunca inventar", () 
   });
 
   it("el system prompt instruye a copiar el url exacto y no inventar slugs", () => {
-    expect(SYSTEM_PROMPT).toMatch(/COPIA EXACTA del campo "url"/i);
-    expect(SYSTEM_PROMPT).toMatch(/NUNCA inventes, adivines ni modifiques una URL/i);
-    expect(SYSTEM_PROMPT).toMatch(/un slug inventado/i);
+    // Dedup 86aj9w5n6: la regla dura vive en la canónica embebida; el cuerpo conserva
+    // el detalle operativo (generate_report, no armar slugs desde el título).
+    expect(SYSTEM_PROMPT).toMatch(/se COPIA TAL CUAL/i);
+    expect(SYSTEM_PROMPT).toMatch(/NUNCA escribe, completa, adivina ni reconstruye/i);
+    expect(SYSTEM_PROMPT).toMatch(/jamás armes el slug desde el título/i);
   });
 });
 
@@ -253,7 +257,8 @@ describe("regla de FIDELIDAD de URLs: copiar el url exacto, nunca inventar", () 
 describe("reglas nuevas de búsqueda: applied_filters / only_active / exclude_zones (m5)", () => {
   it("el system prompt exige afirmar SOLO criterios presentes en applied_filters", () => {
     expect(SYSTEM_PROMPT).toContain("applied_filters");
-    expect(SYSTEM_PROMPT).toMatch(/SOLO podés afirmar criterios que figuran en applied_filters/i);
+    // Dedup 86aj9w5n6: la formulación canónica (embebida) es la que exige applied_filters.
+    expect(SYSTEM_PROMPT).toMatch(/SOLO afirma criterios presentes en applied_filters/i);
   });
 
   it("el system prompt limita el claim de 'activas/vigentes' al filtro only_active", () => {
