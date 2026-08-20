@@ -4,6 +4,7 @@
 // monta el precio sobre la foto y los datos secundarios son chips sin emoji.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import ChatMessage from "@/components/ChatMessage";
 import { buildTurnErrorMessage } from "../../supabase/functions/chat/_shared/turn-error";
 
@@ -108,6 +109,99 @@ describe("ChatMessage — tarjetas fuera de la burbuja", () => {
     expect(bubble).not.toBeNull();
     expect(bubble!.textContent).toContain("Hola");
     expect(container.querySelector('[data-testid="property-card"]')).toBeNull();
+  });
+});
+
+// Ticket 86ak3z07b: las tarjetas de CONTACTO también salen de la burbuja (mismo patrón que las
+// de propiedad): la primera completa, el resto en fila compacta que linkea al perfil.
+const contactMd = (name: string, id: string, extra: string[] = []) =>
+  [
+    `👤 **${name}**`,
+    "Tipo: Comprador",
+    "Estado: Caliente",
+    "Teléfono: +5493515550001",
+    "Busca: Departamento 2 dorm · en Nueva Córdoba · hasta USD 90.000",
+    "Último contacto: hace 12 días",
+    ...extra,
+    `[Ver perfil](/clients/${id})`,
+  ].join("\n");
+
+const renderRouted = (content: string) =>
+  render(
+    <MemoryRouter>
+      <ChatMessage role="assistant" content={content} />
+    </MemoryRouter>
+  );
+
+describe("ChatMessage — tarjetas de contacto fuera de la burbuja (ticket 86ak3z07b)", () => {
+  it("un contacto: tarjeta completa full-bleed y el texto en burbuja", () => {
+    const { container } = renderRouted(`Tenés uno buscando ahí:\n${contactMd("Marina Sosa", "c1")}`);
+    const card = container.querySelector('[data-testid="contact-card"]');
+    expect(card).not.toBeNull();
+    expect(card!.closest(".max-w-\\[80\\%\\]")).toBeNull();
+    const bubble = container.querySelector(bubbleSel);
+    expect(bubble!.textContent).toContain("Tenés uno buscando ahí");
+    expect(bubble!.contains(card!)).toBe(false);
+    // cabecera + datos + semáforo + acciones
+    expect(card!.textContent).toContain("Marina Sosa");
+    expect(card!.querySelector('[data-testid="client-status-chip"]')!.textContent).toContain("Caliente");
+    expect(card!.textContent).toContain("Departamento 2 dorm");
+    expect(card!.querySelector('[data-testid="contact-last-contact"]')!.getAttribute("data-tone")).toBe("amber");
+    expect(screen.getByRole("link", { name: /ver perfil/i }).getAttribute("href")).toBe("/clients/c1");
+    expect(screen.getByRole("link", { name: /llamar/i }).getAttribute("href")).toBe("tel:+5493515550001");
+    expect(screen.getByRole("link", { name: /whatsapp/i }).getAttribute("href")).toBe("https://wa.me/5493515550001");
+  });
+
+  it("3 contactos: la primera completa, el resto filas compactas que linkean al perfil", () => {
+    const content = [contactMd("Ana", "a"), contactMd("Bruno", "b"), contactMd("Carla", "c")].join("\n\n");
+    const { container } = renderRouted(content);
+    expect(container.querySelectorAll('[data-testid="contact-card"]').length).toBe(1);
+    const compact = container.querySelectorAll('[data-testid="contact-card-compact"]');
+    expect(compact.length).toBe(2);
+    expect(compact[0].textContent).toContain("Bruno");
+    expect(compact[0].closest("a")!.getAttribute("href")).toBe("/clients/b");
+    expect(compact[1].closest("a")!.getAttribute("href")).toBe("/clients/c");
+    // la compacta no tiene botones
+    expect(compact[0].querySelector("button")).toBeNull();
+  });
+
+  it("sin teléfono no hay Llamar ni WhatsApp; nunca contactado → 'Sin contacto registrado' en rojo", () => {
+    const md = ["👤 **Pedro**", "Tipo: Vendedor", "Último contacto: nunca", "[Ver perfil](/clients/p)"].join("\n");
+    const { container } = renderRouted(md);
+    expect(screen.queryByRole("link", { name: /llamar/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /whatsapp/i })).toBeNull();
+    const strip = container.querySelector('[data-testid="contact-last-contact"]')!;
+    expect(strip.getAttribute("data-tone")).toBe("red");
+    expect(strip.textContent).toContain("Sin contacto registrado");
+  });
+
+  it("sin id (sin [Ver perfil]): la completa no muestra Ver perfil y la compacta no es un link", () => {
+    const noId = (n: string) => ["👤 **" + n + "**", "Tipo: Comprador", "Teléfono: +549 351 555-0001", "Email: x@mail.com", "Último contacto: hoy"].join("\n");
+    const { container } = renderRouted(`${noId("Ana")}\n\n${noId("Bruno")}`);
+    expect(screen.queryByRole("link", { name: /ver perfil/i })).toBeNull();
+    // fila de email presente y orden búsqueda→teléfono→email (acá sin búsqueda: teléfono antes que email)
+    const card = container.querySelector('[data-testid="contact-card"]')!;
+    expect(card.textContent!.indexOf("+549 351 555-0001")).toBeLessThan(card.textContent!.indexOf("x@mail.com"));
+    // tel: saneado (sin espacios ni guiones)
+    expect(screen.getByRole("link", { name: /llamar/i }).getAttribute("href")).toBe("tel:+5493515550001");
+    const compact = container.querySelector('[data-testid="contact-card-compact"]')!;
+    expect(compact.closest("a")).toBeNull();
+  });
+
+  it("mensaje viejo persistido (formato con emojis) renderiza tarjeta sin emojis huérfanos", () => {
+    const old = [
+      "👤 **Carla Díaz**",
+      "🏷️ Comprador · 🔥 Caliente",
+      "📱 +5493515550001",
+      "🔍 Busca: Casa · en Villa Allende",
+      "🕓 Último contacto: hace 3 días",
+      "[Ver perfil](/clients/old)",
+    ].join("\n");
+    const { container } = renderRouted(old);
+    const card = container.querySelector('[data-testid="contact-card"]');
+    expect(card).not.toBeNull();
+    expect(card!.querySelector('[data-testid="contact-last-contact"]')!.getAttribute("data-tone")).toBe("green");
+    expect(container.textContent).not.toMatch(/👤|🏷️|📱|🔍|🕓|🔥/u);
   });
 });
 

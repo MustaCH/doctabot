@@ -2,9 +2,9 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import PropertyCard, { PropertyCardCompact } from "@/components/PropertyCard";
-import ContactCard from "@/components/ContactCard";
-import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
-import { parseContactCardSegments } from "@/lib/contact-card-parse";
+import ContactCard, { ContactCardCompact } from "@/components/ContactCard";
+import { parsePropertyCard, parseMultiplePropertyCards, type PropertyCardProps } from "@/lib/property-card-parse";
+import { parseContactCardSegments, type ContactCardProps } from "@/lib/contact-card-parse";
 import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsappNumber } from "@/lib/draft-parse";
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
@@ -315,10 +315,17 @@ const assistantBubbleCls =
   "rounded-[20px] rounded-bl-[6px] px-4 py-3 text-[15px] leading-[1.5] overflow-hidden bg-white/[0.055] border border-white/[0.07] text-[#DDE1E8]";
 
 /**
- * Mensaje de Alan. Si el contenido trae tarjetas de propiedad, el texto va en burbuja
- * y las tarjetas full-bleed (ancho completo menos el padding de 16px del contenedor),
+ * Mensaje de Alan. Si el contenido trae tarjetas (de propiedad o de contacto), el texto va en
+ * burbuja y las tarjetas full-bleed (ancho completo menos el padding de 16px del contenedor),
  * intercaladas en orden. Sin tarjetas, todo va en la burbuja como siempre.
  */
+type CardSegment = {
+  type: "text" | "property" | "contact";
+  text?: string;
+  property?: PropertyCardProps;
+  contact?: ContactCardProps;
+};
+
 const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }: { content: string; clientPhone?: string; quotedText?: string; onReply?: (content: string) => void; onRetry?: () => void }) => {
   const { agentCode } = useAuth();
   // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
@@ -326,12 +333,15 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   // Precedencia: los drafts GANAN. Si la burbuja contiene cualquier marcador <<<...>>> de borrador,
   // los parsers de tarjetas no corren (ticket URGENT marcadores renderizados) — todo va en burbuja.
-  const cardSegments = useMemo(() => {
+  // Después: propiedades (🏠) y, si no hay, contactos (👤 **) — ticket 86ak3z07b: las tarjetas de
+  // contacto también van fuera de la burbuja, primera completa y el resto en fila compacta.
+  const cardSegments = useMemo<CardSegment[] | null>(() => {
     if (hasDraftMarkers(processedContent)) return null;
     const multi = parseMultiplePropertyCards(processedContent);
     if (multi) return multi;
     const single = parsePropertyCard(processedContent);
-    return single ? [{ type: "property" as const, property: single }] : null;
+    if (single) return [{ type: "property", property: single }];
+    return parseContactCardSegments(processedContent);
   }, [processedContent]);
 
   const actions = (
@@ -384,9 +394,10 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
   }
 
   const firstTextIdx = cardSegments.findIndex((s) => s.type === "text");
-  // Listados: la primera propiedad va con tarjeta completa, el resto compactas
+  // Listados: la primera propiedad/contacto va con tarjeta completa, el resto compactas
   // (4 tarjetas grandes seguidas = 4 pantallas de scroll; así se comparan de un vistazo).
   let propertyOrdinal = 0;
+  let contactOrdinal = 0;
   return (
     <div className="group px-4 py-1.5">
       {cardSegments.map((seg, i) =>
@@ -397,6 +408,10 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
             ) : (
               <PropertyCardCompact {...seg.property} agentCode={agentCode} />
             )}
+          </div>
+        ) : seg.type === "contact" && seg.contact ? (
+          <div key={i} className="py-1">
+            {contactOrdinal++ === 0 ? <ContactCard {...seg.contact} /> : <ContactCardCompact {...seg.contact} />}
           </div>
         ) : (
           <div key={i} className="flex gap-2.5 py-1">
@@ -415,35 +430,13 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
   );
 };
 
-/** Renders assistant content – contactos, borradores o markdown (las tarjetas de
-    propiedad se resuelven arriba, en AssistantMessage, porque van fuera de la burbuja). */
+/** Renders assistant content – borradores o markdown (las tarjetas de propiedad y de contacto
+    se resuelven arriba, en AssistantMessage, porque van fuera de la burbuja). */
 const AssistantContent = ({ content }: { content: string; clientPhone?: string }) => {
   const { agentCode } = useAuth();
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   const hasDrafts = useMemo(() => hasDraftMarkers(processedContent), [processedContent]);
   const draftSegments = useMemo(() => hasDrafts ? parseDraftSegments(processedContent) : null, [hasDrafts, processedContent]);
-  const contactSegments = useMemo(
-    () => !hasDrafts ? parseContactCardSegments(processedContent) : null,
-    [hasDrafts, processedContent]
-  );
-
-  if (contactSegments) {
-    return (
-      <div className="space-y-3">
-        {contactSegments.map((segment, i) =>
-          segment.type === "contact" && segment.contact ? (
-            <ContactCard key={i} {...segment.contact} />
-          ) : (
-            <div key={i} className="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word]">
-              <ReactMarkdown components={{
-                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
-              }}>{segment.text || ""}</ReactMarkdown>
-            </div>
-          )
-        )}
-      </div>
-    );
-  }
 
   if (draftSegments) {
     return (
