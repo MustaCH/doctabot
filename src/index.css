@@ -164,3 +164,29 @@
   animation: slide-up-in 0.3s ease-out;
 }
 
+
+/* Super Admin — densidad de escritorio (ticket 86ak3kdxa). Escala propia del panel:
+   cuerpo 13 · celda 12–13 · encabezado de columna 10 mayúsculas 0.10em · fila de tabla 40 ·
+   números tabulares. Se aplica por la clase del root del panel; no toca el resto de la app. */
+.admin-dense {
+  font-size: 13px;
+}
+.admin-dense table {
+  font-variant-numeric: tabular-nums;
+}
+.admin-dense thead th {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.admin-dense tbody td {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 12px;
+}

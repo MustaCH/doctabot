@@ -147,23 +147,28 @@ const SuperAdmin = () => {
   if (!pinValidated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <div className="w-full max-w-xs space-y-4 rounded-xl border border-border bg-card p-6 shadow-lg">
-          <div className="flex items-center justify-center gap-2">
-            <Shield className="h-6 w-6 text-primary" />
-            <h1 className="text-lg font-bold">Super Admin</h1>
+        <div className="w-full max-w-sm space-y-4 rounded-[18px] border border-white/[0.09] bg-white/5 p-6 shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)]">
+          <div className="flex flex-col items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-[14px] border border-[rgba(255,90,77,0.35)] bg-[rgba(255,90,77,0.12)]">
+              <Shield className="h-6 w-6 text-[hsl(var(--accent-soft-foreground))]" />
+            </span>
+            <h1 className="text-lg font-bold tracking-tight">Super Admin</h1>
           </div>
           <p className="text-xs text-center text-muted-foreground">Ingresá el PIN de acceso</p>
           <Input
             type="password" placeholder="PIN" value={pin}
             onChange={(e) => { setPin(e.target.value); setPinError(false); }}
             onKeyDown={(e) => e.key === "Enter" && handlePin()}
-            className={pinError ? "border-destructive" : ""} autoFocus
+            className={`h-11 rounded-[12px] border-white/[0.08] bg-white/5 font-mono tracking-[0.3em] text-center ${pinError ? "border-destructive" : ""}`} autoFocus
             disabled={validating}
           />
           {pinError && <p className="text-xs text-destructive text-center">PIN incorrecto</p>}
-          <Button className="w-full" onClick={handlePin} disabled={validating}>
+          <Button className="h-11 w-full" onClick={handlePin} disabled={validating}>
             {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Acceder"}
           </Button>
+          <p className="text-[11px] leading-relaxed text-center text-muted-foreground">
+            Este panel corre con la clave de servicio y ve datos de <span className="text-foreground/80">todos los agentes</span>. Usalo con cuidado.
+          </p>
         </div>
       </div>
     );
@@ -177,9 +182,10 @@ function AdminDashboard({ pin }: { pin: string }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
 
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const loadStats = useCallback(async () => {
     setLoading(true);
-    try { setStats(await adminFetch(pin, "stats")); } catch {}
+    try { setStats(await adminFetch(pin, "stats")); setLastUpdated(new Date()); } catch {}
     setLoading(false);
   }, [pin]);
 
@@ -204,28 +210,34 @@ function AdminDashboard({ pin }: { pin: string }) {
     : [];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-4 py-3 flex items-center justify-between bg-card">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-bold">Super Admin Panel</h1>
+    <div className="admin-dense min-h-screen bg-background">
+      <header className="border-b border-white/[0.07] bg-white/[0.02] px-4 py-2.5">
+        <div className="mx-auto flex max-w-6xl items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-[rgba(255,90,77,0.35)] bg-[rgba(255,90,77,0.12)]">
+            <Shield className="h-4 w-4 text-[hsl(var(--accent-soft-foreground))]" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight">Super Admin</h1>
+          <span className="rounded-full border border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--success))]">Producción</span>
+          <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+            {lastUpdated ? `Actualizado ${lastUpdated.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : "Cargando…"}
+          </span>
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={loadStats} aria-label="Actualizar">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={loadStats}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
       </header>
 
       <div className="max-w-6xl mx-auto p-4 space-y-6">
         <Tabs value={tab} onValueChange={(v) => { setTab(v); if (v !== "conversations") setPrefilterUserId(null); }}>
-          <TabsList className="w-full grid grid-cols-8">
-            <TabsTrigger value="overview">Resumen</TabsTrigger>
-            <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
-            <TabsTrigger value="reports">Reportes</TabsTrigger>
-            <TabsTrigger value="properties">Propiedades</TabsTrigger>
-            <TabsTrigger value="users">Usuarios</TabsTrigger>
-            <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
-            <TabsTrigger value="favorites">Favoritos</TabsTrigger>
-            <TabsTrigger value="clients">Clientes</TabsTrigger>
+          <TabsList className="flex h-11 w-full justify-start gap-1 rounded-none border-b border-white/[0.07] bg-transparent p-0">
+            <TabsTrigger value="overview" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Resumen</TabsTrigger>
+            <TabsTrigger value="supervisor" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Supervisor</TabsTrigger>
+            <TabsTrigger value="reports" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Reportes</TabsTrigger>
+            <TabsTrigger value="properties" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Propiedades</TabsTrigger>
+            <TabsTrigger value="users" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Usuarios</TabsTrigger>
+            <TabsTrigger value="conversations" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Conversaciones</TabsTrigger>
+            <TabsTrigger value="favorites" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Favoritos</TabsTrigger>
+            <TabsTrigger value="clients" className="h-full rounded-none border-b-2 border-transparent px-3 text-[13px] text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">Clientes</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -1124,7 +1136,7 @@ function PropertiesTable({ pin }: { pin: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Título</TableHead><TableHead>Operación</TableHead>
-                  <TableHead>Precio</TableHead><TableHead>Zona</TableHead>
+                  <TableHead className="text-right">Precio</TableHead><TableHead>Zona</TableHead>
                   <TableHead>Tipo</TableHead><TableHead>Actualizado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1133,7 +1145,7 @@ function PropertiesTable({ pin }: { pin: string }) {
                   <TableRow key={p.id}>
                     <TableCell className="max-w-[200px] truncate text-xs">{p.title ?? "—"}</TableCell>
                     <TableCell className="text-xs">{p.operation ?? "—"}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-xs text-right tabular-nums">
                       {p.price ? `${p.currency ?? "$"} ${p.price.toLocaleString("es-AR")}` : "Consultar"}
                     </TableCell>
                     <TableCell className="text-xs">{p.zone ?? "—"}</TableCell>
@@ -1389,7 +1401,7 @@ function FavoritesTable({ pin }: { pin: string }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Propiedad</TableHead><TableHead>Zona</TableHead>
-                  <TableHead>Precio</TableHead><TableHead>Agente</TableHead>
+                  <TableHead className="text-right">Precio</TableHead><TableHead>Agente</TableHead>
                   <TableHead>Fecha</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1398,7 +1410,7 @@ function FavoritesTable({ pin }: { pin: string }) {
                   <TableRow key={f.id}>
                     <TableCell className="max-w-[200px] truncate text-xs">{f.property_title}</TableCell>
                     <TableCell className="text-xs">{f.property_zone ?? "—"}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-xs text-right tabular-nums">
                       {f.property_price ? `${f.property_currency ?? "$"} ${f.property_price.toLocaleString("es-AR")}` : "—"}
                     </TableCell>
                     <TableCell className="text-xs font-medium">{f.user_name}</TableCell>
