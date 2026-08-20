@@ -2,15 +2,13 @@
 // La tabla de estados vive en docs/design/redesign-premium/README.md §3 y los valores
 // CSS en src/components/alan-orb.css. Puro y testeable (sin React).
 import type { AlanOrbState } from "@/components/AlanOrb";
+import { isTurnErrorContent, turnErrorAllowsRetry } from "../../supabase/functions/chat/_shared/turn-error";
 
-/** Mensaje estático que persiste el catch de chat/index.ts cuando el turno falla.
-    Si cambia allá, tiene que cambiar acá (hay test de contrato). */
-export const TURN_ERROR_MESSAGE =
-  "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
-
-export function isTurnErrorMessage(content: string): boolean {
-  return content.trim() === TURN_ERROR_MESSAGE;
-}
+/** Contrato de error de turno compartido con el backend (turn-error.ts, ticket 86ak3kd99):
+    detección por prefijo (cubre el mensaje estático viejo persistido) y habilitación del
+    Reintentar solo cuando el server marcó que no corrió ninguna tool con efecto. */
+export const isTurnErrorMessage = isTurnErrorContent;
+export { turnErrorAllowsRetry };
 
 export interface OrbFlags {
   /** recordingState === "recording" (use-audio-recorder, vía ChatInput). */

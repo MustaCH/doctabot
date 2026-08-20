@@ -55,6 +55,7 @@ const Chat = () => {
     setQuotedText,
     handleSend,
     handleSendAudio,
+    retryLastTurn,
   } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations, markAsRead);
 
   // Load conversations on mount
@@ -286,6 +287,8 @@ const Chat = () => {
               quotedText={msg.quotedText}
               clientPhone={activeClientPhone}
               onReply={msg.role === "assistant" ? (content) => setQuotedText(content) : undefined}
+              // Reintentar solo tiene sentido en el ÚLTIMO mensaje (el turno que acaba de fallar).
+              onRetry={msg.role === "assistant" && i === messages.length - 1 && !isStreaming ? retryLastTurn : undefined}
             />
           ))}
           {/* "Alan trabajando": al inicio del turno y en los gaps del tool-loop (ticket 86aj1naw2).

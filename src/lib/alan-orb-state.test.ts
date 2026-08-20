@@ -2,7 +2,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { deriveOrbState, isTurnErrorMessage, TURN_ERROR_MESSAGE } from "@/lib/alan-orb-state";
+import { deriveOrbState, isTurnErrorMessage, turnErrorAllowsRetry } from "@/lib/alan-orb-state";
+import { buildTurnErrorMessage, TURN_ERROR_PREFIX } from "../../supabase/functions/chat/_shared/turn-error";
+
+/** Mensaje estático que persistía el catch ANTES del ticket 86ak3kd99 (sigue en DB). */
+const LEGACY_ERROR_MESSAGE = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
 
 describe("deriveOrbState — mapeo y prioridad", () => {
   it("sin banderas → reposo", () => {
@@ -44,18 +48,35 @@ describe("deriveOrbState — mapeo y prioridad", () => {
   });
 });
 
-describe("isTurnErrorMessage — contrato con el catch de chat/index.ts", () => {
-  it("detecta el mensaje estático exacto (con espacios alrededor)", () => {
-    expect(isTurnErrorMessage(TURN_ERROR_MESSAGE)).toBe(true);
-    expect(isTurnErrorMessage(`  ${TURN_ERROR_MESSAGE}\n`)).toBe(true);
+describe("isTurnErrorMessage / turnErrorAllowsRetry — contrato con el catch de chat/index.ts", () => {
+  it("detecta los mensajes nuevos por prefijo y el estático viejo persistido en DB", () => {
+    expect(isTurnErrorMessage(buildTurnErrorMessage([]))).toBe(true);
+    expect(isTurnErrorMessage(buildTurnErrorMessage(["send_email"]))).toBe(true);
+    expect(isTurnErrorMessage(LEGACY_ERROR_MESSAGE)).toBe(true);
+    expect(isTurnErrorMessage(`  ${LEGACY_ERROR_MESSAGE}\n`)).toBe(true);
   });
 
   it("no matchea respuestas normales que mencionan problemas", () => {
     expect(isTurnErrorMessage("Hubo un problema con esa búsqueda, probá con otro barrio.")).toBe(false);
   });
 
-  it("el string coincide con el que persiste el catch de chat/index.ts", () => {
+  it("reintento habilitado solo sin tools con efecto; los viejos no lo habilitan", () => {
+    expect(turnErrorAllowsRetry(buildTurnErrorMessage([]))).toBe(true);
+    expect(turnErrorAllowsRetry(buildTurnErrorMessage(["search_properties", "list_clients"]))).toBe(true);
+    expect(turnErrorAllowsRetry(buildTurnErrorMessage(["search_properties", "send_email"]))).toBe(false);
+    expect(turnErrorAllowsRetry(buildTurnErrorMessage(["create_calendar_event"]))).toBe(false);
+    expect(turnErrorAllowsRetry(LEGACY_ERROR_MESSAGE)).toBe(false);
+  });
+
+  it("el mensaje con efecto nombra la acción en humano, no el nombre de la tool", () => {
+    const msg = buildTurnErrorMessage(["send_email"]);
+    expect(msg).toContain("enviar un email");
+    expect(msg).not.toContain("send_email");
+  });
+
+  it("el legacy y los nuevos comparten prefijo, y el catch de index.ts usa el builder", () => {
+    expect(LEGACY_ERROR_MESSAGE.startsWith(TURN_ERROR_PREFIX)).toBe(true);
     const backend = readFileSync(resolve(__dirname, "../../supabase/functions/chat/index.ts"), "utf8");
-    expect(backend).toContain(TURN_ERROR_MESSAGE);
+    expect(backend).toContain("buildTurnErrorMessage(executedTools)");
   });
 });

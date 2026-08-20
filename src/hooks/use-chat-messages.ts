@@ -256,6 +256,101 @@ export function useChatMessages(
     }
   };
 
+  // Bloque de streaming compartido por texto / audio / reintento (86ak3kd99): callbacks de
+  // deltas, reemplazo onFinal (86aj9w5nb) y cierre. Antes estaba duplicado en doSend y doSendAudio.
+  const runAssistantStream = async (convId: string, aiMessages: Msg[]) => {
+    setIsStreaming(true);
+    setWorking(true); // turno arrancando: indicador hasta el primer token
+
+    let assistantContent = "";
+    let needsNewBubble = false;
+    let assistantBubbles = 0; // burbujas assistant agregadas este turno (para el reemplazo onFinal)
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    await streamChat({
+      messages: aiMessages,
+      conversationId: convId,
+      signal: controller.signal,
+      onDelta: (chunk) => {
+        assistantContent += chunk;
+        // Entró texto: el turno está produciendo salida → ocultar "Alan trabajando".
+        setWorking(false);
+        if (!mountedRef.current) return;
+        const snapshot = assistantContent;
+        const startNew = needsNewBubble;
+        if (startNew) needsNewBubble = false;
+        // Conteo de burbujas assistant agregadas ESTE turno (lo usa el reemplazo onFinal):
+        // se abre una con startNew o con la primera delta del turno.
+        if (startNew || assistantBubbles === 0) assistantBubbles += 1;
+        setMessages((prev) => {
+          if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
+          return [...prev, { role: "assistant" as const, content: snapshot }];
+        });
+      },
+      // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
+      // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
+      // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
+      onFinal: (content) => {
+        setWorking(false);
+        if (!mountedRef.current) return;
+        const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
+        const toDrop = assistantBubbles;
+        setMessages((prev) => [
+          ...prev.slice(0, prev.length - toDrop),
+          ...finalBubbles.map((b) => ({ role: "assistant" as const, content: b })),
+        ]);
+        assistantBubbles = finalBubbles.length;
+        assistantContent = finalBubbles[finalBubbles.length - 1] ?? "";
+        needsNewBubble = false;
+      },
+      onNewMessage: () => {
+        assistantContent = "";
+        needsNewBubble = true;
+        // Boundary del tool-loop (===MSG_BREAK===): pausa antes de la continuación → mostrar indicador.
+        setWorking(true);
+        if (!mountedRef.current) return;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
+          return prev;
+        });
+      },
+      onDone: async () => {
+        if (mountedRef.current) setIsStreaming(false);
+        setWorking(false);
+        feedbackReceive();
+        // Message is already saved to DB by the edge function
+        if (markAsRead) await markAsRead(convId);
+        loadConversations();
+      },
+    });
+  };
+
+  // Reintento del último turno fallido (86ak3kd99): reenvía el último mensaje del usuario
+  // SIN volver a insertarlo (ya está persistido → no se duplica en el historial) y corta el
+  // contexto en ese mensaje (el mensaje de error de Alan no viaja como historia).
+  const retryLastTurn = async () => {
+    if (isStreaming || sendingRef.current) return;
+    const convId = activeConvId;
+    if (!convId) return;
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx < 0) return;
+    sendingRef.current = true;
+    try {
+      await runAssistantStream(convId, historyForAI(messages.slice(0, lastUserIdx + 1)));
+    } catch (err) {
+      handleStreamError(err);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
   const handleSend = async (text: string, chatAttachments?: ChatAttachment[]) => {
     if (isStreaming || sendingRef.current) return;
     sendingRef.current = true;
@@ -333,13 +428,6 @@ export function useChatMessages(
     setIsStreaming(true);
     setWorking(true); // turno arrancando: indicador hasta el primer token
 
-    let assistantContent = "";
-    let allAssistantMessages: string[] = [];
-    let needsNewBubble = false;
-    let assistantBubbles = 0; // burbujas assistant agregadas este turno (para el reemplazo onFinal)
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     // El try envuelve TODO lo que viene después de setIsStreaming(true): entre medio hay awaits
     // (getSession, persistAttachments con atob, insert) que pueden tirar — si quedaban fuera del
     // try, isStreaming quedaba en true para siempre y el input se deshabilitaba (M1).
@@ -370,68 +458,7 @@ export function useChatMessages(
       }
 
       const aiMessages = [...historyForAI(messages), userMsg];
-      await streamChat({
-        messages: aiMessages,
-        conversationId: convId!,
-        signal: controller.signal,
-        onDelta: (chunk) => {
-          assistantContent += chunk;
-          // Entró texto: el turno está produciendo salida → ocultar "Alan trabajando".
-          setWorking(false);
-          if (!mountedRef.current) return;
-          const snapshot = assistantContent;
-          const startNew = needsNewBubble;
-          if (startNew) needsNewBubble = false;
-          // Conteo de burbujas assistant agregadas ESTE turno (lo usa el reemplazo onFinal):
-          // se abre una con startNew o con la primera delta del turno.
-          if (startNew || assistantBubbles === 0) assistantBubbles += 1;
-          setMessages((prev) => {
-            if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
-            return [...prev, { role: "assistant" as const, content: snapshot }];
-          });
-        },
-        // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
-        // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
-        // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
-        onFinal: (content) => {
-          setWorking(false);
-          if (!mountedRef.current) return;
-          const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
-          const toDrop = assistantBubbles;
-          setMessages((prev) => [
-            ...prev.slice(0, prev.length - toDrop),
-            ...finalBubbles.map((b) => ({ role: "assistant" as const, content: b })),
-          ]);
-          assistantBubbles = finalBubbles.length;
-          allAssistantMessages = finalBubbles.slice(0, -1);
-          assistantContent = finalBubbles[finalBubbles.length - 1] ?? "";
-          needsNewBubble = false;
-        },
-        onNewMessage: () => {
-          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
-          assistantContent = "";
-          needsNewBubble = true;
-          // Boundary del tool-loop (===MSG_BREAK===): pausa antes de la continuación → mostrar indicador.
-          setWorking(true);
-          if (!mountedRef.current) return;
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
-            return prev;
-          });
-        },
-        onDone: async () => {
-          if (mountedRef.current) setIsStreaming(false);
-          setWorking(false);
-          feedbackReceive();
-          // Message is already saved to DB by the edge function
-          // Just update local state and mark as read
-          if (markAsRead) await markAsRead(convId!);
-          loadConversations();
-        },
-      });
+      await runAssistantStream(convId!, aiMessages);
     } catch (err: any) {
       handleStreamError(err);
     }
@@ -559,76 +586,7 @@ export function useChatMessages(
       if (updateError) console.error("Error actualizando transcript del mensaje de voz:", updateError);
 
       const msgsForAI: Msg[] = [...historyForAI(messages), { role: "user", content: transcript }];
-      setIsStreaming(true);
-      setWorking(true); // turno arrancando: indicador hasta el primer token
-
-      let assistantContent = "";
-      let allAssistantMessages: string[] = [];
-      let needsNewBubble = false;
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      await streamChat({
-        messages: msgsForAI,
-        conversationId: convId!,
-        signal: controller.signal,
-        onDelta: (chunk) => {
-          assistantContent += chunk;
-          // Entró texto: el turno está produciendo salida → ocultar "Alan trabajando".
-          setWorking(false);
-          if (!mountedRef.current) return;
-          const snapshot = assistantContent;
-          const startNew = needsNewBubble;
-          if (startNew) needsNewBubble = false;
-          // Conteo de burbujas assistant agregadas ESTE turno (lo usa el reemplazo onFinal):
-          // se abre una con startNew o con la primera delta del turno.
-          if (startNew || assistantBubbles === 0) assistantBubbles += 1;
-          setMessages((prev) => {
-            if (startNew) return [...prev, { role: "assistant" as const, content: snapshot }];
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: snapshot } : m));
-            return [...prev, { role: "assistant" as const, content: snapshot }];
-          });
-        },
-        // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
-        // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
-        // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
-        onFinal: (content) => {
-          setWorking(false);
-          if (!mountedRef.current) return;
-          const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
-          const toDrop = assistantBubbles;
-          setMessages((prev) => [
-            ...prev.slice(0, prev.length - toDrop),
-            ...finalBubbles.map((b) => ({ role: "assistant" as const, content: b })),
-          ]);
-          assistantBubbles = finalBubbles.length;
-          allAssistantMessages = finalBubbles.slice(0, -1);
-          assistantContent = finalBubbles[finalBubbles.length - 1] ?? "";
-          needsNewBubble = false;
-        },
-        onNewMessage: () => {
-          if (assistantContent.trim()) allAssistantMessages.push(assistantContent.trim());
-          assistantContent = "";
-          needsNewBubble = true;
-          // Boundary del tool-loop (===MSG_BREAK===): pausa antes de la continuación → mostrar indicador.
-          setWorking(true);
-          if (!mountedRef.current) return;
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: m.content.trim() } : m));
-            return prev;
-          });
-        },
-        onDone: async () => {
-          if (mountedRef.current) setIsStreaming(false);
-          setWorking(false);
-          feedbackReceive();
-          // Message is already saved to DB by the edge function
-          if (markAsRead) await markAsRead(convId!);
-          loadConversations();
-        },
-      });
+      await runAssistantStream(convId!, msgsForAI);
     } catch (err: any) {
       handleStreamError(err);
     }
@@ -644,5 +602,6 @@ export function useChatMessages(
     setQuotedText,
     handleSend,
     handleSendAudio,
+    retryLastTurn,
   };
 }

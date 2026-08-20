@@ -3,8 +3,9 @@
 // contenedor); el texto sigue en burbuja, intercalado en el orden original. La tarjeta
 // monta el precio sobre la foto y los datos secundarios son chips sin emoji.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import ChatMessage from "@/components/ChatMessage";
+import { buildTurnErrorMessage } from "../../supabase/functions/chat/_shared/turn-error";
 
 // useFavorite (vía PropertyCard) usa useAuth + supabase; con user null corta temprano y no toca la red.
 vi.mock("@/contexts/AuthContext", () => ({
@@ -107,5 +108,44 @@ describe("ChatMessage — tarjetas fuera de la burbuja", () => {
     expect(bubble).not.toBeNull();
     expect(bubble!.textContent).toContain("Hola");
     expect(container.querySelector('[data-testid="property-card"]')).toBeNull();
+  });
+});
+
+describe("ChatMessage — turno fallido y Reintentar (ticket 86ak3kd99)", () => {
+  it("error sin tools con efecto: burbuja roja, orb en error y botón Reintentar que dispara onRetry", () => {
+    const onRetry = vi.fn();
+    const { container } = render(
+      <ChatMessage role="assistant" content={buildTurnErrorMessage([])} onRetry={onRetry} />
+    );
+    expect(container.querySelector('.alan-orb[data-state="error"]')).not.toBeNull();
+    const btn = screen.getByRole("button", { name: /reintentar/i });
+    fireEvent.click(btn);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("error tras tools con efecto: advierte qué se ejecutó y NO ofrece Reintentar", () => {
+    const onRetry = vi.fn();
+    render(
+      <ChatMessage role="assistant" content={buildTurnErrorMessage(["send_email"])} onRetry={onRetry} />
+    );
+    expect(screen.getByText(/enviar un email/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /reintentar/i })).toBeNull();
+  });
+
+  it("mensaje de error viejo persistido: se estiliza como error pero sin botón (prudencia)", () => {
+    const { container } = render(
+      <ChatMessage
+        role="assistant"
+        content="Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?"
+        onRetry={vi.fn()}
+      />
+    );
+    expect(container.querySelector('.alan-orb[data-state="error"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /reintentar/i })).toBeNull();
+  });
+
+  it("una respuesta normal no muestra Reintentar aunque reciba onRetry", () => {
+    render(<ChatMessage role="assistant" content="Listo, agendado." onRetry={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /reintentar/i })).toBeNull();
   });
 });

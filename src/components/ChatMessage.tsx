@@ -9,7 +9,8 @@ import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsapp
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
+import { Copy, Check, Reply, Play, Pause, Mic, RotateCcw } from "lucide-react";
+import { isTurnErrorMessage, turnErrorAllowsRetry } from "@/lib/alan-orb-state";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
 interface ChatMessageProps {
@@ -24,6 +25,9 @@ interface ChatMessageProps {
   /** Teléfono del cliente vinculado a la conversación activa. Habilita el botón compartir-por-WhatsApp en las PropertyCard. */
   clientPhone?: string;
   onReply?: (content: string) => void;
+  /** Reintenta el último turno (86ak3kd99). Solo se muestra en el mensaje de error del turno
+      fallido y cuando el server marcó el reintento como seguro (sin tools con efecto). */
+  onRetry?: () => void;
 }
 
 const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscribing?: boolean }) => {
@@ -140,7 +144,7 @@ const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
   );
 };
 
-const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, clientPhone, onReply }: ChatMessageProps) => {
+const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, clientPhone, onReply, onRetry }: ChatMessageProps) => {
   const isUser = role === "user";
 
   // Las tarjetas de propiedad van FUERA de la burbuja, a ancho completo (rediseño
@@ -152,6 +156,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
         clientPhone={clientPhone}
         quotedText={quotedText}
         onReply={onReply}
+        onRetry={onRetry}
       />
     );
   }
@@ -314,7 +319,7 @@ const assistantBubbleCls =
  * y las tarjetas full-bleed (ancho completo menos el padding de 16px del contenedor),
  * intercaladas en orden. Sin tarjetas, todo va en la burbuja como siempre.
  */
-const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { content: string; clientPhone?: string; quotedText?: string; onReply?: (content: string) => void }) => {
+const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }: { content: string; clientPhone?: string; quotedText?: string; onReply?: (content: string) => void; onRetry?: () => void }) => {
   const { agentCode } = useAuth();
   // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
   const whatsappPhone = clientPhone || undefined;
@@ -347,14 +352,31 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { conte
   );
 
   if (!cardSegments) {
+    // Turno fallido (86ak3kd99): borde rojo tenue, orb en error (AlanAvatar hereda el estado
+    // vía data-state del error del último mensaje — el orb del header ya lo deriva) y botón
+    // Reintentar SOLO si el server marcó el reintento como seguro.
+    const isError = isTurnErrorMessage(content);
+    const canRetry = isError && !!onRetry && turnErrorAllowsRetry(content);
     return (
       <div className="group flex gap-2.5 px-4 py-1.5">
-        <AlanAvatar />
+        {isError ? <AlanOrb size="sm" state="error" className="mt-1" /> : <AlanAvatar />}
         <div className="max-w-[80%] min-w-0 overflow-hidden">
-          <div data-bubble="assistant" className={assistantBubbleCls}>
+          <div
+            data-bubble="assistant"
+            className={`${assistantBubbleCls} ${isError ? "border-[rgba(255,90,77,0.35)] bg-[rgba(255,90,77,0.06)]" : ""}`}
+          >
             {quotedText && <QuotedBlock text={quotedText} isUser={false} />}
             <AssistantContent content={content} clientPhone={clientPhone} />
           </div>
+          {canRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-2 flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white/10"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reintentar
+            </button>
+          )}
           {actions}
         </div>
       </div>

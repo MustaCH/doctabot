@@ -25,6 +25,7 @@ import { generateTitle, regenerateTitle } from "./_shared/title.ts";
 import { updateClientSummary } from "./_shared/client-summary.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
+import { buildTurnErrorMessage } from "./_shared/turn-error.ts";
 import { extractListingSlugs, neutralizeFabricatedListings, validSlugSetFromUrls } from "./_shared/link-guardrail.ts";
 import { sanitizePattern } from "./_shared/tools/validators.ts";
 import { expandCards, collapseEmptyBubbles, renderPropertyCard, expandContactCards } from "./_shared/card-render.ts";
@@ -553,6 +554,9 @@ serve(async (req) => {
             // Presupuesto de tiempo total del turno (86aj9w5mm): cierre elegante con aviso al
             // usuario en vez de morir por wall-clock. Registro en error_logs para medir cuántos
             // turnos reales lo tocan.
+            // Espejo en vivo de las tools ejecutadas: si streamTurn tira, el catch sabe qué
+            // corrió y arma un mensaje de error honesto (qué se hizo / si conviene reintentar).
+            onToolsExecuted: (turnTools) => { executedTools = turnTools; },
             deadlineAt: TURN_DEADLINE_AT,
             onDeadlineExhausted: (turnTools) => reportEdgeErrorBg({
               context: "chat-turnDeadline",
@@ -597,7 +601,9 @@ serve(async (req) => {
             },
           });
           // Persistimos el mensaje de error para que la conversación sea consistente al recargar.
-          finalContent = "Lo siento, hubo un problema generando la respuesta. ¿Podés intentar de nuevo?";
+          // Dice qué alcanzó a ejecutarse y, si no corrió ninguna tool con efecto, invita a
+          // reintentar (el front muestra el botón solo en ese caso — ver turn-error.ts).
+          finalContent = buildTurnErrorMessage(executedTools);
           emit(finalContent);
           streamFailed = true;
         }

@@ -59,6 +59,10 @@ export interface StreamTurnOptions {
   onDeadlineExhausted?: (executedTools: string[]) => void;
   // Reloj inyectable para tests del deadline (default Date.now).
   now?: () => number;
+  // Progreso en vivo de tools ejecutadas (86ak3kd99): se invoca tras CADA ronda de tools con el
+  // acumulado del turno. Permite que el catch del caller sepa qué corrió aunque streamTurn tire
+  // después (el mensaje de error dice qué se ejecutó y si el reintento es seguro). Fail-open.
+  onToolsExecuted?: (executedTools: string[]) => void;
 }
 
 export interface StreamTurnResult {
@@ -490,6 +494,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
       const { toolMessages, executed } = await executeToolCalls(toolCalls, { executeTool, toolCtx });
       messages.push(...toolMessages);
       executedTools.push(...executed);
+      try { opts.onToolsExecuted?.([...executedTools]); } catch { /* observabilidad: nunca rompe el turno */ }
       continue;
     }
 
