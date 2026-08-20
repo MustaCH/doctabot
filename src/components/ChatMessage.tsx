@@ -143,6 +143,19 @@ const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
 const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, userAvatar, userName, quotedText, clientPhone, onReply }: ChatMessageProps) => {
   const isUser = role === "user";
 
+  // Las tarjetas de propiedad van FUERA de la burbuja, a ancho completo (rediseño
+  // Carbón & Vidrio): dentro de la burbuja del 80% quedaban en 256px reales.
+  if (!isUser && !audioUrl) {
+    return (
+      <AssistantMessage
+        content={content}
+        clientPhone={clientPhone}
+        quotedText={quotedText}
+        onReply={onReply}
+      />
+    );
+  }
+
   return (
     <div className={`group flex gap-2.5 px-4 py-1.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       <Avatar className="h-7 w-7 shrink-0 mt-1">
@@ -275,46 +288,113 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
   );
 };
 
-/** Renders assistant content – detects property cards or falls back to markdown */
-const AssistantContent = ({ content, clientPhone }: { content: string; clientPhone?: string }) => {
+/** Bloque de markdown de Alan con el estilo de prosa compartido. */
+const MarkdownProse = ({ text, className = "" }: { text: string; className?: string }) => (
+  <div className={`prose prose-sm max-w-none prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] ${className}`}>
+    <ReactMarkdown components={{
+      a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
+    }}>{text}</ReactMarkdown>
+  </div>
+);
+
+const AlanAvatar = () => (
+  <Avatar className="h-7 w-7 shrink-0 mt-1">
+    <AvatarImage src={alanAvatar} alt="Alan" />
+    <AvatarFallback className="bg-accent text-accent-foreground text-xs">A</AvatarFallback>
+  </Avatar>
+);
+
+const assistantBubbleCls =
+  "rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm leading-relaxed overflow-hidden shadow-md shadow-black/5 bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))]";
+
+/**
+ * Mensaje de Alan. Si el contenido trae tarjetas de propiedad, el texto va en burbuja
+ * y las tarjetas full-bleed (ancho completo menos el padding de 16px del contenedor),
+ * intercaladas en orden. Sin tarjetas, todo va en la burbuja como siempre.
+ */
+const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { content: string; clientPhone?: string; quotedText?: string; onReply?: (content: string) => void }) => {
   const { agentCode } = useAuth();
   // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
   const whatsappPhone = clientPhone || undefined;
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
   // Precedencia: los drafts GANAN. Si la burbuja contiene cualquier marcador <<<...>>> de borrador,
-  // los parsers de tarjetas (property/contact) no corren — si no, una campaña con ≥2 🏠 dentro de
-  // borradores activaba parseMultiplePropertyCards, el parseo por bloque fallaba y los marcadores
-  // se veían crudos (ticket URGENT marcadores renderizados).
-  const hasDrafts = useMemo(() => hasDraftMarkers(processedContent), [processedContent]);
-  const draftSegments = useMemo(() => hasDrafts ? parseDraftSegments(processedContent) : null, [hasDrafts, processedContent]);
-  const multiCards = useMemo(() => !hasDrafts ? parseMultiplePropertyCards(processedContent) : null, [hasDrafts, processedContent]);
-  const propertyData = useMemo(() => !hasDrafts && !multiCards ? parsePropertyCard(processedContent) : null, [hasDrafts, processedContent, multiCards]);
-  const contactSegments = useMemo(
-    () => !hasDrafts && !multiCards && !propertyData ? parseContactCardSegments(processedContent) : null,
-    [hasDrafts, processedContent, multiCards, propertyData]
+  // los parsers de tarjetas no corren (ticket URGENT marcadores renderizados) — todo va en burbuja.
+  const cardSegments = useMemo(() => {
+    if (hasDraftMarkers(processedContent)) return null;
+    const multi = parseMultiplePropertyCards(processedContent);
+    if (multi) return multi;
+    const single = parsePropertyCard(processedContent);
+    return single ? [{ type: "property" as const, property: single }] : null;
+  }, [processedContent]);
+
+  const actions = (
+    <div className="flex items-center gap-2">
+      {/* M2: Copiar/Citar trabajan sobre el texto SIN marcadores — el portapapeles y el
+          bloque [REFERENCIA] que viaja al modelo no deben llevar <<<...>>> crudos. */}
+      <CopyButton content={stripAllMarkers(content)} />
+      {onReply && (
+        <button
+          onClick={() => onReply(stripAllMarkers(content))}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
+        >
+          <Reply className="h-3 w-3" />
+          Citar
+        </button>
+      )}
+    </div>
   );
 
-  if (multiCards) {
+  if (!cardSegments) {
     return (
-      <div className="space-y-3">
-        {multiCards.map((segment, i) =>
-          segment.type === "property" && segment.property ? (
-            <PropertyCard key={i} {...segment.property} agentCode={agentCode} whatsappPhone={whatsappPhone} />
-          ) : (
-            <div key={i} className="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word]">
-              <ReactMarkdown components={{
-                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
-              }}>{segment.text || ""}</ReactMarkdown>
-            </div>
-          )
-        )}
+      <div className="group flex gap-2.5 px-4 py-1.5">
+        <AlanAvatar />
+        <div className="max-w-[80%] min-w-0 overflow-hidden">
+          <div className={assistantBubbleCls}>
+            {quotedText && <QuotedBlock text={quotedText} isUser={false} />}
+            <AssistantContent content={content} clientPhone={clientPhone} />
+          </div>
+          {actions}
+        </div>
       </div>
     );
   }
 
-  if (propertyData) {
-    return <PropertyCard {...propertyData} agentCode={agentCode} whatsappPhone={whatsappPhone} />;
-  }
+  const firstTextIdx = cardSegments.findIndex((s) => s.type === "text");
+  return (
+    <div className="group px-4 py-1.5">
+      {cardSegments.map((seg, i) =>
+        seg.type === "property" && seg.property ? (
+          <div key={i} className="py-1">
+            <PropertyCard {...seg.property} agentCode={agentCode} whatsappPhone={whatsappPhone} />
+          </div>
+        ) : (
+          <div key={i} className="flex gap-2.5 py-1">
+            {i === firstTextIdx ? <AlanAvatar /> : <div className="w-7 shrink-0" aria-hidden />}
+            <div className="max-w-[80%] min-w-0 overflow-hidden">
+              <div className={assistantBubbleCls}>
+                {i === firstTextIdx && quotedText && <QuotedBlock text={quotedText} isUser={false} />}
+                <MarkdownProse text={seg.text || ""} />
+              </div>
+            </div>
+          </div>
+        )
+      )}
+      {actions}
+    </div>
+  );
+};
+
+/** Renders assistant content – contactos, borradores o markdown (las tarjetas de
+    propiedad se resuelven arriba, en AssistantMessage, porque van fuera de la burbuja). */
+const AssistantContent = ({ content }: { content: string; clientPhone?: string }) => {
+  const { agentCode } = useAuth();
+  const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
+  const hasDrafts = useMemo(() => hasDraftMarkers(processedContent), [processedContent]);
+  const draftSegments = useMemo(() => hasDrafts ? parseDraftSegments(processedContent) : null, [hasDrafts, processedContent]);
+  const contactSegments = useMemo(
+    () => !hasDrafts ? parseContactCardSegments(processedContent) : null,
+    [hasDrafts, processedContent]
+  );
 
   if (contactSegments) {
     return (
