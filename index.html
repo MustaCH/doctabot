@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Alan" />
     <link rel="apple-touch-icon" href="/alan-192.png" />
-    <meta name="theme-color" content="#1e40af" />
+    <meta name="theme-color" content="#131519" />
     <title>Alan — RE/MAX Docta</title>
     <meta name="description" content="Asistente de inteligencia artificial oficial de RE/MAX Docta" />
     <link rel="icon" type="image/png" href="/alan-192.png" />
@@ -26,15 +26,24 @@
     <meta name="twitter:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/Xeywo5oDhcXY6CIIjgjfE4tI5sz2/social-images/social-1775716585217-image.webp" />
   </head>
 
-  <body>
-    <!-- Splash screen shown while JS loads -->
-    <div id="splash" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:linear-gradient(135deg,#eef4ff 0%,#fff 50%,#fff5f5 100%);">
-      <img src="/alan-192.png" alt="Alan" width="80" height="80" style="border-radius:16px;" />
-      <div style="font-family:'Schibsted Grotesk',system-ui,sans-serif;text-align:center;">
-        <p style="font-size:22px;font-weight:700;color:#1a1a2e;margin:0;">Alan</p>
-        <p style="font-size:13px;color:#8893a7;margin:4px 0 0;">Asistente RE/MAX Docta</p>
+  <body style="background:#131519;">
+    <!-- Splash screen shown while JS loads (inline a propósito: se pinta antes del bundle) -->
+    <div id="splash" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#131519;">
+      <!-- Versión estática del orb de Alan (F2 Corriente, sin animación) -->
+      <div style="position:relative;width:80px;height:80px;">
+        <div style="position:absolute;inset:-22px;border-radius:9999px;background:radial-gradient(circle,rgba(78,214,192,0.20) 0%,rgba(78,214,192,0) 70%);filter:blur(8px);"></div>
+        <div style="position:absolute;inset:0;border-radius:9999px;overflow:hidden;background:#16201F;">
+          <div style="position:absolute;inset:-30%;background:radial-gradient(circle at 30% 35%,rgba(255,244,232,0.95) 0%,rgba(255,244,232,0) 46%);filter:blur(6px);"></div>
+          <div style="position:absolute;inset:-30%;background:radial-gradient(circle at 70% 62%,rgba(78,214,192,0.9) 0%,rgba(78,214,192,0) 54%);filter:blur(6px);"></div>
+          <div style="position:absolute;inset:-30%;background:radial-gradient(circle at 50% 80%,rgba(46,143,134,0.7) 0%,rgba(46,143,134,0) 48%);filter:blur(7px);"></div>
+        </div>
+        <div style="position:absolute;inset:0;border-radius:9999px;background:radial-gradient(circle at 34% 26%,rgba(255,255,255,0.20) 0%,rgba(255,255,255,0.04) 44%,rgba(255,255,255,0.11) 100%);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.14);"></div>
       </div>
-      <div style="margin-top:12px;width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:#1e40af;border-radius:50%;animation:splash-spin .7s linear infinite;"></div>
+      <div style="font-family:'Schibsted Grotesk',system-ui,sans-serif;text-align:center;">
+        <p style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#EDEFF3;margin:0;">Alan</p>
+        <p style="font-size:13px;color:#8F97A4;margin:4px 0 0;">Asistente RE/MAX Docta</p>
+      </div>
+      <div style="margin-top:12px;width:32px;height:32px;border:3px solid rgba(255,255,255,0.12);border-top-color:#3B7BFF;border-radius:50%;animation:splash-spin .7s linear infinite;"></div>
       <style>@keyframes splash-spin{to{transform:rotate(360deg)}}</style>
     </div>
     <div id="root"></div>
