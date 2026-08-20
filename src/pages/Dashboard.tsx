@@ -247,9 +247,9 @@ const Dashboard = () => {
             {/* Metric cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {metricCards.map(card => (
-                <div key={card.label} className="rounded-xl border border-border bg-card p-3 text-center shadow-sm">
+                <div key={card.label} className="rounded-2xl border border-white/[0.09] bg-white/5 p-3 text-center">
                   <card.icon className={`h-4 w-4 mx-auto mb-1 ${card.color}`} />
-                  <p className="text-xl font-bold tracking-tight">{card.value.toLocaleString("es-AR")}</p>
+                  <p className="text-[22px] font-bold tracking-tight [font-variant-numeric:tabular-nums]">{card.value.toLocaleString("es-AR")}</p>
                   <p className="text-[10px] text-muted-foreground leading-tight">{card.label}</p>
                 </div>
               ))}

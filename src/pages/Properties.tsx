@@ -265,14 +265,14 @@ const Properties = () => {
   const PropertyGrid = ({ items, isFavView = false }: { items: (PropertyRow | FavoriteProperty)[]; isFavView?: boolean }) => (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((p) => (
-        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [&>div:first-child]:border-0 [&>div:first-child]:shadow-none [&>div:first-child]:rounded-none">
+        <div key={isFavView ? (p as FavoriteProperty).favoriteId : p.id} className="relative">
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
-              className="absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow backdrop-blur-sm transition-all hover:opacity-90 sm:opacity-0 sm:group-hover:opacity-100"
+              className="absolute top-3 right-14 z-10 flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/10 bg-[rgba(255,90,77,0.55)] text-white backdrop-blur-sm transition-colors hover:bg-[rgba(255,90,77,0.75)]"
               title="Quitar de favoritos"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </button>
           )}
           <PropertyCard
@@ -289,11 +289,11 @@ const Properties = () => {
             contactEmail={p.contact_email ?? undefined}
           />
           {/* Action buttons row */}
-          <div className="flex gap-2 px-3.5 pb-3 -mt-1">
+          <div className="mt-2 flex gap-2.5">
             <Button
               size="sm"
               variant="outline"
-              className="flex-1 gap-1.5 text-xs h-8"
+              className="h-11 flex-1 gap-1.5 rounded-[14px] border-white/10 bg-white/5 text-xs hover:bg-white/10"
               onClick={() => {
                 setMatchesPropertyId(p.id);
                 setMatchesPropertyTitle(p.title ?? undefined);
@@ -314,7 +314,7 @@ const Properties = () => {
             <Button
               size="sm"
               variant="outline"
-              className="flex-1 gap-1.5 text-xs h-8"
+              className="h-11 flex-1 gap-1.5 rounded-[14px] border-white/10 bg-white/5 text-xs hover:bg-white/10"
               onClick={() => {
                 setLinkPropertyId(p.id);
                 setLinkPropertyTitle(p.title ?? undefined);
@@ -364,12 +364,12 @@ const Properties = () => {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
         <div className="border-b border-border bg-card px-4">
-          <TabsList className="w-full bg-transparent h-10">
-            <TabsTrigger value="search" className="flex-1 gap-2 data-[state=active]:bg-muted">
+          <TabsList className="w-full bg-transparent h-11 p-0">
+            <TabsTrigger value="search" className="flex-1 gap-2 h-full rounded-none border-b-2 border-transparent text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
               <Search className="h-3.5 w-3.5" />
               Buscar
             </TabsTrigger>
-            <TabsTrigger value="favorites" className="flex-1 gap-2 data-[state=active]:bg-muted">
+            <TabsTrigger value="favorites" className="flex-1 gap-2 h-full rounded-none border-b-2 border-transparent text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
               <Heart className="h-3.5 w-3.5" />
               Favoritos
               {favorites.length > 0 && (
@@ -392,7 +392,7 @@ const Properties = () => {
                   placeholder="Buscar por título, zona, dirección..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  className="h-10 rounded-full border-white/[0.08] bg-white/5 pl-9"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -402,8 +402,12 @@ const Properties = () => {
               </div>
               <Button
                 size="icon"
-                variant={showFilters || hasActiveFilters ? "default" : "outline"}
-                className="h-10 w-10 shrink-0"
+                variant="outline"
+                className={`h-10 w-10 shrink-0 rounded-full ${
+                  showFilters || hasActiveFilters
+                    ? "border-transparent bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white hover:text-white hover:opacity-90"
+                    : "border-white/[0.08] bg-white/5 hover:bg-white/10"
+                }`}
                 onClick={() => setShowFilters(!showFilters)}
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -443,7 +447,7 @@ const Properties = () => {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground shrink-0">🛏️ Habitaciones:</span>
+                  <span className="text-xs text-muted-foreground shrink-0">Habitaciones:</span>
                   <Select value={roomsFilter} onValueChange={setRoomsFilter}>
                     <SelectTrigger className="flex-1 h-9 text-xs">
                       <SelectValue placeholder="Cualquiera" />
@@ -459,7 +463,7 @@ const Properties = () => {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground shrink-0">💰 Precio:</span>
+                  <span className="text-xs text-muted-foreground shrink-0">Precio:</span>
                   <Input
                     type="number"
                     placeholder="Desde"
@@ -531,7 +535,7 @@ const Properties = () => {
                 <Heart className="h-14 w-14 text-muted-foreground/30" />
                 <p className="text-base font-medium text-muted-foreground">No tenés favoritos aún</p>
                 <p className="text-sm text-muted-foreground/70 max-w-xs">
-                  Tocá el ❤️ en cualquier tarjeta de propiedad para guardarla acá.
+                  Tocá el corazón en cualquier tarjeta de propiedad para guardarla acá.
                 </p>
                 <Button variant="outline" size="sm" onClick={() => setActiveTab("search")}>
                   Buscar propiedades
