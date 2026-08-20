@@ -10,7 +10,6 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Menu, UserCircle, ChevronDown, Loader2, Search, PenLine, CalendarPlus, Sparkles, LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import alanAvatar from "@/assets/alan-avatar.png";
 import { AlanOrb } from "@/components/AlanOrb";
 import { deriveOrbState, isTurnErrorMessage } from "@/lib/alan-orb-state";
 import { useSwUpdate } from "@/hooks/use-sw-update";
@@ -224,7 +223,7 @@ const Chat = () => {
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-              <img src={alanAvatar} alt="Alan" className="h-20 w-20 rounded-2xl" />
+              <AlanOrb size="hero" state={orbState} aria-label="Alan" className="my-2" />
               <h2 className="text-lg font-semibold">¡Hola! Soy Alan 👋</h2>
               <p className="max-w-xs text-sm text-muted-foreground">
                 Soy tu mano derecha en RE/MAX Docta. Agendo visitas, redacto los mensajes a tus clientes, conecto propiedades con quien las busca y te aviso de cada match. También busco propiedades, obvio 😉
@@ -268,13 +267,8 @@ const Chat = () => {
               Aparece debajo de la última burbuja y se va apenas entra texto nuevo o termina el turno. */}
           {isWorking && (
             <div className="flex gap-2.5 px-4 py-1.5">
-              <img src={alanAvatar} alt="Alan" className="h-7 w-7 rounded-full mt-1" />
-              <div className="flex items-center gap-2 rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
-                <div className="flex gap-1">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
-                </div>
+              <AlanOrb size="sm" state="thinking" className="mt-1" />
+              <div className="flex items-center rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
                 <span className="text-xs text-muted-foreground">Alan está trabajando…</span>
               </div>
             </div>

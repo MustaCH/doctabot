@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
 import {
   Search,
   Star,
@@ -34,7 +34,7 @@ interface TutorialStep {
 
 const steps: TutorialStep[] = [
   {
-    icon: <img src={alanAvatar} alt="Alan" className="h-16 w-16" />,
+    icon: <AlanOrb size="lg" aria-label="Alan" />,
     title: "¡Hola! Soy Alan 👋",
     subtitle: "Tu asistente inmobiliario con IA",
     description:

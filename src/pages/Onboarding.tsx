@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
 import { toast } from "sonner";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Monitor, Smartphone, Tablet, ChevronRight, ArrowLeft, KeyRound, CalendarCheck } from "lucide-react";
@@ -188,7 +188,7 @@ const Onboarding = () => {
       <div className="w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="space-y-3 text-center">
-          <img src={alanAvatar} alt="Alan" className="mx-auto h-16 w-16" />
+          <AlanOrb size="lg" aria-label="Alan" className="mx-auto" />
           <h1 className="text-2xl font-bold tracking-tight">{stepTitles[step]}</h1>
           <p className="text-sm text-muted-foreground">{stepSubtitles[step]}</p>
         </div>

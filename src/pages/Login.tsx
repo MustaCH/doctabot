@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
 
 const Login = () => {
   const { signInWithGoogle } = useAuth();
@@ -10,8 +10,8 @@ const Login = () => {
       <div className="w-full max-w-sm space-y-8 text-center">
         {/* Logo / Branding */}
         <div className="space-y-3">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden">
-            <img src={alanAvatar} alt="Alan" className="h-full w-full object-cover" />
+          <div className="mx-auto flex h-20 w-20 items-center justify-center">
+            <AlanOrb size="lg" aria-label="Alan" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Alan</h1>
           <p className="text-sm text-muted-foreground">

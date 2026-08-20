@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper, Bell, BellOff } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
 import { useSwUpdate } from "@/hooks/use-sw-update";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Switch } from "@/components/ui/switch";
@@ -167,11 +167,15 @@ const Profile = () => {
 
         {/* Avatar & email */}
         <div className="flex items-center gap-3 md:gap-4">
-          <img
-            src={user?.user_metadata?.avatar_url || alanAvatar}
-            alt="Avatar"
-            className="h-12 w-12 md:h-16 md:w-16 rounded-full"
-          />
+          {user?.user_metadata?.avatar_url ? (
+            <img
+              src={user.user_metadata.avatar_url}
+              alt="Avatar"
+              className="h-12 w-12 md:h-16 md:w-16 rounded-full"
+            />
+          ) : (
+            <AlanOrb size="md" aria-label="Avatar" />
+          )}
           <div className="min-w-0">
             <p className="truncate text-sm md:text-base font-medium">{user?.user_metadata?.full_name || user?.email}</p>
             <p className="truncate text-xs md:text-sm text-muted-foreground">{user?.email}</p>

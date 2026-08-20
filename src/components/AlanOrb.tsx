@@ -19,7 +19,7 @@ interface AlanOrbProps {
 
 /**
  * El avatar vivo de Alan: círculo con corrientes de luz girando bajo vidrio
- * esmerilado. Reemplaza a src/assets/alan-avatar.png.
+ * esmerilado. Reemplaza al PNG del robot como avatar de Alan en toda la app.
  *
  * Animar blur + backdrop-filter sin parar es caro en Android de gama media,
  * así que las animaciones se pausan con document.hidden y, en los tamaños

@@ -7,7 +7,7 @@ import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-ca
 import { parseContactCardSegments } from "@/lib/contact-card-parse";
 import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsappNumber } from "@/lib/draft-parse";
 import { injectAssociate } from "@/lib/inject-associate";
-import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
 import { Copy, Check, Reply, Play, Pause, Mic } from "lucide-react";
 import type { MsgAttachment } from "@/lib/stream-chat";
@@ -158,21 +158,16 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
 
   return (
     <div className={`group flex gap-2.5 px-4 py-1.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-      <Avatar className="h-7 w-7 shrink-0 mt-1">
-        {isUser ? (
-          <>
-            <AvatarImage src={userAvatar} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-              {userName?.[0]?.toUpperCase() ?? "U"}
-            </AvatarFallback>
-          </>
-        ) : (
-          <>
-            <AvatarImage src={alanAvatar} alt="Alan" />
-            <AvatarFallback className="bg-accent text-accent-foreground text-xs">A</AvatarFallback>
-          </>
-        )}
-      </Avatar>
+      {isUser ? (
+        <Avatar className="h-7 w-7 shrink-0 mt-1">
+          <AvatarImage src={userAvatar} />
+          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+            {userName?.[0]?.toUpperCase() ?? "U"}
+          </AvatarFallback>
+        </Avatar>
+      ) : (
+        <AlanAvatar />
+      )}
       <div className="max-w-[80%] min-w-0 overflow-hidden">
         <div
           className={`rounded-2xl px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md ${
@@ -297,12 +292,7 @@ const MarkdownProse = ({ text, className = "" }: { text: string; className?: str
   </div>
 );
 
-const AlanAvatar = () => (
-  <Avatar className="h-7 w-7 shrink-0 mt-1">
-    <AvatarImage src={alanAvatar} alt="Alan" />
-    <AvatarFallback className="bg-accent text-accent-foreground text-xs">A</AvatarFallback>
-  </Avatar>
-);
+const AlanAvatar = () => <AlanOrb size="sm" className="mt-1" />;
 
 const assistantBubbleCls =
   "rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md shadow-black/5 bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))]";
