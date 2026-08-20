@@ -26,7 +26,7 @@ const cardMd = (n: number) =>
     `🔗 [Ver propiedad](https://remax.com.ar/p${n})`,
   ].join("\n");
 
-const bubbleSel = ".rounded-tl-md";
+const bubbleSel = '[data-bubble="assistant"]';
 
 afterEach(cleanup);
 

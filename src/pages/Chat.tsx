@@ -167,11 +167,11 @@ const Chat = () => {
       {/* Chat area */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Chat header */}
-        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <div className="flex items-center gap-3 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3 safe-top">
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 md:hidden relative"
+            className="h-11 w-11 md:hidden relative"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-4.5 w-4.5" />
@@ -196,7 +196,7 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8"
+            className="h-11 w-11 rounded-xl border border-white/[0.07] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/dashboard")}
             aria-label="Centro de control"
           >
@@ -205,7 +205,7 @@ const Chat = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 relative"
+            className="h-11 w-11 relative rounded-xl border border-white/[0.07] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/profile")}
             aria-label="Perfil"
           >
@@ -222,13 +222,17 @@ const Chat = () => {
           <div ref={scrollRef} className="relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom">
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-              <AlanOrb size="hero" state={orbState} aria-label="Alan" className="my-2" />
-              <h2 className="text-lg font-semibold">¡Hola! Soy Alan 👋</h2>
-              <p className="max-w-xs text-sm text-muted-foreground">
-                Soy tu mano derecha en RE/MAX Docta. Agendo visitas, redacto los mensajes a tus clientes, conecto propiedades con quien las busca y te aviso de cada match. También busco propiedades, obvio 😉
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-sm">
+            <div className="flex flex-col items-center justify-center gap-5 px-6 py-14 text-center">
+              <AlanOrb size="hero" state={orbState} aria-label="Alan" className="my-3" />
+              <div>
+                <h2 className="text-[26px] font-semibold leading-tight tracking-[-0.025em]">
+                  {userName ? `Hola, ${userName.split(" ")[0]}` : "Hola, soy Alan"}
+                </h2>
+                <p className="mx-auto mt-2.5 max-w-[296px] text-[15px] leading-[1.55] text-muted-foreground [text-wrap:pretty]">
+                  Soy tu mano derecha en RE/MAX Docta. Busco propiedades, agendo visitas, redacto los mensajes a tus clientes y te aviso de cada match.
+                </p>
+              </div>
+              <div className="mt-1 flex w-full max-w-[320px] flex-col gap-2.5">
                 {[
                   { label: "Buscar departamentos en Nueva Córdoba", icon: Search },
                   { label: "Redactá un WhatsApp para un cliente", icon: PenLine },
@@ -239,10 +243,10 @@ const Chat = () => {
                     key={label}
                     onClick={() => handleSend(label)}
                     disabled={isStreaming || isWorking}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+                    className="flex h-12 items-center gap-2.5 rounded-full border border-white/[0.08] bg-white/5 px-4 text-left text-sm text-[#DDE1E8] transition-colors hover:bg-white/10 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                    {label}
+                    <Icon className="h-4 w-4 shrink-0 text-[hsl(var(--brand))]" />
+                    <span className="truncate">{label}</span>
                   </button>
                 ))}
               </div>
@@ -268,7 +272,7 @@ const Chat = () => {
           {isWorking && (
             <div className="flex gap-2.5 px-4 py-1.5">
               <AlanOrb size="sm" state="thinking" className="mt-1" />
-              <div className="flex items-center rounded-2xl rounded-tl-md bg-[hsl(var(--chat-assistant))] px-4 py-3">
+              <div className="flex items-center rounded-[20px] rounded-bl-[6px] border border-white/[0.07] bg-white/[0.055] px-4 py-3">
                 <span className="text-xs text-muted-foreground">Alan está trabajando…</span>
               </div>
             </div>

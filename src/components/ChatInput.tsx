@@ -176,7 +176,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
     : null;
 
   return (
-    <div className="border-t border-border bg-card px-3 py-2 safe-bottom overflow-hidden">
+    <div className="border-t border-white/[0.07] bg-white/[0.02] px-4 pt-3 pb-2 safe-bottom overflow-hidden">
       {/* Quote preview */}
       {quotePreview && (
         <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
@@ -236,7 +236,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
           <Button
             size="icon"
             variant="ghost"
-            className="h-10 w-10 shrink-0 rounded-xl text-destructive"
+            className="h-11 w-11 shrink-0 rounded-full border border-white/[0.08] bg-white/5 text-destructive hover:bg-white/10"
             onClick={() => cancelRecording()}
           >
             <X className="h-5 w-5" />
@@ -249,7 +249,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
           <Button
             size="icon"
             onClick={handleStopTap}
-            className="h-10 w-10 shrink-0 rounded-xl"
+            className="h-11 w-11 shrink-0 rounded-full bg-[linear-gradient(150deg,hsl(var(--brand)),hsl(var(--brand-deep)))] text-white shadow-[0_10px_24px_-10px_rgba(76,141,255,0.9)] hover:opacity-90"
           >
             <SendHorizontal className="h-4.5 w-4.5" />
           </Button>
@@ -259,7 +259,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
           <Button
             size="icon"
             variant="ghost"
-            className="h-10 w-10 shrink-0 rounded-xl"
+            className="h-11 w-11 shrink-0 rounded-full border border-white/[0.08] bg-white/5 hover:bg-white/10"
             disabled={disabled || attachments.length >= 4}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -282,25 +282,24 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
             placeholder="Escribí tu mensaje..."
             rows={1}
             disabled={disabled}
-            className="flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            className="flex-1 resize-none rounded-[22px] border border-white/[0.08] bg-white/5 px-[18px] py-[10px] min-h-[44px] text-[15px] placeholder:text-[#7E8694] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
           {hasContent ? (
             <Button
               size="icon"
               onClick={handleSend}
               disabled={!hasContent || disabled}
-              className="h-10 w-10 shrink-0 rounded-xl"
+              className="h-11 w-11 shrink-0 rounded-full bg-[linear-gradient(150deg,hsl(var(--brand)),hsl(var(--brand-deep)))] text-white shadow-[0_10px_24px_-10px_rgba(76,141,255,0.9)] hover:opacity-90"
             >
               <SendHorizontal className="h-4.5 w-4.5" />
             </Button>
           ) : (
             <Button
               size="icon"
-              variant="ghost"
               disabled={disabled}
               aria-label="Grabar mensaje de voz"
               title="Mantené apretado para grabar (o tocá para empezar)"
-              className="h-10 w-10 shrink-0 rounded-xl select-none touch-none"
+              className="h-11 w-11 shrink-0 rounded-full bg-[linear-gradient(150deg,hsl(var(--brand)),hsl(var(--brand-deep)))] text-white shadow-[0_10px_24px_-10px_rgba(76,141,255,0.9)] hover:opacity-90 select-none touch-none"
               onPointerDown={handleMicPointerDown}
               onPointerUp={handleMicPointerUp}
               onPointerLeave={handleMicPointerLeave}

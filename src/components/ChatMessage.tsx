@@ -170,10 +170,11 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
       )}
       <div className="max-w-[80%] min-w-0 overflow-hidden">
         <div
-          className={`rounded-2xl px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md ${
+          data-bubble={isUser ? "user" : "assistant"}
+          className={`px-4 py-3 text-[15px] leading-[1.5] overflow-hidden ${
             isUser
-              ? "bg-[hsl(var(--chat-user))] text-[hsl(var(--chat-user-foreground))] rounded-tr-md shadow-[hsl(var(--chat-user))/0.25]"
-              : "bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))] rounded-tl-md shadow-black/5"
+              ? "rounded-[20px] rounded-br-[6px] bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white shadow-[0_10px_30px_-12px_rgba(59,123,255,0.8)]"
+              : assistantBubbleCls
           }`}
         >
           {/* Quoted message */}
@@ -254,23 +255,33 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
     window.open(url, "_blank");
   };
   return (
-    <div className="mt-2 rounded-xl border border-border bg-background overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
-        <span className="text-xs font-medium text-muted-foreground">
-          {validNumber ? "💬 Mensaje de WhatsApp" : "✉️ Texto listo para copiar"}
+    <div className="mt-2 rounded-[18px] border border-white/[0.09] bg-white/5 overflow-hidden shadow-[0_20px_44px_-24px_rgba(0,0,0,0.9)]">
+      <div className="flex items-center justify-between gap-2.5 pl-3.5 pr-2 py-2 border-b border-white/[0.07] bg-white/[0.03]">
+        <span className="flex items-center gap-2 min-w-0 text-xs font-medium text-muted-foreground whitespace-nowrap">
+          {validNumber ? (
+            <>
+              <span className="text-[#25D366] shrink-0"><WhatsAppIcon /></span>
+              Mensaje de WhatsApp
+            </>
+          ) : (
+            <>
+              <Copy className="h-3.5 w-3.5 shrink-0" />
+              Texto listo para copiar
+            </>
+          )}
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+            className="flex items-center gap-1.5 h-11 px-3.5 rounded-full border border-white/[0.09] bg-white/[0.06] text-xs font-medium text-foreground/80 hover:bg-white/10 transition-colors"
           >
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "¡Copiado!" : "Copiar"}
           </button>
           {validNumber && (
             <button
               onClick={handleWhatsApp}
-              className="flex items-center justify-center h-[28px] w-[28px] rounded-md bg-[#25D366] text-white hover:bg-[#20BD5A] transition-colors"
+              className="flex items-center justify-center h-11 w-11 rounded-full bg-[#25D366] text-[#0E2A17] hover:bg-[#20BD5A] transition-colors"
               title="Enviar por WhatsApp"
             >
               <WhatsAppIcon />
@@ -278,7 +289,7 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
           )}
         </div>
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed px-3.5 py-3 text-foreground/90 max-h-72 overflow-y-auto">{draft}</pre>
+      <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-[1.6] px-3.5 py-3.5 text-[#D7DCE4] max-h-72 overflow-y-auto">{draft}</pre>
     </div>
   );
 };
@@ -294,8 +305,9 @@ const MarkdownProse = ({ text, className = "" }: { text: string; className?: str
 
 const AlanAvatar = () => <AlanOrb size="sm" className="mt-1" />;
 
+// Burbuja de Alan: vidrio con la esquina inferior-izquierda marcada (rediseño Carbón & Vidrio).
 const assistantBubbleCls =
-  "rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md shadow-black/5 bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))]";
+  "rounded-[20px] rounded-bl-[6px] px-4 py-3 text-[15px] leading-[1.5] overflow-hidden bg-white/[0.055] border border-white/[0.07] text-[#DDE1E8]";
 
 /**
  * Mensaje de Alan. Si el contenido trae tarjetas de propiedad, el texto va en burbuja
@@ -339,7 +351,7 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { conte
       <div className="group flex gap-2.5 px-4 py-1.5">
         <AlanAvatar />
         <div className="max-w-[80%] min-w-0 overflow-hidden">
-          <div className={assistantBubbleCls}>
+          <div data-bubble="assistant" className={assistantBubbleCls}>
             {quotedText && <QuotedBlock text={quotedText} isUser={false} />}
             <AssistantContent content={content} clientPhone={clientPhone} />
           </div>
@@ -361,7 +373,7 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { conte
           <div key={i} className="flex gap-2.5 py-1">
             {i === firstTextIdx ? <AlanAvatar /> : <div className="w-7 shrink-0" aria-hidden />}
             <div className="max-w-[80%] min-w-0 overflow-hidden">
-              <div className={assistantBubbleCls}>
+              <div data-bubble="assistant" className={assistantBubbleCls}>
                 {i === firstTextIdx && quotedText && <QuotedBlock text={quotedText} isUser={false} />}
                 <MarkdownProse text={seg.text || ""} />
               </div>
