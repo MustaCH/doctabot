@@ -206,7 +206,7 @@ const Profile = () => {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/properties")}
           >
             <Building2 className="mr-2 h-4 w-4 text-primary" />
@@ -215,7 +215,7 @@ const Profile = () => {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/clients")}
           >
             <Users className="mr-2 h-4 w-4 text-primary" />
@@ -224,7 +224,7 @@ const Profile = () => {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/dashboard")}
           >
             <BarChart3 className="mr-2 h-4 w-4 text-primary" />
@@ -233,7 +233,7 @@ const Profile = () => {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
             onClick={() => navigate("/changelog")}
           >
             <Newspaper className="mr-2 h-4 w-4 text-primary" />
@@ -244,7 +244,7 @@ const Profile = () => {
         {/* Google connection - compact, not in grid */}
         <div className="md:max-w-sm">
           {/* Google Calendar */}
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-[16px] border border-white/[0.09] bg-white/5 p-3">
             {calendarConnected ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -302,7 +302,7 @@ const Profile = () => {
 
         {/* Push Notifications */}
         <div className="md:max-w-sm">
-          <div className="rounded-lg border bg-card p-3">
+          <div className="rounded-[16px] border border-white/[0.09] bg-white/5 p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {pushEnabled ? (

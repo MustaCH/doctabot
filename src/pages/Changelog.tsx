@@ -11,9 +11,9 @@ interface ChangelogEntry {
 }
 
 const typeConfig: Record<EntryType, { icon: typeof Sparkles; label: string; className: string }> = {
-  feature: { icon: Sparkles, label: "Nuevo", className: "bg-green-500/15 text-green-400" },
-  fix: { icon: Bug, label: "Fix", className: "bg-red-500/15 text-red-400" },
-  improvement: { icon: Wrench, label: "Mejora", className: "bg-blue-500/15 text-blue-400" },
+  feature: { icon: Sparkles, label: "Nuevo", className: "bg-[rgba(62,201,138,0.15)] text-[#3EC98A]" },
+  fix: { icon: Bug, label: "Fix", className: "bg-[rgba(255,144,134,0.15)] text-[#FF9086]" },
+  improvement: { icon: Wrench, label: "Mejora", className: "bg-[rgba(158,192,255,0.15)] text-[#9EC0FF]" },
 };
 
 const changelog: ChangelogEntry[] = [

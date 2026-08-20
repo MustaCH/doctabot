@@ -285,7 +285,7 @@ const Tutorial = () => {
                 }
               }}
               transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
-              className="rounded-xl border bg-card p-6 shadow-sm space-y-5 cursor-grab active:cursor-grabbing touch-pan-y"
+              className="rounded-[18px] border border-white/[0.09] bg-white/5 p-6 space-y-5 cursor-grab active:cursor-grabbing touch-pan-y"
             >
               {/* Icon */}
               <motion.div
@@ -294,7 +294,7 @@ const Tutorial = () => {
                 initial="hidden"
                 animate="visible"
               >
-                {step.icon}
+                {current === 0 ? step.icon : <span className="flex h-[66px] w-[66px] items-center justify-center rounded-[18px] border border-white/[0.08] bg-white/5">{step.icon}</span>}
               </motion.div>
 
               {/* Text */}
@@ -330,7 +330,7 @@ const Tutorial = () => {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4, duration: 0.3 }}
-                  className="rounded-lg bg-muted/60 px-4 py-3 text-sm italic text-foreground border border-border"
+                  className="rounded-lg border-l-[3px] border-l-[hsl(var(--primary))] bg-white/[0.04] px-4 py-3 text-sm italic text-foreground"
                 >
                   {step.example}
                 </motion.div>
@@ -350,7 +350,7 @@ const Tutorial = () => {
                       variants={staggerItem}
                       className="flex items-start gap-2 text-sm text-muted-foreground"
                     >
-                      <span className="mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+                      <svg viewBox="0 0 24 24" fill="none" stroke="hsl(var(--success))" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"><path d="M4 12.5l5 5L20 6.5" /></svg>
                       {tip}
                     </motion.li>
                   ))}

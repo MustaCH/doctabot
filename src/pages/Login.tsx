@@ -6,21 +6,22 @@ const Login = () => {
   const { signInWithGoogle } = useAuth();
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6" style={{ backgroundImage: "radial-gradient(ellipse 130% 55% at 50% -8%, rgba(76,141,255,0.18) 0%, rgba(76,141,255,0) 62%), radial-gradient(ellipse 90% 40% at 15% 105%, rgba(255,90,77,0.10) 0%, rgba(255,90,77,0) 60%)" }}>
       <div className="w-full max-w-sm space-y-8 text-center">
         {/* Logo / Branding */}
         <div className="space-y-3">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center">
-            <AlanOrb size="lg" aria-label="Alan" />
+          <div className="mx-auto flex items-center justify-center pb-4">
+            <AlanOrb size="hero" aria-label="Alan" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Alan</h1>
           <p className="text-sm text-muted-foreground">
             Tu asistente IA para búsqueda de propiedades
           </p>
-          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <span>Powered by</span>
-            <span className="font-semibold" style={{ color: "hsl(var(--accent))" }}>RE/MAX</span>
-            <span>Docta</span>
+          <div className="flex justify-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/5 px-3.5 py-1.5 text-xs text-muted-foreground">
+              Powered by
+              <span className="font-semibold text-[hsl(var(--accent-soft-foreground))]">RE/MAX Docta</span>
+            </span>
           </div>
         </div>
 
@@ -28,7 +29,7 @@ const Login = () => {
         <Button
           onClick={signInWithGoogle}
           variant="outline"
-          className="w-full gap-3 border-border bg-card py-6 text-base font-medium shadow-sm transition-all hover:shadow-md"
+          className="h-12 w-full gap-3 rounded-[14px] border-transparent bg-white text-base font-semibold text-[#131519] shadow-[0_12px_28px_-14px_rgba(255,255,255,0.4)] transition-all hover:bg-white/90"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />

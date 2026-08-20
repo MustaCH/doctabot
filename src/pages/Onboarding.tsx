@@ -171,10 +171,10 @@ const Onboarding = () => {
   ];
 
   const stepTitles: Record<1 | 2 | 3 | 4, string> = {
-    1: "Código de acceso 🔑",
-    2: "¡Bienvenido! 👋",
-    3: "Google Calendar 📅",
-    4: "Instalá la app 📲",
+    1: "Código de acceso",
+    2: "¡Bienvenido!",
+    3: "Google Calendar",
+    4: "Instalá la app",
   };
   const stepSubtitles: Record<1 | 2 | 3 | 4, string> = {
     1: "Esta plataforma es exclusiva para agentes de RE/MAX Docta. Ingresá el código que te dio tu broker.",
@@ -196,7 +196,7 @@ const Onboarding = () => {
         {/* Step indicators */}
         <div className="flex items-center justify-center gap-2">
           {([1, 2, 3, 4] as const).map((s) => (
-            <div key={s} className={`h-2 w-8 rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-primary/30"}`} />
+            <div key={s} className={`h-[5px] w-[34px] rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-white/10"}`} />
           ))}
         </div>
 
@@ -212,7 +212,7 @@ const Onboarding = () => {
                   onChange={(e) => setInviteCode(e.target.value)}
                   placeholder="Ej: RMX7K2P"
                   maxLength={20}
-                  className="pl-9 tracking-widest font-mono uppercase"
+                  className="h-12 rounded-[14px] border-white/[0.08] bg-white/5 pl-9 font-mono text-base uppercase tracking-[0.3em]"
                   autoComplete="off"
                   autoCapitalize="characters"
                   autoCorrect="off"
