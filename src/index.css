@@ -5,122 +5,91 @@
 @tailwind utilities;
 
 @layer base {
+  /* Paleta única "Carbón & Vidrio" — oscura, sin modo claro (ADR-0004).
+     Fuente de verdad: docs/design/redesign-premium/README.md §2.
+     Las superficies de vidrio NO son tokens: se componen con rgba(255,255,255,…)
+     sobre estos fondos. */
   :root {
-    --background: 210 20% 98%;
-    --foreground: 220 20% 10%;
+    --background: 220 14% 9%;      /* #131519 fondo */
+    --foreground: 220 20% 94%;     /* #EDEFF3 texto */
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card: 220 9% 13%;            /* #1F2125 superficie */
+    --card-foreground: 220 20% 94%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
+    --popover: 220 9% 13%;
+    --popover-foreground: 220 20% 94%;
 
-    --primary: 210 100% 45%;
+    --primary: 220 100% 62%;       /* #3B7BFF azul primario */
     --primary-foreground: 0 0% 100%;
+    --primary-deep: 225 69% 51%;   /* #2A56D8 cierre del gradiente de acción */
+    --primary-soft-foreground: 219 100% 81%; /* #9EC0FF texto sobre azul tenue */
 
-    --secondary: 210 15% 93%;
-    --secondary-foreground: 220 20% 20%;
+    --brand: 220 100% 68%;         /* #5B93FF azul de marca: avatar, enviar, "A", series de gráficos */
+    --brand-deep: 226 68% 50%;     /* #2B54D6 cierre del gradiente de marca */
 
-    --muted: 210 15% 95%;
-    --muted-foreground: 215 12% 50%;
+    --secondary: 220 7% 17%;       /* #282A2E */
+    --secondary-foreground: 220 20% 94%;
 
-    --accent: 0 75% 55%;
+    --muted: 220 9% 13%;
+    --muted-foreground: 217 10% 60%; /* #8F97A4 texto tenue */
+
+    --accent: 4 100% 65%;          /* #FF5A4D rojo Docta — sello Docta y estado hot */
     --accent-foreground: 0 0% 100%;
+    --accent-soft-foreground: 5 100% 72%; /* #FF7A6E texto del sello Docta sobre oscuro */
 
-    --destructive: 0 84% 60%;
+    --destructive: 4 100% 65%;
     --destructive-foreground: 0 0% 100%;
 
     /* Semantic state tokens — éxito / aviso / info (no confundir con estados de
-       cliente hot|warm|cold, que viven como utilidades en Clients.tsx). */
-    --success: 142 72% 29%;
+       cliente hot|warm|cold, más abajo). */
+    --success: 155 56% 52%;        /* #3EC98A verde éxito */
     --success-foreground: 0 0% 100%;
-    --success-soft: 142 60% 94%;
+    --success-soft: 155 40% 14%;
 
-    --warning: 35 92% 38%;
+    --warning: 38 90% 60%;         /* #F5B23F */
     --warning-foreground: 0 0% 100%;
-    --warning-soft: 40 96% 92%;
+    --warning-soft: 38 50% 14%;
 
-    --info: 210 100% 45%;
-    --info-soft: 210 100% 95%;
+    --info: 220 100% 62%;
+    --info-soft: 220 60% 14%;
 
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --ring: 210 100% 45%;
+    /* Estados de cliente hot|warm|cold (los enums de DB no cambian). */
+    --hot: 5 100% 76%;             /* #FF9086 rojo claro — estado hot, timers, alertas */
+    --warm: 38 90% 60%;            /* #F5B23F tibio — estado warm */
+    --warm-soft-foreground: 38 85% 69%;  /* #F5C46E texto sobre ámbar tenue */
+    --cold: 195 77% 61%;           /* #4FC3E8 frío — estado cold */
+    --cold-soft-foreground: 195 76% 73%; /* #82D5F0 texto sobre cian tenue */
+
+    --whatsapp: 142 70% 49%;       /* #25D366 marca de plataforma — no tocar */
+    --chart-violet: 255 92% 76%;   /* #A78BFA métrica de conversaciones (admin) */
+
+    /* Tokens del orb — identidad de Alan, NO de la interfaz. No usarlos en
+       chrome, chips ni fondos. El turquesa es solo halo/luz: cae entre
+       --success y --cold y como fondo competiría con un estado. */
+    --orb-core: 31 100% 95%;       /* #FFF4E8 blanco cálido — núcleo de Alan */
+    --orb-halo: 170 62% 57%;       /* #4ED6C0 turquesa — halo; NUNCA fondo de chip */
+    --orb-current: 174 51% 37%;    /* #2E8F86 turquesa profundo — tercera corriente */
+    --orb-attention: 30 100% 71%;  /* #FFB86B ámbar — núcleo en estado atención */
+
+    --border: 220 7% 17%;          /* #282A2E borde */
+    --input: 220 7% 17%;
+    --ring: 220 100% 62%;
 
     --radius: 0.75rem;
 
-    --remax-red: 0 75% 55%;
-    --remax-blue: 210 100% 45%;
-    --remax-white: 0 0% 100%;
-
-    --chat-user: 210 100% 45%;
+    --chat-user: 220 100% 62%;
     --chat-user-foreground: 0 0% 100%;
-    --chat-assistant: 0 0% 96%;
-    --chat-assistant-foreground: 220 20% 10%;
+    --chat-assistant: 220 9% 13%;
+    --chat-assistant-foreground: 220 20% 94%;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 20% 10%;
-    --sidebar-primary: 210 100% 45%;
+    --sidebar-background: 220 14% 9%;
+    --sidebar-foreground: 220 20% 94%;
+    --sidebar-primary: 220 100% 62%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 15% 95%;
-    --sidebar-accent-foreground: 220 20% 20%;
-    --sidebar-border: 214 20% 92%;
-    --sidebar-ring: 210 100% 45%;
-  }
-
-  .dark {
-    --background: 220 20% 8%;
-    --foreground: 210 20% 95%;
-
-    --card: 220 18% 12%;
-    --card-foreground: 210 20% 95%;
-
-    --popover: 220 18% 12%;
-    --popover-foreground: 210 20% 95%;
-
-    --primary: 210 100% 55%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 15% 18%;
-    --secondary-foreground: 210 20% 90%;
-
-    --muted: 220 15% 15%;
-    --muted-foreground: 215 12% 55%;
-
-    --accent: 0 75% 55%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 142 65% 45%;
-    --success-foreground: 0 0% 100%;
-    --success-soft: 142 40% 14%;
-
-    --warning: 40 90% 55%;
-    --warning-foreground: 0 0% 100%;
-    --warning-soft: 40 50% 14%;
-
-    --info: 210 100% 55%;
-    --info-soft: 210 60% 14%;
-
-    --border: 220 15% 18%;
-    --input: 220 15% 18%;
-    --ring: 210 100% 55%;
-
-    --chat-user: 210 100% 50%;
-    --chat-user-foreground: 0 0% 100%;
-    --chat-assistant: 220 15% 16%;
-    --chat-assistant-foreground: 210 20% 95%;
-
-    --sidebar-background: 220 18% 10%;
-    --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 210 100% 55%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 15%;
-    --sidebar-accent-foreground: 210 20% 90%;
-    --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 210 100% 55%;
+    --sidebar-accent: 220 9% 13%;
+    --sidebar-accent-foreground: 220 20% 94%;
+    --sidebar-border: 220 7% 17%;
+    --sidebar-ring: 220 100% 62%;
   }
 }
 
@@ -219,18 +188,10 @@
 
 .aurora-idle {
   --aurora-speed: 20s;
-  --aurora-opacity: 0.07;
-}
-
-.dark .aurora-idle {
   --aurora-opacity: 0.10;
 }
 
 .aurora-active {
   --aurora-speed: 6s;
-  --aurora-opacity: 0.18;
-}
-
-.dark .aurora-active {
   --aurora-opacity: 0.22;
 }
