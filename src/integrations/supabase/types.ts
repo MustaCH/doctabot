@@ -648,6 +648,67 @@ export type Database = {
         }
         Relationships: []
       }
+      media_analyses: {
+        Row: {
+          analysis: Json
+          client_id: string | null
+          conversation_id: string | null
+          created_at: string
+          doc_type: string | null
+          id: string
+          kind: string
+          property_id: string | null
+          source_label: string | null
+          user_id: string
+        }
+        Insert: {
+          analysis: Json
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          doc_type?: string | null
+          id?: string
+          kind: string
+          property_id?: string | null
+          source_label?: string | null
+          user_id: string
+        }
+        Update: {
+          analysis?: Json
+          client_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          doc_type?: string | null
+          id?: string
+          kind?: string
+          property_id?: string | null
+          source_label?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_analyses_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_analyses_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_analyses_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           ai_content: string | null

@@ -287,6 +287,55 @@ export const toolDefinitions = [
   {
     type: "function",
     function: {
+      name: "analyze_property_media",
+      description: "Guardar el análisis ESTRUCTURADO de una foto/video de propiedad que el agente mandó en el chat (típico: la saca EN la visita). Primero MIRÁ la imagen y extraé lo que se VE; después llamá esta tool con el JSON tipado — valida y persiste el análisis (vinculable a cliente y/o propiedad). NO la uses para describir en el chat sin guardar.",
+      parameters: {
+        type: "object",
+        properties: {
+          tipo_espacio: { type: "string", description: "Qué muestra la imagen: living, cocina, baño, dormitorio, fachada, patio, plano general, etc." },
+          ambientes: { type: "integer", description: "Ambientes visibles/deducibles (solo si se puede afirmar)." },
+          dormitorios: { type: "integer", description: "Dormitorios visibles/deducibles." },
+          banos: { type: "integer", description: "Baños visibles/deducibles." },
+          estado_general: { type: "string", description: "Estado general VISIBLE: excelente, muy bueno, bueno, regular o a refaccionar." },
+          features: { type: "array", items: { type: "string" }, description: "Características visibles: balcón, luz natural, piso de madera, cocina integrada, humedad en pared, etc." },
+          observaciones: { type: "string", description: "Observaciones libres de lo que se ve (detalles vendibles u objeciones probables)." },
+          source_label: { type: "string", description: "Etiqueta corta de la imagen (ej: 'foto living depto Güemes')." },
+          client_id: { type: "string", description: "ID del cliente al que vincular el análisis (opcional)." },
+          client_name: { type: "string", description: "Nombre del cliente si no tenés el ID (opcional)." },
+          property_id: { type: "string", description: "ID de la propiedad si la imagen corresponde a una publicada (opcional)." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "extract_document",
+      description: "Guardar la extracción TIPADA de un documento que el agente mandó (boleto de compraventa, tasación, plano, escritura, contrato de alquiler). Primero LEÉ el documento y extraé lo que DICE; después llamá esta tool — valida y persiste (vinculable a un cliente). Señalá aparte lo ilegible o faltante.",
+      parameters: {
+        type: "object",
+        properties: {
+          doc_type: { type: "string", description: "Tipo: boleto, tasacion, plano, escritura, contrato_alquiler u otro." },
+          partes: { type: "array", items: { type: "string" }, description: "Partes involucradas (comprador, vendedor, locador, etc.) tal como figuran." },
+          montos: { type: "array", items: { type: "object", properties: { concepto: { type: "string" }, valor: { type: "number" }, moneda: { type: "string" } } }, description: "Montos del documento: [{concepto, valor, moneda}] (ej: precio total, seña, honorarios)." },
+          fechas: { type: "array", items: { type: "object", properties: { concepto: { type: "string" }, fecha: { type: "string" } } }, description: "Fechas/vencimientos: [{concepto, fecha}] (ej: firma, escrituración, vencimiento)." },
+          direccion: { type: "string", description: "Dirección del inmueble si figura." },
+          superficie_m2: { type: "number", description: "Superficie en m² si figura (típico en planos/tasaciones)." },
+          plazos: { type: "string", description: "Plazos/condiciones relevantes en una frase." },
+          observaciones: { type: "string", description: "Otros datos relevantes o advertencias (ilegible, incompleto, inconsistencias)." },
+          source_label: { type: "string", description: "Etiqueta corta del documento (ej: 'boleto depto Güemes')." },
+          client_id: { type: "string", description: "ID del cliente al que vincular (opcional)." },
+          client_name: { type: "string", description: "Nombre del cliente si no tenés el ID (opcional)." },
+        },
+        required: ["doc_type"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "link_conversation",
       description: "Vincular la conversación actual a un cliente y/o asignarle un tipo. Usar automáticamente cuando se identifica un cliente o el tipo de conversación.",
       parameters: {

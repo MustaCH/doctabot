@@ -197,6 +197,22 @@ tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite
   expone caching explícito") resultó falsa para la medición; migrar solo se justificaría si más
   adelante quisiéramos caching EXPLÍCITO (cachedContents con TTL), que es otro scope.
 
+## Multimodal estructurado (86aj9w5pp, 2026-08-20)
+
+- **Patrón:** la VISIÓN la hace el modelo del turno (la imagen/PDF viaja en el mensaje
+  multimodal); las tools son el CONTRATO de salida + persistencia — validan el JSON tipado que
+  el modelo extrajo y lo guardan en `media_analyses` (migración `20260820110000`, RLS sin
+  policies: solo service_role; vinculación opcional a cliente —ownership validado— y propiedad).
+- **`analyze_property_media`** (fotos en la visita): tipo_espacio, ambientes/dormitorios/baños,
+  `estado_general` enum (inválido → null + eco del valor), features[] (cap 25), observaciones.
+  Análisis vacío → error que exige mirar la imagen (no persiste).
+- **`extract_document`** (boleto/tasación/plano/escritura/contrato_alquiler/otro): partes,
+  montos `[{concepto, valor, moneda}]` (malformados se descartan), fechas, dirección,
+  superficie, plazos. La instruction recuerda señalar lo ilegible y la verificación de escribano.
+- **Prompt:** el bullet ADJUNTOS pasó de "describí lo que ves" a "guardá lo que ves/dice" con
+  las dos tools; hecho canónico en alan-facts (solo lo visible/legible, jamás inventar).
+- Follow-up (ticket aparte para /pm): exponer los análisis en get_client/frontend.
+
 ## Memoria de cliente entre conversaciones (86aj9w5nu, 2026-08-20)
 
 - **Persistencia:** `clients.ai_summary` + `ai_summary_updated_at` (migración `client_ai_summary`,

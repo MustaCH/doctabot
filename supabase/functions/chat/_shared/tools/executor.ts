@@ -1158,6 +1158,120 @@ export async function executeTool(
       });
     }
 
+    // ---- Multimodal estructurado (86aj9w5pp) ----
+    // La VISIÓN la hace el modelo en el turno (la imagen/PDF viaja en el mensaje multimodal);
+    // estas tools son el CONTRATO de salida + la persistencia: validan el JSON tipado que el
+    // modelo extrajo y lo guardan en media_analyses (vinculación opcional a cliente/propiedad,
+    // siempre scopeado por user_id).
+    case "analyze_property_media": {
+      const VALID_ESTADOS = ["excelente", "muy bueno", "bueno", "regular", "a refaccionar"];
+      const estadoRaw = typeof args.estado_general === "string" ? args.estado_general.trim().toLowerCase() : "";
+      const estado_general = VALID_ESTADOS.includes(estadoRaw) ? estadoRaw : null;
+      const strCap = (v: unknown, n: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
+      const analysis: Record<string, unknown> = {
+        tipo_espacio: strCap(args.tipo_espacio, 100),
+        ambientes: safePositiveInt(args.ambientes),
+        dormitorios: safePositiveInt(args.dormitorios),
+        banos: safePositiveInt(args.banos),
+        estado_general,
+        ...(estado_general === null && estadoRaw ? { estado_general_invalido: estadoRaw.slice(0, 50) } : {}),
+        features: Array.isArray(args.features) ? args.features.filter((f: unknown) => typeof f === "string" && f.trim()).map((f: string) => f.trim().slice(0, 120)).slice(0, 25) : [],
+        observaciones: strCap(args.observaciones, 2000),
+      };
+      if (analysis.ambientes === null && analysis.dormitorios === null && !estado_general && (analysis.features as string[]).length === 0 && !analysis.observaciones) {
+        return JSON.stringify({ error: "El análisis viene vacío: mirá la imagen y completá al menos estado_general, ambientes/dormitorios o features con lo que se VE (no inventes lo que no se ve)." });
+      }
+      // Vinculación opcional a cliente (por id o nombre) y/o propiedad — validando ownership/existencia.
+      let mediaClientId: string | null = null;
+      if (args.client_id && UUID_REGEX.test(args.client_id)) {
+        const owned = await assertClientOwned(supabase, userId, args.client_id);
+        if (!owned) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+        mediaClientId = args.client_id;
+      } else if (args.client_name) {
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(5);
+        if (clients?.length === 1) mediaClientId = clients[0].id;
+        else if ((clients?.length ?? 0) > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map((c: { full_name: string | null }) => c.full_name).join(", ")}. ¿A cuál vinculo el análisis?`, clients });
+      }
+      let mediaPropertyId: string | null = null;
+      if (args.property_id && UUID_REGEX.test(args.property_id)) {
+        const { data: propRow } = await supabase.from("properties").select("id").eq("id", args.property_id).maybeSingle();
+        if (propRow) mediaPropertyId = args.property_id;
+      }
+      const { data: saved, error: saveErr } = await supabase
+        .from("media_analyses")
+        .insert({ user_id: userId, conversation_id: conversationId || null, client_id: mediaClientId, property_id: mediaPropertyId, kind: "property_media", source_label: strCap(args.source_label, 200), analysis })
+        .select("id")
+        .maybeSingle();
+      if (saveErr) return JSON.stringify({ error: safeDbError(saveErr) });
+      return JSON.stringify({
+        success: true,
+        saved_id: saved?.id ?? null,
+        linked_client: mediaClientId !== null,
+        linked_property: mediaPropertyId !== null,
+        analysis,
+        instruction: "Análisis guardado. Presentale al agente el resultado en prosa/lista clara (NO tarjeta con emojis 🏠💰): estado, ambientes y features detectados + observaciones. Si no quedó vinculado a un cliente/propiedad y el contexto lo sugiere, ofrecé vincularlo.",
+      });
+    }
+
+    case "extract_document": {
+      const VALID_DOC_TYPES = ["boleto", "tasacion", "plano", "escritura", "contrato_alquiler", "otro"];
+      const docTypeRaw = typeof args.doc_type === "string" ? args.doc_type.trim().toLowerCase() : "";
+      const doc_type = VALID_DOC_TYPES.includes(docTypeRaw) ? docTypeRaw : "otro";
+      const strCap2 = (v: unknown, n: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
+      type MontoArg = { concepto?: unknown; valor?: unknown; moneda?: unknown };
+      type FechaArg = { concepto?: unknown; fecha?: unknown };
+      const montos = Array.isArray(args.montos)
+        ? (args.montos as MontoArg[])
+            .filter((m) => m && typeof m === "object" && typeof m.valor === "number" && Number.isFinite(m.valor))
+            .map((m) => ({ concepto: strCap2(m.concepto, 120) ?? "monto", valor: m.valor as number, moneda: strCap2(m.moneda, 10) ?? "USD" }))
+            .slice(0, 15)
+        : [];
+      const fechas = Array.isArray(args.fechas)
+        ? (args.fechas as FechaArg[])
+            .filter((f) => f && typeof f === "object" && typeof f.fecha === "string")
+            .map((f) => ({ concepto: strCap2(f.concepto, 120) ?? "fecha", fecha: String(f.fecha).slice(0, 30) }))
+            .slice(0, 15)
+        : [];
+      const analysis: Record<string, unknown> = {
+        doc_type,
+        partes: Array.isArray(args.partes) ? args.partes.filter((p: unknown) => typeof p === "string" && p.trim()).map((p: string) => p.trim().slice(0, 200)).slice(0, 10) : [],
+        montos,
+        fechas,
+        direccion: strCap2(args.direccion, 300),
+        superficie_m2: safePositiveNumber(args.superficie_m2),
+        plazos: strCap2(args.plazos, 500),
+        observaciones: strCap2(args.observaciones, 2000),
+      };
+      if ((analysis.partes as string[]).length === 0 && montos.length === 0 && fechas.length === 0 && !analysis.direccion && !analysis.observaciones) {
+        return JSON.stringify({ error: "La extracción viene vacía: leé el documento y completá los campos con lo que DICE (partes, montos, fechas). Si no pudiste leerlo, decílo en vez de llamar la tool." });
+      }
+      let docClientId: string | null = null;
+      if (args.client_id && UUID_REGEX.test(args.client_id)) {
+        const owned = await assertClientOwned(supabase, userId, args.client_id);
+        if (!owned) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+        docClientId = args.client_id;
+      } else if (args.client_name) {
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(5);
+        if (clients?.length === 1) docClientId = clients[0].id;
+        else if ((clients?.length ?? 0) > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map((c: { full_name: string | null }) => c.full_name).join(", ")}. ¿A cuál vinculo el documento?`, clients });
+      }
+      const { data: savedDoc, error: docErr } = await supabase
+        .from("media_analyses")
+        .insert({ user_id: userId, conversation_id: conversationId || null, client_id: docClientId, property_id: null, kind: "document", doc_type, source_label: strCap2(args.source_label, 200), analysis })
+        .select("id")
+        .maybeSingle();
+      if (docErr) return JSON.stringify({ error: safeDbError(docErr) });
+      return JSON.stringify({
+        success: true,
+        saved_id: savedDoc?.id ?? null,
+        linked_client: docClientId !== null,
+        analysis,
+        instruction: "Extracción guardada. Resumile al agente lo clave del documento (partes, montos con moneda, fechas/plazos) en prosa clara y SEÑALÁ lo que falte o esté ilegible. Los datos legales finos requieren verificación profesional (escribano): aclaralo si aplica.",
+      });
+    }
+
     case "link_conversation": {
       if (!conversationId || !UUID_REGEX.test(conversationId)) return JSON.stringify({ error: "ID de conversación inválido" });
       const updates: Record<string, any> = {};
