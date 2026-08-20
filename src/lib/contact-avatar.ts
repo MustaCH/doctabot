@@ -11,6 +11,18 @@ export const AVATAR_COLORS = [
   "bg-[linear-gradient(150deg,#2F6F9E_0%,#1E4A6B_100%)]",
 ] as const;
 
+/** Color de arranque de cada gradiente de AVATAR_COLORS, como "R,G,B" — para tintes
+    radiales tenues detrás del avatar (Perfil). Mismo índice que AVATAR_COLORS. */
+export const AVATAR_TINTS = [
+  "122,92,186",
+  "62,142,126",
+  "194,96,63",
+  "74,111,165",
+  "138,107,181",
+  "181,132,62",
+  "47,111,158",
+] as const;
+
 /** Iniciales (1-2 letras) a partir del nombre completo. */
 export function getInitials(fullName: string): string {
   const words = fullName.trim().split(/\s+/).filter(Boolean);

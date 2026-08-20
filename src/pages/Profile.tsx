@@ -4,15 +4,51 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, LogOut, Building2, Users, CalendarCheck, CalendarX, Loader2, Mail, AlertTriangle, BarChart3, RefreshCw, Newspaper, Bell, BellOff } from "lucide-react";
+import {
+  ArrowLeft,
+  LogOut,
+  Building2,
+  Users,
+  Loader2,
+  AlertTriangle,
+  BarChart3,
+  RefreshCw,
+  Newspaper,
+  Bell,
+  BellOff,
+  Smartphone,
+} from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { AlanOrb } from "@/components/AlanOrb";
 import { useSwUpdate } from "@/hooks/use-sw-update";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Switch } from "@/components/ui/switch";
+import { getInitials, getAvatarColorIndex, AVATAR_COLORS, AVATAR_TINTS } from "@/lib/contact-avatar";
 
 const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const APP_VERSION = "1.8.7";
+
+/* Estilos compartidos del rediseño (Carbón & Vidrio) */
+const GLASS_CARD = "rounded-[16px] border border-white/[0.09] bg-white/5";
+const GRADIENT_PRIMARY = "bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white";
+const INPUT_GLASS =
+  "h-[46px] rounded-[14px] border-white/[0.09] bg-white/[0.04] px-[15px] text-[15px] md:text-[15px] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)] focus-visible:ring-offset-0";
+
+const GoogleLogo = () => (
+  <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+  </svg>
+);
+
+const NAV_TILES = [
+  { to: "/properties", label: "Propiedades", Icon: Building2 },
+  { to: "/clients", label: "Contactos", Icon: Users },
+  { to: "/dashboard", label: "Control", Icon: BarChart3 },
+  { to: "/changelog", label: "Novedades", Icon: Newspaper },
+] as const;
 
 const Profile = () => {
   const { user, signOut } = useAuth();
@@ -148,203 +184,263 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
       </div>
     );
   }
 
+  /* Identidad: foto de Google si hay; si no, iniciales con el gradiente de AVATAR_COLORS. */
+  const displayName: string = user?.user_metadata?.full_name || fullName || user?.email || "";
+  const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
+  const avatarIdx = getAvatarColorIndex(displayName);
+  const tintRgb = avatarUrl ? "91,147,255" : AVATAR_TINTS[avatarIdx];
+
+  /* Google: chip de estado */
+  const googleStatus: "connected" | "missing-scope" | "disconnected" = !calendarConnected
+    ? "disconnected"
+    : hasGmailScope
+      ? "connected"
+      : "missing-scope";
+  const googleChip = {
+    connected: { label: "Conectado", cls: "border-[rgba(62,201,138,0.30)] bg-[rgba(62,201,138,0.14)] text-[#3EC98A]", dot: "bg-[#3EC98A]" },
+    "missing-scope": { label: "Falta un permiso", cls: "border-[rgba(245,178,63,0.30)] bg-[rgba(245,178,63,0.14)] text-[#F5C46E]", dot: "bg-[#F5B23F]" },
+    disconnected: { label: "Sin conectar", cls: "border-white/[0.10] bg-white/[0.06] text-muted-foreground", dot: "bg-muted-foreground" },
+  }[googleStatus];
+  const googleSubtitle =
+    googleStatus === "connected"
+      ? `Calendar y Gmail · ${user?.email ?? ""}`
+      : googleStatus === "missing-scope"
+        ? "Calendar conectado · Gmail sin permiso de envío"
+        : "Conectá Calendar y Gmail para que Alan agende y mande emails por vos";
+
+  /* Notificaciones: texto actual tal cual; los casos iOS/unsupported van en franja azul con ícono. */
+  const pushBlockedText =
+    pushCapability.status === "ios-needs-install" ? (
+      <>Para recibir notificaciones en iPhone, agregá Alan a la pantalla de inicio (Compartir → "Agregar a inicio") y abrilo desde ahí.</>
+    ) : pushCapability.status === "ios-too-old" ? (
+      <>Tu iPhone tiene iOS {pushCapability.iosVersion ?? "desconocido"}. Las notificaciones web requieren iOS 16.4 o superior.</>
+    ) : pushCapability.status === "unsupported" ? (
+      <>Este navegador no soporta notificaciones push.</>
+    ) : null;
+  const pushSubtitle =
+    pushCapability.status === "ios-needs-install"
+      ? "No disponibles en Safari sin instalar"
+      : pushCapability.status === "ios-too-old"
+        ? "Requieren iOS 16.4 o superior"
+        : pushBlockedText
+          ? "No disponibles en este navegador"
+          : pushEnabled
+            ? "Recibirás notificaciones cuando Alan responda."
+            : "Activá para recibir notificaciones de Alan.";
+
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-4 py-6 md:px-12 md:py-10 safe-top-m safe-bottom-m">
-      <form onSubmit={handleSave} className="w-full max-w-sm md:max-w-3xl lg:max-w-5xl space-y-6 md:space-y-8">
-        {/* Header */}
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl font-bold tracking-tight md:text-2xl">Mi perfil</h1>
-        </div>
+    <div className="flex min-h-[100dvh] flex-col bg-background">
+      {/* Header estándar: flecha atrás a la izquierda, cerrar sesión a la derecha */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <Button type="button" variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate("/")} aria-label="Volver al chat">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="flex-1 text-base font-semibold tracking-tight">Mi perfil</h1>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 rounded-[12px] border border-white/[0.07] bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-foreground"
+          onClick={handleSignOut}
+          aria-label="Cerrar sesión"
+          title="Cerrar sesión"
+        >
+          <LogOut className="h-[18px] w-[18px]" />
+        </Button>
+      </div>
 
-        {/* Avatar & email */}
-        <div className="flex items-center gap-3 md:gap-4">
-          {user?.user_metadata?.avatar_url ? (
-            <img
-              src={user.user_metadata.avatar_url}
-              alt="Avatar"
-              className="h-12 w-12 md:h-16 md:w-16 rounded-full"
-            />
-          ) : (
-            <AlanOrb size="md" aria-label="Avatar" />
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-sm md:text-base font-medium">{user?.user_metadata?.full_name || user?.email}</p>
-            <p className="truncate text-xs md:text-sm text-muted-foreground">{user?.email}</p>
-          </div>
-        </div>
-
-        {updateAvailable && (
-          <Button
-            type="button"
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={async () => {
-              setUpdating(true);
-              await applyUpdate();
-            }}
-            disabled={updating}
-          >
-            {updating ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            {updating ? "Actualizando..." : "🆕 Nueva versión disponible — Actualizar"}
-          </Button>
-        )}
-
-        {/* Navigation grid - 2 cols on mobile, 4 cols on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
-            onClick={() => navigate("/properties")}
-          >
-            <Building2 className="mr-2 h-4 w-4 text-primary" />
-            Propiedades
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
-            onClick={() => navigate("/clients")}
-          >
-            <Users className="mr-2 h-4 w-4 text-primary" />
-            Contactos
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
-            onClick={() => navigate("/dashboard")}
-          >
-            <BarChart3 className="mr-2 h-4 w-4 text-primary" />
-            Dashboard
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 w-full rounded-[14px] border-white/[0.08] bg-white/5 hover:bg-white/10"
-            onClick={() => navigate("/changelog")}
-          >
-            <Newspaper className="mr-2 h-4 w-4 text-primary" />
-            Novedades
-          </Button>
-        </div>
-
-        {/* Google connection - compact, not in grid */}
-        <div className="md:max-w-sm">
-          {/* Google Calendar */}
-          <div className="rounded-[16px] border border-white/[0.09] bg-white/5 p-3">
-            {calendarConnected ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="h-5 w-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                    <span className="text-xs text-muted-foreground">Calendar + Gmail</span>
-                    <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+      <div className="mx-auto w-full max-w-md px-4 pb-8 pt-4 md:max-w-3xl md:px-8 md:pt-6 safe-bottom">
+        <div className="grid gap-4 md:grid-cols-2 md:items-start md:gap-5">
+          {/* Columna izquierda: identidad, navegación, actualización */}
+          <div className="space-y-3.5">
+            {/* Tarjeta de identidad */}
+            <section className="relative overflow-hidden rounded-[18px] border border-white/[0.09] bg-white/5 shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)]">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0"
+                style={{ background: `radial-gradient(ellipse 90% 80% at 18% 0%, rgba(${tintRgb},0.24) 0%, rgba(${tintRgb},0) 60%)` }}
+              />
+              <div className="relative flex items-center gap-3.5 px-4 py-[18px]">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-16 w-16 shrink-0 rounded-full object-cover shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_14px_32px_-14px_rgba(0,0,0,0.9)]"
+                  />
+                ) : (
+                  <div
+                    aria-hidden="true"
+                    className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-[22px] font-bold tracking-[-0.02em] text-white shadow-[0_0_0_1px_rgba(255,255,255,0.10)] ${AVATAR_COLORS[avatarIdx]}`}
+                  >
+                    {getInitials(displayName)}
                   </div>
-                  <Button
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[19px] font-bold leading-[1.15] tracking-[-0.025em]">{displayName}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{user?.email}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,90,77,0.30)] bg-[rgba(255,90,77,0.14)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--hot))]">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" /></svg>
+                      RE/MAX Docta
+                    </span>
+                    {agentCode && <span className="truncate text-[11px] text-muted-foreground/80">Asociado {agentCode}</span>}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Navegación: 4 tiles en una fila */}
+            <nav aria-label="Secciones" className="grid grid-cols-4 gap-2.5">
+              {NAV_TILES.map(({ to, label, Icon }) => (
+                <button
+                  key={to}
+                  type="button"
+                  onClick={() => navigate(to)}
+                  className={`relative flex min-h-[64px] flex-col items-center justify-center gap-2 px-1 pb-[11px] pt-[13px] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${GLASS_CARD}`}
+                >
+                  {to === "/changelog" && updateAvailable && (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-2 top-2 h-[7px] w-[7px] rounded-full bg-[hsl(var(--orb-attention))] shadow-[0_0_0_3px_rgba(255,184,107,0.18)]"
+                      />
+                      <span className="sr-only">Hay novedades</span>
+                    </>
+                  )}
+                  <Icon className="h-5 w-5 text-[hsl(var(--brand))]" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="whitespace-nowrap text-[11px] font-medium tracking-[-0.01em] text-foreground/90">{label}</span>
+                </button>
+              ))}
+            </nav>
+
+            {/* Aviso de actualización */}
+            {updateAvailable && (
+              <div role="status" className="flex items-center gap-3 rounded-[16px] border border-[rgba(91,147,255,0.28)] bg-[rgba(91,147,255,0.10)] py-3 pl-3.5 pr-3">
+                <RefreshCw className="h-[18px] w-[18px] shrink-0 text-[hsl(var(--primary-soft-foreground))]" strokeWidth={1.8} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold">Hay una versión nueva</p>
+                  <p className="mt-0.5 text-[11px] text-[hsl(var(--primary-soft-foreground))]">v{APP_VERSION} → nueva versión</p>
+                </div>
+                <button
+                  type="button"
+                  className={`flex h-9 shrink-0 items-center justify-center rounded-[12px] px-3.5 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
+                  onClick={async () => {
+                    setUpdating(true);
+                    await applyUpdate();
+                  }}
+                  disabled={updating}
+                >
+                  {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Actualizando" /> : "Actualizar"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Columna derecha: conexiones */}
+          <section aria-label="Conexiones" className={`overflow-hidden ${GLASS_CARD}`}>
+            {/* Google */}
+            <div className="border-b border-white/[0.06] px-3.5 py-[13px]">
+              <div className="flex items-center gap-3">
+                <GoogleLogo />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-[7px]">
+                    <span className="text-sm font-semibold">Google</span>
+                    <span className={`inline-flex items-center gap-[5px] rounded-full border px-2 py-0.5 text-[10px] font-semibold ${googleChip.cls}`}>
+                      <span className={`h-[5px] w-[5px] rounded-full ${googleChip.dot}`} aria-hidden="true" />
+                      {googleChip.label}
+                    </span>
+                  </div>
+                  <p className="mt-[3px] truncate text-[11px] text-muted-foreground">{googleSubtitle}</p>
+                </div>
+                {calendarConnected ? (
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-destructive hover:text-destructive h-7 px-2 ml-auto"
+                    className="flex h-9 shrink-0 items-center rounded-[12px] border border-[rgba(255,90,77,0.26)] bg-[rgba(255,90,77,0.10)] px-3 text-xs font-semibold text-[hsl(var(--hot))] transition-colors hover:bg-[rgba(255,90,77,0.16)] disabled:opacity-60"
                     onClick={handleDisconnectCalendar}
                     disabled={calendarLoading}
                   >
-                    {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Desconectar"}
-                  </Button>
+                    {calendarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Cargando" /> : "Desconectar"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`flex h-9 shrink-0 items-center rounded-[12px] px-3 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
+                    onClick={handleConnectCalendar}
+                    disabled={calendarLoading}
+                  >
+                    {calendarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Cargando" /> : "Conectar"}
+                  </button>
+                )}
+              </div>
+              {calendarConnected && !hasGmailScope && (
+                <div className="mt-[11px] flex items-center gap-2.5 rounded-[12px] border border-[rgba(245,178,63,0.24)] bg-[rgba(245,178,63,0.08)] px-3 py-2.5">
+                  <AlertTriangle className="h-[15px] w-[15px] shrink-0 text-[hsl(var(--warm-soft-foreground))]" strokeWidth={1.9} aria-hidden="true" />
+                  <p className="flex-1 text-xs leading-[1.45] text-foreground/80">Alan no puede mandar emails por vos hasta que reconectes.</p>
+                  <button
+                    type="button"
+                    className="flex h-9 shrink-0 items-center rounded-[12px] border border-[rgba(245,178,63,0.34)] bg-[rgba(245,178,63,0.16)] px-[13px] text-xs font-semibold text-[hsl(var(--warm-soft-foreground))] transition-colors hover:bg-[rgba(245,178,63,0.24)] disabled:opacity-60"
+                    onClick={handleConnectCalendar}
+                    disabled={calendarLoading}
+                  >
+                    {calendarLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Cargando" /> : "Reconectar"}
+                  </button>
                 </div>
-                {!hasGmailScope && (
-                  <div className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2">
-                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
-                    <p className="text-xs text-muted-foreground flex-1">Faltan permisos de Gmail</p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-6 px-2 text-xs shrink-0"
-                      onClick={handleConnectCalendar}
-                      disabled={calendarLoading}
-                    >
-                      {calendarLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reconectar"}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full text-xs h-8"
-                onClick={handleConnectCalendar}
-                disabled={calendarLoading}
-              >
-                {calendarLoading ? (
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                ) : (
-                  <CalendarCheck className="h-3 w-3 mr-1" />
-                )}
-                Conectar con Google
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Push Notifications */}
-        <div className="md:max-w-sm">
-          <div className="rounded-[16px] border border-white/[0.09] bg-white/5 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {pushEnabled ? (
-                  <Bell className="h-4 w-4 text-primary" />
-                ) : (
-                  <BellOff className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="text-sm font-medium">Notificaciones</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {pushLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                <Switch
-                  checked={pushEnabled}
-                  disabled={pushLoading || !pushSupported}
-                  onCheckedChange={(checked) => {
-                    if (checked) pushSubscribe();
-                    else pushUnsubscribe();
-                  }}
-                />
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {pushCapability.status === "ios-needs-install" ? (
-                <>Para recibir notificaciones en iPhone, agregá Alan a la pantalla de inicio (Compartir → "Agregar a inicio") y abrilo desde ahí.</>
-              ) : pushCapability.status === "ios-too-old" ? (
-                <>Tu iPhone tiene iOS {pushCapability.iosVersion ?? "desconocido"}. Las notificaciones web requieren iOS 16.4 o superior.</>
-              ) : pushCapability.status === "unsupported" ? (
-                <>Este navegador no soporta notificaciones push.</>
-              ) : pushEnabled ? (
-                "Recibirás notificaciones cuando Alan responda."
-              ) : (
-                "Activá para recibir notificaciones de Alan."
               )}
-            </p>
-          </div>
+            </div>
+
+            {/* Notificaciones */}
+            <div className="px-3.5 py-[13px]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  {pushEnabled ? (
+                    <Bell className="h-5 w-5 shrink-0 text-[hsl(var(--brand))]" strokeWidth={1.8} aria-hidden="true" />
+                  ) : (
+                    <BellOff className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Notificaciones</p>
+                    <p className="mt-[3px] text-[11px] text-muted-foreground">{pushSubtitle}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pushLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Cargando" />}
+                  {/* El label envuelve al switch para que el área táctil sea ≥44 */}
+                  <label className="flex h-11 min-w-11 cursor-pointer items-center justify-end has-[:disabled]:cursor-not-allowed">
+                    <span className="sr-only">Activar notificaciones</span>
+                    <Switch
+                      checked={pushEnabled}
+                      disabled={pushLoading || !pushSupported || !!pushBlockedText}
+                      onCheckedChange={(checked) => {
+                        if (checked) pushSubscribe();
+                        else pushUnsubscribe();
+                      }}
+                      className="h-[27px] w-[46px] data-[state=checked]:bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] data-[state=unchecked]:bg-white/[0.08] [&>span]:h-[21px] [&>span]:w-[21px] [&>span]:bg-white [&>span]:data-[state=checked]:translate-x-[21px] [&>span]:data-[state=unchecked]:bg-muted-foreground"
+                    />
+                  </label>
+                </div>
+              </div>
+              {pushBlockedText && (
+                <div className="mt-[11px] flex gap-2.5 rounded-[12px] border border-[rgba(91,147,255,0.22)] bg-[rgba(91,147,255,0.08)] px-3 py-[11px]">
+                  <Smartphone className="mt-px h-4 w-4 shrink-0 text-[hsl(var(--primary-soft-foreground))]" strokeWidth={1.8} aria-hidden="true" />
+                  <p className="text-xs leading-[1.5] text-foreground/80">{pushBlockedText}</p>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
 
-
-        {/* Profile fields */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nombre completo</Label>
+        {/* Tus datos */}
+        <form onSubmit={handleSave} className={`mt-3.5 p-3.5 md:max-w-md ${GLASS_CARD}`} aria-labelledby="profile-data-title">
+          <p id="profile-data-title" className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">Tus datos</p>
+          <div className="space-y-[11px]">
+            <div className="space-y-[7px]">
+              <Label htmlFor="fullName" className="text-xs font-medium text-foreground/70">Nombre completo</Label>
               <Input
                 id="fullName"
                 value={fullName}
@@ -352,39 +448,40 @@ const Profile = () => {
                 placeholder="Ej: Juan Pérez"
                 maxLength={100}
                 required
+                className={INPUT_GLASS}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agentCode">Código de asociado</Label>
-              <Input
-                id="agentCode"
-                value={agentCode}
-                onChange={(e) => setAgentCode(e.target.value)}
-                placeholder="Ej: 420401222"
-                maxLength={20}
-                required
-              />
+            <div className="space-y-[7px]">
+              <Label htmlFor="agentCode" className="text-xs font-medium text-foreground/70">Código de asociado</Label>
+              <div className="relative">
+                <Input
+                  id="agentCode"
+                  value={agentCode}
+                  onChange={(e) => setAgentCode(e.target.value)}
+                  placeholder="Ej: 420401222"
+                  maxLength={20}
+                  required
+                  aria-describedby="agentCode-hint"
+                  className={`${INPUT_GLASS} min-[380px]:pr-[168px]`}
+                />
+                {/* Hint: adentro del input desde 380px; debajo en pantallas más angostas para no comerle lugar al código. */}
+                <span id="agentCode-hint" className="mt-1.5 block text-[11px] text-muted-foreground/80 min-[380px]:pointer-events-none min-[380px]:absolute min-[380px]:right-[15px] min-[380px]:top-1/2 min-[380px]:mt-0 min-[380px]:-translate-y-1/2">
+                  va en los links que compartís
+                </span>
+              </div>
             </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-          <Button type="submit" className="w-full md:w-auto md:min-w-[200px]" disabled={saving}>
+          </div>
+          <Button
+            type="submit"
+            className={`mt-3.5 h-[46px] w-full rounded-[14px] text-sm font-semibold shadow-[0_14px_30px_-14px_rgba(59,123,255,0.95)] hover:opacity-90 ${GRADIENT_PRIMARY}`}
+            disabled={saving}
+          >
             {saving ? "Guardando..." : "Guardar cambios"}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full md:w-auto text-destructive hover:text-destructive"
-            onClick={handleSignOut}
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Cerrar sesión
-          </Button>
-        </div>
+        </form>
 
-        <p className="text-center text-[11px] text-muted-foreground">v1.8.7</p>
-      </form>
+        <p className="mt-3.5 text-center text-[11px] text-muted-foreground/70">Alan v{APP_VERSION}</p>
+      </div>
     </div>
   );
 };
