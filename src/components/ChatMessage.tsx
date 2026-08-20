@@ -175,7 +175,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
       </Avatar>
       <div className="max-w-[80%] min-w-0 overflow-hidden">
         <div
-          className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed overflow-hidden shadow-md ${
+          className={`rounded-2xl px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md ${
             isUser
               ? "bg-[hsl(var(--chat-user))] text-[hsl(var(--chat-user-foreground))] rounded-tr-md shadow-[hsl(var(--chat-user))/0.25]"
               : "bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))] rounded-tl-md shadow-black/5"
@@ -305,7 +305,7 @@ const AlanAvatar = () => (
 );
 
 const assistantBubbleCls =
-  "rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm leading-relaxed overflow-hidden shadow-md shadow-black/5 bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))]";
+  "rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[15px] leading-[1.5] overflow-hidden shadow-md shadow-black/5 bg-[hsl(var(--chat-assistant))] text-[hsl(var(--chat-assistant-foreground))]";
 
 /**
  * Mensaje de Alan. Si el contenido trae tarjetas de propiedad, el texto va en burbuja
