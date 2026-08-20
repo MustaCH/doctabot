@@ -10,10 +10,11 @@ interface ChangelogEntry {
   entries: { type: EntryType; text: string }[];
 }
 
+/* Chips Nuevo / Fix / Mejora — colores del rediseño (#3EC98A / #FF9086 / #9EC0FF), ícono SVG (lucide). */
 const typeConfig: Record<EntryType, { icon: typeof Sparkles; label: string; className: string }> = {
-  feature: { icon: Sparkles, label: "Nuevo", className: "bg-[rgba(62,201,138,0.15)] text-[#3EC98A]" },
-  fix: { icon: Bug, label: "Fix", className: "bg-[rgba(255,144,134,0.15)] text-[#FF9086]" },
-  improvement: { icon: Wrench, label: "Mejora", className: "bg-[rgba(158,192,255,0.15)] text-[#9EC0FF]" },
+  feature: { icon: Sparkles, label: "Nuevo", className: "border-[rgba(62,201,138,0.30)] bg-[rgba(62,201,138,0.14)] text-[#3EC98A]" },
+  fix: { icon: Bug, label: "Fix", className: "border-[rgba(255,90,77,0.32)] bg-[rgba(255,90,77,0.16)] text-[#FF9086]" },
+  improvement: { icon: Wrench, label: "Mejora", className: "border-[rgba(91,147,255,0.32)] bg-[rgba(91,147,255,0.16)] text-[#9EC0FF]" },
 };
 
 const changelog: ChangelogEntry[] = [
@@ -99,38 +100,39 @@ const Changelog = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-gradient-to-br from-primary/10 via-background to-accent/5">
-      <div className="mx-auto w-full max-w-lg px-4 py-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl font-bold tracking-tight">Novedades</h1>
-        </div>
+    <div className="flex min-h-[100dvh] flex-col bg-background">
+      {/* Header estándar */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate(-1)} aria-label="Volver">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="text-base font-semibold tracking-tight">Novedades</h1>
+      </div>
 
-        <div className="space-y-6">
+      <div className="mx-auto w-full max-w-lg px-4 pb-8 pt-4 safe-bottom">
+        <div className="space-y-3.5">
           {changelog.map((release) => (
-            <div key={release.version} className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-base font-bold text-foreground">v{release.version}</h2>
-                <span className="text-xs text-muted-foreground">{release.date}</span>
+            <section key={release.version} aria-labelledby={`release-${release.version}`} className="rounded-[18px] border border-white/[0.09] bg-white/5 p-4">
+              <div className="mb-3.5 flex items-baseline justify-between gap-3">
+                <h2 id={`release-${release.version}`} className="text-lg font-bold tracking-[-0.025em] text-foreground">v{release.version}</h2>
+                <span className="shrink-0 text-[11px] text-muted-foreground">{release.date}</span>
               </div>
-              <ul className="space-y-2">
+              <ul className="space-y-[11px]">
                 {release.entries.map((entry, i) => {
                   const config = typeConfig[entry.type];
                   const Icon = config.icon;
                   return (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 ${config.className}`}>
-                        <Icon className="h-2.5 w-2.5" />
+                    <li key={i} className="flex items-start gap-2.5">
+                      <span className={`mt-0.5 inline-flex shrink-0 items-center gap-[5px] rounded-[8px] border px-2 py-[3px] text-[10px] font-semibold ${config.className}`}>
+                        <Icon className="h-2.5 w-2.5" strokeWidth={2.2} aria-hidden="true" />
                         {config.label}
                       </span>
-                      <span className="text-sm text-foreground/90">{entry.text}</span>
+                      <span className="text-[13px] leading-[1.5] text-foreground/90">{entry.text}</span>
                     </li>
                   );
                 })}
               </ul>
-            </div>
+            </section>
           ))}
         </div>
       </div>
