@@ -10,6 +10,8 @@
 //   EVAL_STRICT=1        cada caso exige pass-rate 1.0 (debug)
 //   EVAL_FILTER          substring/tag para correr un subconjunto (ej. EVAL_FILTER=email)
 //   EVAL_CONCURRENCY     turnos en paralelo (default 4)
+//   EVAL_MODEL           modelo del turno principal (default: el de prod — ver runner.ts).
+//                        Para evaluar un upgrade/downgrade: EVAL_MODEL=<modelo> (ticket 86aj9w5nf)
 import { describe, it, expect, beforeAll } from "vitest";
 import goldenSet from "./golden-set.json";
 import { runAll, type EvalCase, type EvalRunResult } from "./runner";
@@ -20,6 +22,7 @@ const MIN_PASS_RATE = Number(process.env.EVAL_MIN_PASS_RATE ?? 0.85);
 const CASE_MIN_RATE = process.env.EVAL_STRICT === "1" ? 1 : Number(process.env.EVAL_CASE_MIN_RATE ?? 0.5);
 const FILTER = (process.env.EVAL_FILTER ?? "").toLowerCase();
 const CONCURRENCY = Math.max(1, Number(process.env.EVAL_CONCURRENCY ?? 4));
+const MODEL = process.env.EVAL_MODEL || undefined; // undefined → default del runner (prod)
 
 const allCases = (goldenSet as { cases: EvalCase[] }).cases;
 const cases = FILTER
@@ -34,6 +37,7 @@ describe.skipIf(!apiKey)("Golden set de Alan (turnos reales contra API, DB mocke
     const total = cases.length * RUNS;
     const collected = await runAll(cases, {
       apiKey,
+      ...(MODEL ? { model: MODEL } : {}),
       runsPerCase: RUNS,
       concurrency: CONCURRENCY,
       onResult: (r) => {

@@ -173,7 +173,7 @@ export interface RunnerOpts {
 
 /** Ejecuta un caso contra la API real. El ÚNICO efecto externo es la llamada al modelo. */
 export async function runEvalCase(caseDef: EvalCase, opts: RunnerOpts): Promise<EvalRunResult> {
-  const model = opts.model ?? "gemini-3.5-flash"; // mismo modelo que el turno principal en prod
+  const model = opts.model ?? "gemini-3.7-flash"; // mismo modelo que el turno principal en prod (86aj9w5nf)
   const db = buildCaseDb(caseDef);
 
   // Si el caso trae cliente activo, lo vinculamos también en el mock (paridad con prod).

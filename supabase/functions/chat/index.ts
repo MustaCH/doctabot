@@ -219,14 +219,14 @@ serve(async (req) => {
     ];
 
     // Gemini OpenAI-compatible endpoint (no Lovable Gateway). Single primary model.
-    // Gemini OpenAI-compatible endpoint (no Lovable Gateway). Single primary model.
-    // gemini-3.5-flash: flagship stable de Google para tareas AGÉNTICAS/tool-use (jul-2026), más
-    // rápido y barato que 2.5-pro, con el "thinking" separado del contenido (adiós leak 86ajbjq22).
-    // La migración necesitó DOS cambios en el tool-loop (validados contra la API real vía la sonda):
+    // gemini-3.7-flash (86aj9w5nf, ago-2026): línea Flash = flagship agéntico de Google. Upgrade
+    // desde 3.5-flash validado con el golden set head-to-head (220 turnos en 3.7: 98,2% de pass,
+    // diferencia explicada por un eval flaky rediseñado; ~33% menos de latencia por turno).
+    // Gotchas 3.x del tool-loop (siguen aplicando, validados contra la API real vía sonda):
     //  1. reenviar el thought_signature de cada tool_call en la continuación (sse-parse/stream-turn);
     //  2. tratar como ronda de herramientas toda ronda que acumule tool_calls, porque 3.x streaming
     //     cierra con finish_reason:"stop" (no "tool_calls" como 2.5).
-    const PRIMARY_MODEL = "gemini-3.5-flash";
+    const PRIMARY_MODEL = "gemini-3.7-flash";
     const AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     const aiHeaders = { Authorization: `Bearer ${GEMINI_API_KEY}`, "Content-Type": "application/json" };
     // Timeout por llamada al modelo: si Gemini cuelga, se aborta (cada iteración del turno

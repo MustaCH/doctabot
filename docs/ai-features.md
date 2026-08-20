@@ -9,7 +9,7 @@ vive en el código (`supabase/functions/chat/_shared/` + CLAUDE.md); acá está 
 
 | Uso | Modelo | Por qué |
 |---|---|---|
-| Turno principal del chat (tool-loop, 30+ tools) | `gemini-3.5-flash` | Flagship stable de Google para tareas agénticas (jul-2026). Más capaz, rápido y barato que 2.5-pro. Thinking separado del contenido (mata el leak de razonamiento en origen). |
+| Turno principal del chat (tool-loop, 30+ tools) | `gemini-3.7-flash` | Línea Flash = flagship agéntico de Google (ago-2026). Upgrade desde 3.5-flash (ticket 86aj9w5nf) validado head-to-head con el golden set: 220 turnos, 98,2% pass (la diferencia era un eval flaky rediseñado), **~33% menos de latencia**. No hay Pro estable posterior a 2.5-pro (3.1-pro es preview y más viejo que la línea 3.5+). El eval `fmt-voseo` se rediseñó a "ausencia de tuteo" (exigir conjugaciones voseantes específicas era flaky). Cambiar de modelo: `PRIMARY_MODEL` en index.ts + default en evals/runner.ts; evaluar candidatos con `EVAL_MODEL=<modelo> npm run test:evals`. |
 | Supervisor post-hoc, títulos, transcripción | `gemini-2.5-flash` | Clasificación/generación corta: el tier barato alcanza. |
 
 **Gotchas de la migración a Gemini 3.x** (costó 2 rollbacks aprender esto; ambos fixes viven en

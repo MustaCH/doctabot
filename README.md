@@ -13,7 +13,7 @@ El asistente (Alan) corre sobre **Gemini** con una capa de herramientas (30 tool
 | Frontend | Vite + React 18 + TypeScript + Tailwind + shadcn/ui (Radix) |
 | Routing / estado | React Router v6 + TanStack Query |
 | Backend | Supabase (Auth + Postgres + Edge Functions en Deno) |
-| IA | Gemini API (OpenAI-compatible): `gemini-2.5-pro` (chat) · `gemini-2.5-flash` (supervisor, títulos, transcripción) |
+| IA | Gemini API (OpenAI-compatible): `gemini-3.7-flash` (chat/tool-loop) · `gemini-2.5-flash` (supervisor, títulos, transcripción) · `gemini-embedding-001` (hybrid search) |
 | Búsqueda web | Firecrawl (search + scrape) |
 | Integraciones | Google Calendar + Gmail (OAuth), n8n (webhooks), Web Push (PWA) |
 | Deploy | Docker (build Vite → nginx) sobre VPS vía Dokploy |
