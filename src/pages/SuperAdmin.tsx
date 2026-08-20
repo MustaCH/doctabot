@@ -1826,7 +1826,7 @@ function ReportsPanel({ pin }: { pin: string }) {
   const approvalRate = supEvaluated > 0
     ? Math.round((supervisorStats!.approved / supEvaluated) * 100) : 0;
 
-  const statusLabel: Record<string, string> = { hot: "🔥 Caliente", warm: "🌡️ Tibio", cold: "❄️ Frío" };
+  const statusLabel: Record<string, string> = { hot: "Caliente", warm: "Tibio", cold: "Frío" };
   const statusColor: Record<string, string> = { hot: "text-red-500", warm: "text-amber-500", cold: "text-blue-500" };
 
   const pieData = Object.entries(clientDistribution).map(([key, value]) => ({

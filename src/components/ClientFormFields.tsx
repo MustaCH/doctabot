@@ -128,9 +128,9 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
               <Select value={form.client_type} onValueChange={(v) => set("client_type", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="buyer">🔍 Comprador</SelectItem>
-                  <SelectItem value="seller">🏠 Vendedor</SelectItem>
-                  <SelectItem value="both">↔️ Ambos</SelectItem>
+                  <SelectItem value="buyer">Comprador</SelectItem>
+                  <SelectItem value="seller">Vendedor</SelectItem>
+                  <SelectItem value="both">Ambos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -139,9 +139,9 @@ export default function ClientFormFields({ form, onChange, showPlaceholders }: P
               <Select value={form.status} onValueChange={(v) => set("status", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hot">🔥 Caliente</SelectItem>
-                  <SelectItem value="warm">☀️ Tibio</SelectItem>
-                  <SelectItem value="cold">❄️ Frío</SelectItem>
+                  <SelectItem value="hot">Caliente</SelectItem>
+                  <SelectItem value="warm">Tibio</SelectItem>
+                  <SelectItem value="cold">Frío</SelectItem>
                 </SelectContent>
               </Select>
             </div>

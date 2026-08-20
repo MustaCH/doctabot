@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft, Search, Zap, Users, MessageSquare, CalendarDays,
-  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle
+  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle,
+  Cake, Home, FileText, Pin, type LucideIcon
 } from "lucide-react";
+import { CLIENT_STATUS_META, type ClientStatus } from "@/lib/client-status";
 import { useNavigate } from "react-router-dom";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
@@ -54,18 +56,12 @@ interface DashboardData {
   pendingNotes: PendingNote[];
 }
 
-const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-  hot: { label: "🔥 Calientes", color: "text-red-400", bgColor: "bg-red-900/30 border-red-800" },
-  warm: { label: "☀️ Tibios", color: "text-amber-400", bgColor: "bg-amber-900/30 border-amber-800" },
-  cold: { label: "❄️ Fríos", color: "text-blue-400", bgColor: "bg-blue-900/30 border-blue-800" },
-};
-
-const eventTypeEmoji: Record<string, string> = {
-  birthday: "🎂",
-  purchase_anniversary: "🏠",
-  contract_expiry: "📄",
-  followup: "📞",
-  custom: "📌",
+const eventTypeIcon: Record<string, LucideIcon> = {
+  birthday: Cake,
+  purchase_anniversary: Home,
+  contract_expiry: FileText,
+  followup: Phone,
+  custom: Pin,
 };
 
 const STALE_DAYS = 14;
@@ -288,7 +284,10 @@ const Dashboard = () => {
                             : "border-border bg-card"
                         }`}
                       >
-                        <span className="text-lg">{eventTypeEmoji[ev.event_type] ?? "📌"}</span>
+                        {(() => {
+                          const EventIcon = eventTypeIcon[ev.event_type] ?? Pin;
+                          return <EventIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
+                        })()}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{ev.title}</p>
                           <p className="text-[11px] text-muted-foreground">
@@ -349,16 +348,21 @@ const Dashboard = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 {pipelineOrder.map(status => {
-                  const config = statusConfig[status];
+                  const config = CLIENT_STATUS_META[status as ClientStatus];
                   const clients = pipeline[status] ?? [];
+                  if (!config) return null;
                   return (
                     <div
                       key={status}
-                      className={`rounded-xl border p-3 space-y-2 ${config.bgColor}`}
+                      className="rounded-xl border p-3 space-y-2"
+                      style={{ background: config.bg, borderColor: config.border }}
                     >
                       <div className="flex items-center justify-between">
-                        <span className={`text-xs font-semibold ${config.color}`}>{config.label}</span>
-                        <span className={`text-lg font-bold ${config.color}`}>{clients.length}</span>
+                        <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: config.text }}>
+                          <span aria-hidden className="h-[5px] w-[5px] rounded-full" style={{ background: config.dot }} />
+                          {config.plural}
+                        </span>
+                        <span className="text-lg font-bold [font-variant-numeric:tabular-nums]" style={{ color: config.text }}>{clients.length}</span>
                       </div>
                       {clients.length > 0 && (
                         <div className="space-y-0.5">

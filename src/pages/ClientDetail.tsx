@@ -22,6 +22,8 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
+import { ClientStatusChip } from "@/components/ClientStatusChip";
+import { CLIENT_TYPE_LABEL } from "@/lib/client-status";
 import { Switch } from "@/components/ui/switch";
 import ContactTags from "@/components/ContactTags";
 
@@ -72,17 +74,7 @@ interface ClientNote {
   created_at: string;
 }
 
-const statusLabel: Record<string, string> = {
-  hot: "🔥 Caliente", warm: "☀️ Tibio", cold: "❄️ Frío",
-};
-const statusColor: Record<string, string> = {
-  hot: "bg-red-900/30 text-red-400 border-red-800",
-  warm: "bg-amber-900/30 text-amber-400 border-amber-800",
-  cold: "bg-blue-900/30 text-blue-400 border-blue-800",
-};
-const clientTypeLabel: Record<string, string> = {
-  buyer: "🔍 Comprador", seller: "🏠 Vendedor", both: "↔️ Ambos",
-};
+const clientTypeLabel = CLIENT_TYPE_LABEL;
 const propStatusLabel: Record<string, string> = {
   sugerida: "Sugerida", enviada: "Enviada", visitada: "Visitada", descartada: "Descartada",
 };
@@ -513,9 +505,7 @@ const ClientDetail = () => {
             <p className="max-w-full break-words text-center text-lg font-extrabold tracking-tight">{client.full_name}</p>
             {client.is_client && (
               <div className="flex flex-wrap items-center justify-center gap-1.5">
-                <span className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-bold ${statusColor[client.status] ?? "bg-muted text-muted-foreground"}`}>
-                  {statusLabel[client.status] ?? client.status}
-                </span>
+                <ClientStatusChip status={client.status} className="h-6 px-2.5 text-[11px] font-bold" />
                 <span className="inline-flex h-6 items-center rounded-full border bg-muted/40 px-2.5 text-[11px] font-bold text-muted-foreground">
                   {clientTypeLabel[client.client_type] ?? client.client_type}
                 </span>

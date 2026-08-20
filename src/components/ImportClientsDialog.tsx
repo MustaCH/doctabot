@@ -44,9 +44,9 @@ const clientTypeLabel: Record<string, string> = {
 };
 
 const statusOptions = [
-  { value: "cold", label: "❄️ Frío" },
-  { value: "warm", label: "☀️ Tibio" },
-  { value: "hot", label: "🔥 Caliente" },
+  { value: "cold", label: "Frío" },
+  { value: "warm", label: "Tibio" },
+  { value: "hot", label: "Caliente" },
 ];
 
 export default function ImportClientsDialog({ open, onOpenChange, userId, onImported }: ImportClientsDialogProps) {

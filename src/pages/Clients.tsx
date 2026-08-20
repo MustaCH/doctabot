@@ -14,12 +14,8 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
 import { getInitials, getAvatarColorIndex, AVATAR_COLORS } from "@/lib/contact-avatar";
 import { groupContacts, filterContacts, type ContactListItem, type ContactKind, type StatusFilter } from "@/lib/contact-list";
+import { ClientStatusChip } from "@/components/ClientStatusChip";
 
-const statusChip: Record<string, { label: string; cls: string }> = {
-  hot: { label: "🔥", cls: "bg-red-900/30 text-red-400" },
-  warm: { label: "☀️", cls: "bg-amber-900/30 text-amber-400" },
-  cold: { label: "❄️", cls: "bg-blue-900/30 text-blue-400" },
-};
 
 const formToDb = (form: ClientFormData) => ({
   full_name: form.full_name.trim(),
@@ -148,9 +144,9 @@ const Clients = () => {
           ))}
           <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="h-7 rounded-md border border-border bg-background px-2 text-xs">
             <option value="all">Estado: todos</option>
-            <option value="hot">🔥 Caliente</option>
-            <option value="warm">☀️ Tibio</option>
-            <option value="cold">❄️ Frío</option>
+            <option value="hot">Caliente</option>
+            <option value="warm">Tibio</option>
+            <option value="cold">Frío</option>
           </select>
         </div>
       </div>
@@ -185,9 +181,7 @@ const Clients = () => {
                       <span className={`rounded-full px-1.5 text-[10px] font-medium ${c.is_client ? "bg-blue-900/30 text-blue-300" : "bg-muted text-muted-foreground"}`}>
                         {c.is_client ? "Cliente" : "Contacto"}
                       </span>
-                      {c.is_client && statusChip[c.status] && (
-                        <span className={`rounded-full px-1.5 text-[10px] font-medium ${statusChip[c.status].cls}`}>{statusChip[c.status].label}</span>
-                      )}
+                      {c.is_client && <ClientStatusChip status={c.status} className="px-1.5" />}
                     </div>
                   </div>
                 </button>

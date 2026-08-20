@@ -3,16 +3,8 @@ import { Phone, MessageCircle, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getInitials, getAvatarColorIndex, AVATAR_COLORS } from "@/lib/contact-avatar";
 import { lastContactTone, type ContactCardProps } from "@/lib/contact-card-parse";
+import { ClientStatusChip } from "@/components/ClientStatusChip";
 
-// Mismos estilos de chips que ClientDetail/Clients (statusColor / chip de tipo en muted).
-const statusChipCls: Record<string, string> = {
-  hot: "bg-red-900/30 text-red-400 border-red-800",
-  warm: "bg-amber-900/30 text-amber-400 border-amber-800",
-  cold: "bg-blue-900/30 text-blue-400 border-blue-800",
-};
-const statusChipLabel: Record<string, string> = {
-  hot: "🔥 Caliente", warm: "🟡 Tibio", cold: "❄️ Frío",
-};
 
 const toneDotCls: Record<ReturnType<typeof lastContactTone>, string> = {
   green: "bg-emerald-500",
@@ -42,11 +34,7 @@ const ContactCard = ({ name, typeLabel, status, phone, email, seeking, lastConta
                     {typeLabel}
                   </span>
                 )}
-                {status && (
-                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium h-5 ${statusChipCls[status]}`}>
-                    {statusChipLabel[status]}
-                  </span>
-                )}
+                {status && <ClientStatusChip status={status} className="h-5" />}
               </div>
             )}
           </div>

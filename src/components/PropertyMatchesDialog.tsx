@@ -15,9 +15,9 @@ interface Props {
 }
 
 const statusLabels: Record<string, string> = {
-  hot: "🔥 Caliente",
-  warm: "☀️ Tibio",
-  cold: "❄️ Frío",
+  hot: "Caliente",
+  warm: "Tibio",
+  cold: "Frío",
 };
 
 function formatBudget(min: number | null, max: number | null, cur: string | null) {
