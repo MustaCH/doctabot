@@ -306,25 +306,54 @@ function ActivityCharts({ pin }: { pin: string }) {
 
   if (loading) return <LoadingSpinner />;
 
+  // Small multiples (ticket 86ak3ke1f): una serie por panel con su propia escala. Antes las 4
+  // métricas compartían un eje y tres de cuatro líneas vivían pegadas al piso.
+  const panels = (
+    [
+      { key: "mensajes", label: "Mensajes" },
+      { key: "conversaciones", label: "Conversaciones" },
+      { key: "usuarios", label: "Usuarios nuevos" },
+      { key: "propiedades", label: "Propiedades" },
+    ] as const
+  ).map((m) => {
+    const series = data.map((d) => d[m.key]);
+    const total = series.reduce((a, b) => a + b, 0);
+    const last7 = series.slice(-7).reduce((a, b) => a + b, 0);
+    const prev7 = series.slice(-14, -7).reduce((a, b) => a + b, 0);
+    const delta = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : null;
+    return { ...m, total, delta };
+  });
+
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+    <div className="mt-6 space-y-3">
       <div className="flex items-center gap-2">
         <TrendingUp className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold">Actividad (últimos 30 días)</h2>
+        <span className="text-[11px] text-muted-foreground">· delta: últimos 7 días vs. 7 anteriores</span>
       </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Line type="monotone" dataKey="mensajes" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="conversaciones" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="usuarios" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="propiedades" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {panels.map((m) => (
+          <div key={m.key} className="rounded-2xl border border-white/[0.09] bg-white/5 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{m.label}</p>
+            <div className="mt-1 flex items-baseline gap-2">
+              <p className="text-[22px] font-bold tracking-tight tabular-nums">{m.total.toLocaleString("es-AR")}</p>
+              {m.delta !== null ? (
+                <span className={`text-[11px] font-semibold tabular-nums ${m.delta >= 0 ? "text-[hsl(var(--success))]" : "text-[hsl(var(--accent-soft-foreground))]"}`}>
+                  {m.delta >= 0 ? "+" : ""}{m.delta}%
+                </span>
+              ) : (
+                <span className="text-[11px] text-muted-foreground">—</span>
+              )}
+            </div>
+            <ResponsiveContainer width="100%" height={48}>
+              <LineChart data={data} margin={{ top: 6, right: 0, bottom: 0, left: 0 }}>
+                <Tooltip contentStyle={{ fontSize: 11 }} labelStyle={{ fontSize: 10 }} />
+                <Line type="monotone" dataKey={m.key} name={m.label} stroke="hsl(var(--brand))" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1559,10 +1588,11 @@ function SupervisorPanel({ pin }: { pin: string }) {
 
   const verdictBadge = (verdict: string) => {
     switch (verdict) {
-      case "approved": return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"><CheckCircle className="h-3 w-3 mr-1" />Aprobado</Badge>;
-      case "rejected": return <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 hover:bg-rose-500/20"><XCircle className="h-3 w-3 mr-1" />Rechazado</Badge>;
-      case "unevaluated": return <Badge className="bg-slate-500/15 text-slate-500 border-slate-500/30 hover:bg-slate-500/20"><AlertTriangle className="h-3 w-3 mr-1" />Sin evaluar</Badge>;
-      default: return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 hover:bg-amber-500/20"><AlertTriangle className="h-3 w-3 mr-1" />Error</Badge>;
+      // Siempre icono + etiqueta: el color solo no alcanza (rojo/verde indistinguibles en deuteranopía).
+      case "approved": return <Badge className="border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] text-[hsl(var(--success))] hover:bg-[rgba(62,201,138,0.18)]"><CheckCircle className="h-3 w-3 mr-1" />Aprobado</Badge>;
+      case "rejected": return <Badge className="border-[rgba(255,90,77,0.32)] bg-[rgba(255,90,77,0.12)] text-[hsl(var(--accent-soft-foreground))] hover:bg-[rgba(255,90,77,0.18)]"><XCircle className="h-3 w-3 mr-1" />Rechazado</Badge>;
+      case "unevaluated": return <Badge className="border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"><AlertTriangle className="h-3 w-3 mr-1" />Sin evaluar</Badge>;
+      default: return <Badge className="border-[rgba(245,178,63,0.32)] bg-[rgba(245,178,63,0.12)] text-[hsl(var(--warm-soft-foreground))] hover:bg-[rgba(245,178,63,0.18)]"><AlertTriangle className="h-3 w-3 mr-1" />Error</Badge>;
     }
   };
 
@@ -1593,33 +1623,40 @@ function SupervisorPanel({ pin }: { pin: string }) {
         </div>
       )}
 
-      {stats?.byCategory && Object.keys(stats.byCategory).length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2 shadow-sm">
-          <h2 className="text-sm font-semibold">Veredictos por categoría</h2>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
-              <span key={cat} className="text-xs px-2 py-1 rounded-md bg-muted text-foreground border border-border">
-                {(CATEGORY_LABEL[cat] ?? cat)}: <strong>{count}</strong>
-              </span>
-            ))}
+      {stats?.byCategory && Object.keys(stats.byCategory).length > 0 && (() => {
+        const rows = Object.entries(stats.byCategory)
+          .sort((a, b) => b[1] - a[1])
+          .map(([cat, count]) => ({ label: CATEGORY_LABEL[cat] ?? cat, count }));
+        return (
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-2">
+            <h2 className="text-sm font-semibold">Rechazos por categoría</h2>
+            <ResponsiveContainer width="100%" height={rows.length * 32 + 12}>
+              <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 32, bottom: 0, left: 0 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ fontSize: 12 }} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                <Bar dataKey="count" name="Rechazos" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} barSize={16} label={{ position: "right", fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {chartData.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
-          <h2 className="text-sm font-semibold">Evaluaciones (últimos 30 días)</h2>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-sm font-semibold">Tasa de aprobación (últimos 30 días)</h2>
+            <span className="text-[11px] text-muted-foreground">aprobados / (aprobados + rechazados), por día</span>
+          </div>
+          {/* Una sola serie (86ak3ke1f): el multi-serie rojo/verde era indistinguible en deuteranopía.
+              Eje 0–100 completo: la línea alta es el dato, no un recorte. */}
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <LineChart data={chartData.map((d) => ({ date: d.date, tasa: d.aprobados + d.rechazados > 0 ? Math.round((d.aprobados / (d.aprobados + d.rechazados)) * 100) : null }))}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="aprobados" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="rechazados" stroke="hsl(0, 84%, 60%)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="errores" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="sinEvaluar" stroke="hsl(215, 16%, 47%)" strokeWidth={2} dot={false} />
+              <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={36} />
+              <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v) => [`${v}%`, "Tasa de aprobación"]} />
+              <Line type="monotone" dataKey="tasa" name="Tasa de aprobación" stroke="hsl(var(--success))" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -1893,23 +1930,26 @@ function ReportsPanel({ pin }: { pin: string }) {
             <BarChart3 className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Engagement (últimos 30 días)</h2>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
+          {/* Una serie por panel (86ak3ke1f): antes mensajes y usuarios activos compartían gráfico con eje doble. */}
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Mensajes por día</p>
+          <ResponsiveContainer width="100%" height={180}>
             <BarChart data={engagement.daily}>
-              <defs>
-                <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.9} />
-                  <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.7} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-              <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="messages" fill="url(#barGradient)" name="Mensajes" radius={[4, 4, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="activeUsers" stroke="hsl(var(--chart-3))" strokeWidth={2} name="Usuarios activos" dot={false} />
+              <YAxis tick={{ fontSize: 10 }} width={36} />
+              <Tooltip contentStyle={{ fontSize: 12 }} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+              <Bar dataKey="messages" fill="hsl(var(--brand))" name="Mensajes" radius={[4, 4, 0, 0]} />
             </BarChart>
+          </ResponsiveContainer>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Usuarios activos por día</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={engagement.daily}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} width={36} allowDecimals={false} />
+              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="activeUsers" stroke="hsl(var(--success))" strokeWidth={2} name="Usuarios activos" dot={false} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       )}
