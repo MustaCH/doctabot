@@ -33,7 +33,7 @@ dónde van. Marcadores server-side (se expanden en `sanitizeFinal` antes del flu
 | Marcador | Expande a | Fuente |
 |---|---|---|
 | `<<<PROPERTIES>>>` | Tarjetas de propiedad (foto+link `?associate` exactos) | resultados de search del turno (`card-render.ts`) |
-| `<<<CONTACTS>>>` | Tarjetas de contacto (👤/🏷️/📱/🔍/🕓) | última página de `list_clients` del turno |
+| `<<<CONTACTS>>>` | Tarjetas de contacto (👤 título como marcador + líneas rotuladas `Tipo:`/`Estado:`/`Teléfono:`/`Email:`/`Busca:`/`Último contacto:`; sin emojis desde el ticket 86ak3z04w — el parser del front tolera el formato viejo) | última página de `list_clients` del turno |
 
 Los marcadores legacy que SÍ escribe el modelo (`===MSG_BREAK===`, `<<<DRAFT_*>>>`,
 `<<<WHATSAPP_TO:…>>>`) están protegidos por guardarraíles (abajo).

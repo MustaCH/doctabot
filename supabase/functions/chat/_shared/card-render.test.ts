@@ -131,14 +131,24 @@ describe("tarjetas de contacto (renderContactCard / expandContactCards)", () => 
   const C1 = { full_name: "Julieta Moreno", phone: "+5493512001365", status: "cold", client_type: "both", is_client: true, preferred_zones: "Alta Córdoba", budget_max: 80000, budget_currency: "USD", property_type_interest: "Local comercial", last_contact_at: "2026-07-03T09:00:00Z" };
   const C2 = { full_name: "Granja Tanti", phone: "3512222222", is_client: false, status: "warm", client_type: "buyer", last_contact_at: null };
 
-  it("renderiza la tarjeta con tipo/estado/busca/último contacto", () => {
+  it("renderiza la tarjeta con líneas rotuladas: tipo/estado/teléfono/busca/último contacto (ticket 86ak3z04w)", () => {
     const card = renderContactCard(C1, NOW);
     expect(card).toContain("👤 **Julieta Moreno**");
-    expect(card).toContain("🏷️ Comprador/Vendedor · ❄️ Frío");
-    expect(card).toContain("📱 +5493512001365");
-    expect(card).toContain("🔍 Busca: Local comercial · en Alta Córdoba · hasta USD 80.000");
-    expect(card).toContain("🕓 Último contacto: hoy");
+    expect(card).toContain("Tipo: Comprador/Vendedor");
+    expect(card).toContain("Estado: Frío");
+    expect(card).toContain("Teléfono: +5493512001365");
+    expect(card).toContain("Busca: Local comercial · en Alta Córdoba · hasta USD 80.000");
+    expect(card).toContain("Último contacto: hoy");
     expect(card).not.toContain("🏠"); // nunca el emoji de tarjeta de propiedad
+  });
+
+  it("el 👤 del título es el ÚNICO emoji de la tarjeta (sin 🏷️📱✉️🔍🕓 ni 🔥🟡❄️)", () => {
+    const card = renderContactCard({ ...C1, id: "abc-123", email: "j@mail.com" }, NOW);
+    const emojis = card.match(/\p{Extended_Pictographic}/gu) ?? [];
+    expect(emojis).toEqual(["👤"]);
+    for (const st of ["hot", "warm", "cold"]) {
+      expect(renderContactCard({ ...C1, status: st }, NOW)).toMatch(/^Estado: (Caliente|Tibio|Frío)$/m);
+    }
   });
 
   it("con id emite la línea [Ver perfil](/clients/{id}) para el ContactCard del front", () => {
@@ -149,9 +159,10 @@ describe("tarjetas de contacto (renderContactCard / expandContactCards)", () => 
 
   it("contacto común (is_client=false): chip 'Contacto' sin estado, y 'nunca' contactado", () => {
     const card = renderContactCard(C2, NOW);
-    expect(card).toContain("🏷️ Contacto");
-    expect(card).not.toContain("Tibio"); // el status no aplica a contactos comunes
-    expect(card).toContain("🕓 Último contacto: nunca");
+    expect(card).toContain("Tipo: Contacto");
+    expect(card).not.toContain("Estado:"); // el status no aplica a contactos comunes
+    expect(card).not.toContain("Tibio");
+    expect(card).toContain("Último contacto: nunca");
   });
 
   it("relativeDays: hoy / ayer / hace N días / null", () => {

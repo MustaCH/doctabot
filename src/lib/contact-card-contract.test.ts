@@ -135,6 +135,90 @@ describe("línea [Ver perfil](/clients/{id}) — opción (a) del handoff, YA imp
   });
 });
 
+// Ticket 86ak3z04w: el server pasó a líneas rotuladas sin emoji. Los mensajes YA PERSISTIDOS en DB
+// siguen con el formato viejo (🏷️ 📱 ✉️ 🔍 🕓 y estados 🔥/🟡/❄️) — el parser tiene que leer AMBOS
+// (espejo de "una tarjeta vieja persistida y una nueva conviven" en match-card-contract.test.ts).
+describe("retrocompat: mensajes viejos persistidos con emojis + formato nuevo", () => {
+  const VIEJA = [
+    "👤 **Carla Díaz**",
+    "🏷️ Comprador · 🔥 Caliente",
+    "📱 +5493515550001",
+    "✉️ carla@mail.com",
+    "🔍 Busca: Casa · en Villa Allende · hasta USD 150.000",
+    "🕓 Último contacto: hace 3 días",
+    "[Ver perfil](/clients/old-1)",
+  ].join("\n");
+
+  it("una tarjeta vieja (emojis) parsea con todos sus campos", () => {
+    const card = parseContactCard(VIEJA);
+    expect(card).not.toBeNull();
+    expect(card!.name).toBe("Carla Díaz");
+    expect(card!.typeLabel).toBe("Comprador");
+    expect(card!.status).toBe("hot");
+    expect(card!.phone).toBe("+5493515550001");
+    expect(card!.email).toBe("carla@mail.com");
+    expect(card!.seeking).toBe("Casa · en Villa Allende · hasta USD 150.000");
+    expect(card!.lastContactLabel).toBe("hace 3 días");
+    expect(card!.lastContactDays).toBe(3);
+    expect(card!.profilePath).toBe("/clients/old-1");
+  });
+
+  it("los tres estados viejos (🔥 / 🟡 y ☀️ / ❄️) mapean a hot/warm/cold", () => {
+    const mk = (chip: string) => parseContactCard(`👤 **X**\n🏷️ Vendedor · ${chip}\n🕓 Último contacto: nunca`)!.status;
+    expect(mk("🔥 Caliente")).toBe("hot");
+    expect(mk("🟡 Tibio")).toBe("warm");
+    expect(mk("☀️ Tibio")).toBe("warm");
+    expect(mk("❄️ Frío")).toBe("cold");
+  });
+
+  it("el formato nuevo del server no tiene emojis salvo el 👤 del título y parsea igual", () => {
+    const md = renderContactCard(contact({ status: "hot", client_type: "seller" }), NOW);
+    expect(md.match(/\p{Extended_Pictographic}/gu)).toEqual(["👤"]);
+    const card = parseContactCard(md)!;
+    expect(card.typeLabel).toBe("Vendedor");
+    expect(card.status).toBe("hot");
+    expect(card.phone).toBe("+5493512001365");
+    expect(card.lastContactLabel).toBe("hace 12 días");
+  });
+
+  it("una tarjeta vieja persistida y una nueva conviven en el mismo mensaje", () => {
+    const segments = parseContactCardSegments(`Dos contactos:\n${VIEJA}\n\n${renderContactCard(contact({}), NOW)}`);
+    expect(segments).not.toBeNull();
+    const cards = segments!.filter((s) => s.type === "contact").map((s) => s.contact!);
+    expect(cards).toHaveLength(2);
+    expect(cards[0].name).toBe("Carla Díaz");
+    expect(cards[0].status).toBe("hot");
+    expect(cards[1].name).toBe("Julieta Moreno");
+    expect(cards[1].status).toBe("cold");
+    expect(cards[1].typeLabel).toBe("Comprador/Vendedor");
+    // ningún segmento de texto con emojis huérfanos ni líneas rotuladas crudas
+    const texts = segments!.filter((s) => s.type === "text").map((s) => s.text!);
+    expect(texts).toEqual(["Dos contactos:"]);
+  });
+
+  it("prosa después de una tarjeta nueva cierra el bloque (las líneas rotuladas no se 'comen' el texto)", () => {
+    const md = `${renderContactCard(contact({}), NOW)}\n¿Le mando el mensaje?`;
+    const segments = parseContactCardSegments(md)!;
+    expect(segments[0].type).toBe("contact");
+    expect(segments[1]).toEqual({ type: "text", text: "¿Le mando el mensaje?" });
+  });
+
+  it("expectativa conocida: una línea de prosa que arranca con un rótulo (Email:) PEGADA a la tarjeta se absorbe en el bloque", () => {
+    // Mismo riesgo que ya asume el parser de propiedades con Precio:/Oficina:. En la práctica no
+    // pasa: el server emite una tarjeta por burbuja (===MSG_BREAK===) y el cierre va en otra.
+    const md = `${renderContactCard(contact({ email: null }), NOW)}\nEmail: te lo paso después`;
+    const segments = parseContactCardSegments(md)!;
+    expect(segments).toHaveLength(1);
+    expect(segments[0].type).toBe("contact");
+    expect(segments[0].contact!.email).toBe("te lo paso después");
+  });
+
+  it("Estado: tolera mayúsculas/minúsculas distintas del canónico", () => {
+    const card = parseContactCard("👤 **X**\nEstado: caliente\nÚltimo contacto: nunca")!;
+    expect(card.status).toBe("hot");
+  });
+});
+
 describe("indicador de último contacto (semáforo)", () => {
   it("hoy/ayer/hace N días → días; nunca → null", () => {
     expect(parseLastContactDays("hoy")).toBe(0);

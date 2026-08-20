@@ -56,6 +56,7 @@ npm test           # Vitest (una corrida)
 
 - Strings de usuario y respuestas de Alan: **español argentino con voseo** (vos, usás, tenés). Términos técnicos en inglés.
 - Emojis con moderación. Las tarjetas de propiedad ya NO usan emojis como iconos (ticket 86ak3kcx3): el formato server-side es título con 🏠 (único emoji — es el marcador con el que el front detecta tarjetas) + líneas rotuladas `Oficina:`/`Precio:`/`Ubicación:`/`Superficie:`/`[Ver propiedad](url)`. El parser del front (`src/lib/property-card-parse.ts`) tolera además el formato viejo con 💰 📍 📐 🏢 🔗 por los mensajes persistidos — no romper esa retrocompatibilidad.
+- Ídem tarjetas de contacto (ticket 86ak3z04w): título con 👤 (único emoji, marcador de bloque) + líneas rotuladas `Tipo:`/`Estado:`/`Teléfono:`/`Email:`/`Busca:`/`Último contacto:`/`[Ver perfil](/clients/id)`, estados en texto plano (`Caliente`/`Tibio`/`Frío`). `src/lib/contact-card-parse.ts` tolera el formato viejo (🏷️ 📱 ✉️ 🔍 🕓, 🔥/🟡/❄️) — contrato en `src/lib/contact-card-contract.test.ts`.
 
 ## Diseño (en transición)
 

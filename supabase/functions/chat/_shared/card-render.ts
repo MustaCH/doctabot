@@ -144,6 +144,12 @@ export function collapseEmptyBubbles(text: string): string {
 // la lista (formato feo + riesgo de inventar); emite <<<CONTACTS>>> y el server la arma desde los
 // resultados REALES de list_clients, una tarjeta por burbuja (===MSG_BREAK===).
 // OJO: sin 🏠 en este formato (el front detecta tarjetas de propiedad contando 🏠).
+//
+// Rediseño (ticket 86ak3z04w, espejo del 86ak3kcx3 de propiedades): sin 🏷️📱✉️🔍🕓 ni estados
+// con emoji — líneas rotuladas (Tipo:/Estado:/Teléfono:/Email:/Busca:/Último contacto:) y estados
+// en texto plano (Caliente/Tibio/Frío). El 👤 del título SE QUEDA: es el marcador con el que el
+// front detecta el bloque (parseContactCardSegments). El parser del front tolera AMBOS formatos
+// por los mensajes viejos persistidos (src/lib/contact-card-parse.ts + contact-card-contract.test.ts).
 
 export interface ContactCardData {
   id?: string | null;
@@ -160,7 +166,7 @@ export interface ContactCardData {
   last_contact_at?: string | null;
 }
 
-const STATUS_LABEL: Record<string, string> = { hot: "🔥 Caliente", warm: "🟡 Tibio", cold: "❄️ Frío" };
+const STATUS_LABEL: Record<string, string> = { hot: "Caliente", warm: "Tibio", cold: "Frío" };
 const TYPE_LABEL: Record<string, string> = { buyer: "Comprador", seller: "Vendedor", both: "Comprador/Vendedor" };
 
 /** "hoy" / "ayer" / "hace N días" relativo a `now` (inyectable para tests). */
@@ -174,24 +180,31 @@ export function relativeDays(iso: string | null | undefined, now: Date = new Dat
   return `hace ${days} días`;
 }
 
-/** Tarjeta markdown de UN contacto. Solo líneas con datos. Pura y testeable. */
+/**
+ * Tarjeta markdown de UN contacto. Solo líneas con datos. Pura y testeable.
+ * Formato canónico (líneas rotuladas; el 👤 del título es el único emoji):
+ *   👤 **Nombre**
+ *   Tipo: Comprador | Vendedor | Comprador/Vendedor | Contacto
+ *   Estado: Caliente | Tibio | Frío          (solo clientes)
+ *   Teléfono: … / Email: … / Busca: …        (si hay dato)
+ *   Último contacto: hoy | ayer | hace N días | nunca   (siempre)
+ *   [Ver perfil](/clients/{id})              (si hay id)
+ */
 export function renderContactCard(c: ContactCardData, now: Date = new Date()): string {
   const lines: string[] = [];
   lines.push(`👤 **${c.full_name ?? "Contacto"}**`);
-  const chips: string[] = [];
-  if (c.is_client === false) chips.push("Contacto");
-  else if (c.client_type && TYPE_LABEL[c.client_type]) chips.push(TYPE_LABEL[c.client_type]);
-  if (c.is_client !== false && c.status && STATUS_LABEL[c.status]) chips.push(STATUS_LABEL[c.status]);
-  if (chips.length) lines.push(`🏷️ ${chips.join(" · ")}`);
-  if (c.phone) lines.push(`📱 ${c.phone}`);
-  if (c.email) lines.push(`✉️ ${c.email}`);
+  if (c.is_client === false) lines.push("Tipo: Contacto");
+  else if (c.client_type && TYPE_LABEL[c.client_type]) lines.push(`Tipo: ${TYPE_LABEL[c.client_type]}`);
+  if (c.is_client !== false && c.status && STATUS_LABEL[c.status]) lines.push(`Estado: ${STATUS_LABEL[c.status]}`);
+  if (c.phone) lines.push(`Teléfono: ${c.phone}`);
+  if (c.email) lines.push(`Email: ${c.email}`);
   const busca: string[] = [];
   if (c.property_type_interest) busca.push(String(c.property_type_interest));
   if (c.preferred_zones) busca.push(`en ${c.preferred_zones}`);
   if (c.budget_max != null && c.budget_max !== "") busca.push(`hasta ${c.budget_currency ?? "USD"} ${Number(c.budget_max).toLocaleString("es-AR")}`);
-  if (busca.length) lines.push(`🔍 Busca: ${busca.join(" · ")}`);
+  if (busca.length) lines.push(`Busca: ${busca.join(" · ")}`);
   const rel = relativeDays(c.last_contact_at, now);
-  lines.push(`🕓 Último contacto: ${rel ?? "nunca"}`);
+  lines.push(`Último contacto: ${rel ?? "nunca"}`);
   // Link de perfil para el ContactCard del front (opción (a) del handoff): el front lo convierte
   // en el botón "Ver perfil"; como markdown plano también funciona (link interno /clients/{id}).
   if (c.id) lines.push(`[Ver perfil](/clients/${c.id})`);

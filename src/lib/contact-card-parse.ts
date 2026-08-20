@@ -5,6 +5,11 @@
 // OJO: el formato lo emite el backend en supabase/functions/chat/_shared/card-render.ts
 // (renderContactCard) — es un CONTRATO, ver src/lib/contact-card-contract.test.ts. El bloque
 // nunca contiene 🏠 (el detector de tarjetas de propiedad cuenta 🏠 y corre antes en la cadena).
+//
+// Desde el rediseño (ticket 86ak3z04w) el server emite líneas ROTULADAS (Tipo:/Estado:/Teléfono:/
+// Email:/Busca:/Último contacto:) y estados en texto plano; solo conserva el 👤 del título como
+// marcador de bloque. Los mensajes VIEJOS persistidos en DB siguen con 🏷️ 📱 ✉️ 🔍 🕓 y
+// estados 🔥/🟡/❄️ — este parser tolera AMBOS formatos.
 
 export type ContactStatus = "hot" | "warm" | "cold";
 
@@ -15,7 +20,7 @@ export interface ContactCardProps {
   status?: ContactStatus;
   phone?: string;
   email?: string;
-  /** Texto después de "🔍 Busca: " (tipo · zona · presupuesto). */
+  /** Texto después de "Busca: " (tipo · zona · presupuesto). */
   seeking?: string;
   /** Valor crudo del server: "hoy" / "ayer" / "hace N días" / "nunca". */
   lastContactLabel: string;
@@ -25,8 +30,12 @@ export interface ContactCardProps {
   profilePath?: string;
 }
 
-// El server emite 🟡 Tibio; el resto del front usa ☀️ Tibio — se aceptan los dos.
+// Formato nuevo: texto plano. Formato viejo: el server emitía 🟡 Tibio y el resto del front ☀️ Tibio
+// — se aceptan todos.
 const STATUS_BY_LABEL: Record<string, ContactStatus> = {
+  Caliente: "hot",
+  Tibio: "warm",
+  Frío: "cold",
   "🔥 Caliente": "hot",
   "🟡 Tibio": "warm",
   "☀️ Tibio": "warm",
@@ -36,6 +45,8 @@ const STATUS_BY_LABEL: Record<string, ContactStatus> = {
 const TYPE_LABELS = new Set(["Comprador", "Vendedor", "Comprador/Vendedor", "Contacto"]);
 
 const PROFILE_LINK_RE = /^\[Ver perfil\]\((\/clients\/[^)\s]+)\)$/;
+// Rótulos del formato nuevo (una línea por dato). Case-insensitive por tolerancia.
+const LABELED_LINE_RE = /^(Tipo|Estado|Teléfono|Email|Busca|Último contacto):/i;
 
 /** "hoy" → 0, "ayer" → 1, "hace N días" → N, "nunca" → null. Cualquier otra cosa → null. */
 export function parseLastContactDays(label: string): number | null {
@@ -76,6 +87,7 @@ export function parseContactCard(md: string): ContactCardProps | null {
   let profilePath: string | undefined;
 
   for (const line of lines.slice(1)) {
+    // Chips (formato viejo): "🏷️ Comprador · 🔥 Caliente"
     if (line.startsWith("🏷️")) {
       const chips = line.replace(/^🏷️\s*/, "").split(" · ");
       for (const chip of chips) {
@@ -84,19 +96,37 @@ export function parseContactCard(md: string): ContactCardProps | null {
       }
       continue;
     }
-    if (line.startsWith("📱")) {
-      phone = line.replace(/^📱\s*/, "");
+    // Formato nuevo: "Tipo: …" / "Estado: …" (una línea por dato)
+    const typeMatch = line.match(/^Tipo:\s*(.+)$/i);
+    if (typeMatch) {
+      if (TYPE_LABELS.has(typeMatch[1].trim())) typeLabel = typeMatch[1].trim();
       continue;
     }
-    if (line.startsWith("✉️")) {
-      email = line.replace(/^✉️\s*/, "");
+    const statusMatch = line.match(/^Estado:\s*(.+)$/i);
+    if (statusMatch) {
+      const raw = statusMatch[1].trim();
+      // Tolerante a mayúsculas ("caliente" → "Caliente"); el server siempre emite el canónico.
+      const s = STATUS_BY_LABEL[raw] ?? STATUS_BY_LABEL[raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()];
+      if (s) status = s;
       continue;
     }
-    if (line.startsWith("🔍")) {
+    // Teléfono — "Teléfono: …" (nuevo) o "📱 …" (viejo)
+    if (line.startsWith("📱") || /^Teléfono:/i.test(line)) {
+      phone = line.replace(/^📱\s*/, "").replace(/^Teléfono:\s*/i, "");
+      continue;
+    }
+    // Email — "Email: …" o "✉️ …"
+    if (line.startsWith("✉️") || /^Email:/i.test(line)) {
+      email = line.replace(/^✉️\s*/, "").replace(/^Email:\s*/i, "");
+      continue;
+    }
+    // Qué busca — "Busca: …" o "🔍 Busca: …"
+    if (line.startsWith("🔍") || /^Busca:/i.test(line)) {
       seeking = line.replace(/^🔍\s*/, "").replace(/^Busca:\s*/i, "");
       continue;
     }
-    if (line.startsWith("🕓")) {
+    // Último contacto — "Último contacto: …" o "🕓 Último contacto: …"
+    if (line.startsWith("🕓") || /^Último contacto:/i.test(line)) {
       lastContactLabel = line.replace(/^🕓\s*/, "").replace(/^Último contacto:\s*/i, "");
       continue;
     }
@@ -107,7 +137,7 @@ export function parseContactCard(md: string): ContactCardProps | null {
     }
   }
 
-  // La otra línea garantizada por contrato: 🕓 Último contacto. Sin ella, fallback a texto.
+  // La otra línea garantizada por contrato: "Último contacto:" (antes 🕓). Sin ella, fallback a texto.
   if (!lastContactLabel) return null;
 
   return {
@@ -129,10 +159,11 @@ export interface ContactSegment {
   contact?: ContactCardProps;
 }
 
-/** ¿Esta línea pertenece a un bloque de contacto ya abierto? */
+/** ¿Esta línea pertenece a un bloque de contacto ya abierto? (formato nuevo rotulado o viejo con emoji) */
 function isContactBlockLine(trimmed: string): boolean {
   return (
     trimmed === "" ||
+    LABELED_LINE_RE.test(trimmed) ||
     trimmed.startsWith("🏷️") ||
     trimmed.startsWith("📱") ||
     trimmed.startsWith("✉️") ||
