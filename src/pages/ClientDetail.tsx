@@ -76,9 +76,9 @@ const statusLabel: Record<string, string> = {
   hot: "🔥 Caliente", warm: "☀️ Tibio", cold: "❄️ Frío",
 };
 const statusColor: Record<string, string> = {
-  hot: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
-  warm: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-  cold: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
+  hot: "bg-red-900/30 text-red-400 border-red-800",
+  warm: "bg-amber-900/30 text-amber-400 border-amber-800",
+  cold: "bg-blue-900/30 text-blue-400 border-blue-800",
 };
 const clientTypeLabel: Record<string, string> = {
   buyer: "🔍 Comprador", seller: "🏠 Vendedor", both: "↔️ Ambos",
@@ -90,25 +90,25 @@ const propStatusLabel: Record<string, string> = {
 const propStatusChip: Record<string, string> = {
   sugerida: "bg-muted text-muted-foreground",
   enviada: "bg-primary/10 text-primary",
-  visitada: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
-  descartada: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  visitada: "bg-sky-900/30 text-sky-400",
+  descartada: "bg-red-900/30 text-red-400",
 };
 
 // Semáforo del widget Último contacto (verde <7 días, ámbar <30, rojo 30+ / nunca).
 const contactTiers = {
   green: {
-    panel: "bg-green-100 border-green-200 dark:bg-green-900/25 dark:border-green-800",
-    text: "text-green-800 dark:text-green-300",
+    panel: "bg-green-900/25 border-green-800",
+    text: "text-green-300",
     dot: "bg-green-500",
   },
   amber: {
-    panel: "bg-amber-100 border-amber-200 dark:bg-amber-900/25 dark:border-amber-800",
-    text: "text-amber-800 dark:text-amber-300",
+    panel: "bg-amber-900/25 border-amber-800",
+    text: "text-amber-300",
     dot: "bg-amber-500",
   },
   red: {
-    panel: "bg-red-100 border-red-200 dark:bg-red-900/25 dark:border-red-800",
-    text: "text-red-800 dark:text-red-300",
+    panel: "bg-red-900/25 border-red-800",
+    text: "text-red-300",
     dot: "bg-red-500",
   },
 } as const;
@@ -570,7 +570,7 @@ const ClientDetail = () => {
         <div className={`overflow-hidden rounded-2xl border shadow-sm ${tier.panel}`}>
           <div className="px-4 pb-3.5 pt-4">
             <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${tier.dot} ring-4 ring-white/50 dark:ring-black/20`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${tier.dot} ring-4 ring-black/20`} />
               <span className={`text-[11px] font-extrabold uppercase tracking-widest ${tier.text}`}>Último contacto</span>
             </div>
             <p className={`mb-0.5 mt-2 text-[22px] font-extrabold tracking-tight ${tier.text}`}>{lastContact?.human}</p>

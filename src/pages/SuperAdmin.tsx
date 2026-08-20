@@ -834,8 +834,8 @@ function PushTestPanel({ pin }: { pin: string }) {
                 <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="font-medium">
                     {d.device_label ?? "Desconocido"}
-                    {d.is_standalone === true && <span className="ml-1 text-emerald-600 dark:text-emerald-400">· Instalada</span>}
-                    {d.is_standalone === false && <span className="ml-1 text-amber-600 dark:text-amber-400">· Tab navegador</span>}
+                    {d.is_standalone === true && <span className="ml-1 text-emerald-400">· Instalada</span>}
+                    {d.is_standalone === false && <span className="ml-1 text-amber-400">· Tab navegador</span>}
                     {d.is_standalone === null && <span className="ml-1 text-muted-foreground">· Sin metadatos</span>}
                   </span>
                   <span className="font-mono text-muted-foreground truncate max-w-[180px]" title={d.endpoint_preview}>{d.endpoint_preview}</span>
@@ -858,7 +858,7 @@ function PushTestPanel({ pin }: { pin: string }) {
             <div
               className={`rounded-md border p-2.5 text-xs ${
                 result.ok
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                   : "border-destructive/30 bg-destructive/10 text-destructive"
               }`}
             >
@@ -999,8 +999,8 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
               <p className="text-xl font-bold">{stats.totals.total.toLocaleString("es-AR")}</p>
             </div>
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Exitosas</p>
-              <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
+              <p className="text-[10px] uppercase tracking-wide text-emerald-400">Exitosas</p>
+              <p className="text-xl font-bold text-emerald-400">
                 {stats.totals.sent.toLocaleString("es-AR")}
                 <span className="text-xs font-normal ml-1.5">({stats.totals.successRate}%)</span>
               </p>
@@ -1010,8 +1010,8 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
               <p className="text-xl font-bold text-destructive">{stats.totals.failed.toLocaleString("es-AR")}</p>
             </div>
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">Suscripciones limpiadas</p>
-              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">{stats.totals.pruned.toLocaleString("es-AR")}</p>
+              <p className="text-[10px] uppercase tracking-wide text-amber-400">Suscripciones limpiadas</p>
+              <p className="text-xl font-bold text-amber-400">{stats.totals.pruned.toLocaleString("es-AR")}</p>
             </div>
           </div>
 

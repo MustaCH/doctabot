@@ -55,9 +55,9 @@ interface DashboardData {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-  hot: { label: "🔥 Calientes", color: "text-red-700 dark:text-red-400", bgColor: "bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800" },
-  warm: { label: "☀️ Tibios", color: "text-amber-700 dark:text-amber-400", bgColor: "bg-amber-100 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800" },
-  cold: { label: "❄️ Fríos", color: "text-blue-700 dark:text-blue-400", bgColor: "bg-blue-100 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" },
+  hot: { label: "🔥 Calientes", color: "text-red-400", bgColor: "bg-red-900/30 border-red-800" },
+  warm: { label: "☀️ Tibios", color: "text-amber-400", bgColor: "bg-amber-900/30 border-amber-800" },
+  cold: { label: "❄️ Fríos", color: "text-blue-400", bgColor: "bg-blue-900/30 border-blue-800" },
 };
 
 const eventTypeEmoji: Record<string, string> = {
@@ -400,7 +400,7 @@ const Dashboard = () => {
                   </Badge>
                 </div>
 
-                <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 divide-y divide-amber-100 dark:divide-amber-900/30 overflow-hidden">
+                <div className="rounded-xl border border-amber-800 bg-amber-950/20 divide-y divide-amber-900/30 overflow-hidden">
                   {staleClients.map(c => {
                     const lastDate = c.last_contact_at ?? c.updated_at;
                     return (

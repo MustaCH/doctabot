@@ -92,7 +92,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             <button
               onClick={toggle}
               disabled={favLoading}
-              className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/10 dark:bg-white/10 backdrop-blur-sm transition-colors hover:bg-black/20"
+              className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm transition-colors hover:bg-black/20"
             >
               <Heart
                 className={`h-3.5 w-3.5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
@@ -155,7 +155,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
                 size="sm"
                 variant="outline"
                 aria-label="Compartir por WhatsApp"
-                className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                className="h-9 w-9 p-0 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-950"
                 onClick={handleWhatsApp}
                 disabled={!whatsappPhone}
               >
@@ -168,7 +168,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
           <div className="flex gap-2 pt-1">
             {contactPhone && (
               <a href={`https://wa.me/${contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex-1">
-                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-950">
                   <MessageCircle className="h-3.5 w-3.5" />
                   WhatsApp
                 </Button>

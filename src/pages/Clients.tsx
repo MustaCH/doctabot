@@ -16,9 +16,9 @@ import { getInitials, getAvatarColorIndex, AVATAR_COLORS } from "@/lib/contact-a
 import { groupContacts, filterContacts, type ContactListItem, type ContactKind, type StatusFilter } from "@/lib/contact-list";
 
 const statusChip: Record<string, { label: string; cls: string }> = {
-  hot: { label: "🔥", cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  warm: { label: "☀️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-  cold: { label: "❄️", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  hot: { label: "🔥", cls: "bg-red-900/30 text-red-400" },
+  warm: { label: "☀️", cls: "bg-amber-900/30 text-amber-400" },
+  cold: { label: "❄️", cls: "bg-blue-900/30 text-blue-400" },
 };
 
 const formToDb = (form: ClientFormData) => ({
@@ -182,7 +182,7 @@ const Clients = () => {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{c.full_name}</p>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className={`rounded-full px-1.5 text-[10px] font-medium ${c.is_client ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-muted text-muted-foreground"}`}>
+                      <span className={`rounded-full px-1.5 text-[10px] font-medium ${c.is_client ? "bg-blue-900/30 text-blue-300" : "bg-muted text-muted-foreground"}`}>
                         {c.is_client ? "Cliente" : "Contacto"}
                       </span>
                       {c.is_client && statusChip[c.status] && (

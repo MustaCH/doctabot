@@ -6,9 +6,9 @@ import { lastContactTone, type ContactCardProps } from "@/lib/contact-card-parse
 
 // Mismos estilos de chips que ClientDetail/Clients (statusColor / chip de tipo en muted).
 const statusChipCls: Record<string, string> = {
-  hot: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
-  warm: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-  cold: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
+  hot: "bg-red-900/30 text-red-400 border-red-800",
+  warm: "bg-amber-900/30 text-amber-400 border-amber-800",
+  cold: "bg-blue-900/30 text-blue-400 border-blue-800",
 };
 const statusChipLabel: Record<string, string> = {
   hot: "🔥 Caliente", warm: "🟡 Tibio", cold: "❄️ Frío",
@@ -85,7 +85,7 @@ const ContactCard = ({ name, typeLabel, status, phone, email, seeking, lastConta
             )}
             {waDigits && (
               <a href={`https://wa.me/${waDigits}`} target="_blank" rel="noopener noreferrer" className="flex-1">
-                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs text-green-600 hover:text-green-700 hover:bg-green-950">
                   <MessageCircle className="h-3.5 w-3.5" />
                   WhatsApp
                 </Button>
