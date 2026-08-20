@@ -119,6 +119,16 @@ const Chat = () => {
 
   // Estado del orb: banderas reales del turno + grabación + no-leídos + turno fallido.
   const [isRecording, setIsRecording] = useState(false);
+  // El overlay de grabación queda montado 300ms extra para la transición de salida.
+  const [showRecordingOrb, setShowRecordingOrb] = useState(false);
+  useEffect(() => {
+    if (isRecording) {
+      setShowRecordingOrb(true);
+      return;
+    }
+    const t = setTimeout(() => setShowRecordingOrb(false), 300);
+    return () => clearTimeout(t);
+  }, [isRecording]);
   const lastTurnFailed = useMemo(() => {
     const last = messages[messages.length - 1];
     return !!last && last.role === "assistant" && isTurnErrorMessage(last.content);
@@ -225,7 +235,12 @@ const Chat = () => {
               "radial-gradient(ellipse 130% 55% at 50% -8%, rgba(76,141,255,0.18) 0%, rgba(76,141,255,0) 62%), radial-gradient(ellipse 90% 40% at 15% 105%, rgba(255,90,77,0.10) 0%, rgba(255,90,77,0) 60%)",
           }}
         >
-          <div ref={scrollRef} className="relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom">
+          <div
+            ref={scrollRef}
+            className={`relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom transition-opacity duration-300 motion-reduce:transition-none ${
+              isRecording ? "opacity-40" : "opacity-100"
+            }`}
+          >
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-5 px-6 py-14 text-center">
@@ -284,6 +299,20 @@ const Chat = () => {
             </div>
           )}
           </div>
+
+          {/* Grabando: el orb se adelanta a 76px sobre la barra de input ("le hablás a Alan").
+              Overlay absoluto: no empuja el layout del hilo; entrada/salida suaves y sin
+              animación con prefers-reduced-motion. */}
+          {showRecordingOrb && (
+            <div
+              className={`pointer-events-none absolute inset-x-0 bottom-6 z-20 flex flex-col items-center gap-3 animate-in fade-in zoom-in-90 duration-300 motion-reduce:animate-none transition-all motion-reduce:transition-none ${
+                isRecording ? "opacity-100 scale-100" : "opacity-0 scale-90"
+              }`}
+            >
+              <AlanOrb size="lg" state="listening" aria-label="Alan escuchando" />
+              <p className="text-sm text-muted-foreground">Te escucho…</p>
+            </div>
+          )}
         </div>
 
         {/* Scroll to bottom button */}
