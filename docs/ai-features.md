@@ -336,3 +336,31 @@ No hay banco de evals automatizado todavía (deuda). El patrón actual por cambi
 tests unitarios de las piezas puras + E2E contra prod con usuario descartable (admin API + password
 grant + POST a `/functions/v1/chat` sin `conversationId`, parsear SSE, borrar usuario) + lectura de
 mensajes persistidos por SQL. Verificar efectos de DB **por SQL**, no con checks REST improvisados.
+
+## Spike: ¿% de match mostrable? — NO (ticket 86ak3kd13, 2026-08-20)
+
+**Qué calcula el matching hoy** (`src/lib/property-matching.ts` + núcleo compartido
+`supabase/functions/_shared/matching-core.ts`, el mismo que usa el cron `morning-matches`;
+paridad garantizada por `src/lib/matching-parity.test.ts`):
+
+- **No existe un score continuo.** El resultado por cliente↔propiedad es una **lista de razones**
+  (`matchReasons: string[]`): Zona, Tipo, Presupuesto (estructurados) + suplementos desde notas.
+- Zona y Tipo son **gates obligatorios**: si el cliente los declaró y no matchean, el cliente se
+  EXCLUYE (return null) — no restan puntos, eliminan.
+- Presupuesto es techo×1.30 / piso×0.85 (regla Docta): también binario (aporta razón o no).
+- Umbral por cliente: `minReasonsFor` → 1 razón si el cliente es "solo-zona"; si no,
+  `MIN_MATCH_REASONS`. El orden de resultados es por **conteo de razones** (desc), rango 1–4.
+- Aparte existe `relevance_score` (RPC trigram de `search_properties`): es similitud de TEXTO
+  contra el término buscado, no compatibilidad cliente↔propiedad. Tampoco sirve para el badge.
+
+**Decisión: NO se muestra el % de match.** "91%" vs "79%" no es derivable sin inventar: convertir
+un conteo de 1–4 criterios pass/fail a porcentaje da saltos groseros (2/3→67%) y, como los
+criterios obligatorios ya filtran, todo lo que se muestra "cumple al 100%" lo que el cliente
+declaró. Criterio del ticket: si el agente no puede explicarle el número a un cliente, no se
+muestra.
+
+**Qué mostrar en su lugar (follow-up de diseño):** las RAZONES, que ya existen y son explicables —
+chips "Zona · Presupuesto" o "Coincide en N criterios" (es lo que ya hace el cron con
+"_Coincide por: …_"). La `PropertyCardCompact` quedó con el badge condicionado a un `matchPercent`
+opcional que nadie pasa: sin número no reserva espacio (86ak3kcgd). No cablear ese prop salvo que
+aparezca un score real (p. ej. compatibilidad por embeddings — fuera de alcance hoy).
