@@ -225,7 +225,7 @@ const Dashboard = () => {
     <div className="flex min-h-[100dvh] flex-col bg-background">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <TrendingUp className="h-5 w-5 text-primary" />
@@ -418,7 +418,7 @@ const Dashboard = () => {
                         {c.phone && (
                           <a
                             href={`tel:${c.phone}`}
-                            className="shrink-0 h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors"
+                            className="shrink-0 h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors"
                           >
                             <Phone className="h-3.5 w-3.5" />
                           </a>

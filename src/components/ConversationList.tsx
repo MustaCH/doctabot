@@ -90,7 +90,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
           </div>
           <span className="text-lg font-semibold">Alan</span>
         </div>
-        <Button size="icon" variant="ghost" onClick={onNew} className="h-8 w-8 rounded-lg">
+        <Button size="icon" variant="ghost" onClick={onNew} className="h-11 w-11 rounded-xl">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -144,10 +144,10 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                       onKeyDown={(e) => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") cancelEdit(); }}
                       className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                     />
-                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary" onClick={confirmEdit}>
+                    <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 text-muted-foreground hover:text-primary" onClick={confirmEdit}>
                       <Check className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground" onClick={cancelEdit}>
+                    <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 text-muted-foreground" onClick={cancelEdit}>
                       <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -224,7 +224,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
             <p className="truncate text-sm font-medium">{user?.user_metadata?.full_name ?? "Usuario"}</p>
             <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
           </div>
-          <Button size="icon" variant="ghost" onClick={signOut} className="h-8 w-8 shrink-0">
+          <Button size="icon" variant="ghost" onClick={signOut} className="h-11 w-11 shrink-0">
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
