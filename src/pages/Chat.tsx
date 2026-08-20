@@ -216,9 +216,15 @@ const Chat = () => {
           </Button>
         </div>
 
-        {/* Messages */}
-        <div className="relative flex-1 overflow-hidden">
-          <div className={`aurora-bg ${isWorking ? "aurora-active" : "aurora-idle"}`} />
+        {/* Messages — fondo con el gradiente radial estático del rediseño (la aurora
+            animada se reemplazó por el orb, que ya comunica la actividad). */}
+        <div
+          className="relative flex-1 overflow-hidden"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse 130% 55% at 50% -8%, rgba(76,141,255,0.18) 0%, rgba(76,141,255,0) 62%), radial-gradient(ellipse 90% 40% at 15% 105%, rgba(255,90,77,0.10) 0%, rgba(255,90,77,0) 60%)",
+          }}
+        >
           <div ref={scrollRef} className="relative z-10 h-full overflow-y-auto overflow-x-hidden py-4 safe-bottom">
           <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
           {messages.length === 0 && (
