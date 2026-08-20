@@ -63,6 +63,10 @@ export interface StreamTurnOptions {
   // acumulado del turno. Permite que el catch del caller sepa qué corrió aunque streamTurn tire
   // después (el mensaje de error dice qué se ejecutó y si el reintento es seguro). Fail-open.
   onToolsExecuted?: (executedTools: string[]) => void;
+  // Pasos visibles del tool-loop (86ak3kd5r): un evento por tool ("running" al arrancar, "done"
+  // al terminar, con label determinista de tool-steps.ts — nunca del modelo). Es un canal aparte
+  // del goteo de tokens (no confundir con LiveDripper). Fail-open: si tira, no rompe el turno.
+  emitStep?: (step: { tool: string; label: string; status: "running" | "done" }) => void;
 }
 
 export interface StreamTurnResult {
@@ -491,7 +495,7 @@ export async function streamTurn(deps: StreamTurnDeps, opts: StreamTurnOptions):
           ...(tc.thoughtSignature ? { extra_content: { google: { thought_signature: tc.thoughtSignature } } } : {}),
         })),
       });
-      const { toolMessages, executed } = await executeToolCalls(toolCalls, { executeTool, toolCtx });
+      const { toolMessages, executed } = await executeToolCalls(toolCalls, { executeTool, toolCtx, onStep: opts.emitStep });
       messages.push(...toolMessages);
       executedTools.push(...executed);
       try { opts.onToolsExecuted?.([...executedTools]); } catch { /* observabilidad: nunca rompe el turno */ }

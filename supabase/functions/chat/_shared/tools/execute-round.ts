@@ -1,6 +1,8 @@
 // Ejecuta una ronda de tool_calls ya acumuladas y arma los mensajes de resultado.
 // Puro (deps inyectadas) para ser testeable.
 
+import { runningLabel, doneLabel, type ToolStep } from "../tool-steps.ts";
+
 export interface AccumulatedToolCall {
   id: string;
   name: string;
@@ -11,6 +13,9 @@ export interface AccumulatedToolCall {
 export interface ExecuteRoundDeps {
   executeTool: (name: string, args: any, ctx: any) => Promise<string>;
   toolCtx: any;
+  // Pasos visibles del tool-loop (86ak3kd5r): "running" antes de ejecutar cada tool y "done"
+  // al terminar (con label determinista de tool-steps.ts). Fail-open: si tira, no rompe la ronda.
+  onStep?: (step: ToolStep) => void;
 }
 
 // Tools con efecto externo real (un duplicado le llega a un cliente de verdad).
@@ -26,6 +31,9 @@ export async function executeToolCalls(
   const { executeTool, toolCtx } = deps;
   const toolMessages: any[] = [];
   const executed: string[] = [];
+  const emitStep = (step: ToolStep) => {
+    try { deps.onStep?.(step); } catch { /* los pasos nunca rompen la ronda */ }
+  };
 
   for (const tc of toolCalls) {
     const isExternal = EXTERNAL_EFFECT_TOOLS.has(tc.name);
@@ -70,11 +78,13 @@ export async function executeToolCalls(
     // Gmail) también degrada a tool-message de error; el modelo lo ve y recupera. Para tools
     // externas el estado es DESCONOCIDO (el efecto pudo haberse aplicado igual): el wording no
     // induce reenvío y el hash se marca para bloquear un replay idéntico en el mismo turno.
+    emitStep({ tool: tc.name, label: runningLabel(tc.name), status: "running" });
     let result: string;
     try {
       result = await executeTool(tc.name, args, toolCtx);
     } catch (err) {
       console.error(`Tool ${tc.name} falló:`, err);
+      emitStep({ tool: tc.name, label: "Un paso no salió, probando otra cosa", status: "done" });
       if (seen && dedupKey) seen.add(dedupKey);
       const msg = isExternal
         ? "No se pudo confirmar la acción externa (email/evento): estado desconocido — pudo haberse ejecutado igual. NO la reintentes automáticamente; verificá con el agente antes de reenviar."
@@ -87,8 +97,10 @@ export async function executeToolCalls(
       const parsed = JSON.parse(result);
       if (parsed.success || !parsed.error) {
         executed.push(tc.name);
+        emitStep({ tool: tc.name, label: doneLabel(tc.name, result), status: "done" });
         if (seen && dedupKey) seen.add(dedupKey);
       } else {
+        emitStep({ tool: tc.name, label: "Un paso no salió, probando otra cosa", status: "done" });
         // Resultado con {error} limpio: la tool NO ejecutó el efecto (sin hash externo), pero el
         // error queda memorizado para cortar un reintento IDÉNTICO en el mismo turno (86ak2tkjg).
         // Un reintento con args distintos no se ve afectado. El Map se crea lazy en toolCtx
@@ -97,6 +109,7 @@ export async function executeToolCalls(
       }
     } catch {
       executed.push(tc.name);
+      emitStep({ tool: tc.name, label: doneLabel(tc.name), status: "done" });
       if (seen && dedupKey) seen.add(dedupKey);
     }
   }

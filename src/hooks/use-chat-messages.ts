@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { streamChat, type Msg, type MsgAttachment } from "@/lib/stream-chat";
+import { applyTurnStep, type TurnStep } from "@/lib/turn-steps";
 import { MSG_BREAK } from "@/lib/stream-markers";
 import { splitBubbles } from "@/lib/draft-parse";
 import type { Json } from "@/integrations/supabase/types";
@@ -112,6 +113,8 @@ export function useChatMessages(
 ) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  // Pasos del tool-loop del turno EN CURSO (86ak3kd5r); se vacía al llegar el final.
+  const [turnSteps, setTurnSteps] = useState<TurnStep[]>([]);
   // "Alan trabajando": el turno sigue activo pero no hay texto entrando ahora mismo —
   // al inicio del turno (antes del primer token) y en los gaps del tool-loop (tras un
   // ===MSG_BREAK===, mientras corren tools antes de la continuación). Ticket 86aj1naw2.
@@ -261,6 +264,7 @@ export function useChatMessages(
   const runAssistantStream = async (convId: string, aiMessages: Msg[]) => {
     setIsStreaming(true);
     setWorking(true); // turno arrancando: indicador hasta el primer token
+    setTurnSteps([]); // pasos del turno anterior fuera
 
     let assistantContent = "";
     let needsNewBubble = false;
@@ -293,9 +297,15 @@ export function useChatMessages(
       // Reemplazo final (86aj9w5nb): el server goteó la ronda final en vivo y manda el texto
       // SANEADO completo (tarjetas expandidas, links verificados). Descartamos las burbujas
       // streameadas de esta respuesta y re-renderizamos con el MISMO parseo que la recarga.
+      // Paso del tool-loop (86ak3kd5r): acumula la lista visible del turno.
+      onStep: (step) => {
+        if (!mountedRef.current) return;
+        setTurnSteps((prev) => applyTurnStep(prev, step));
+      },
       onFinal: (content) => {
         setWorking(false);
         if (!mountedRef.current) return;
+        setTurnSteps([]); // llegó la respuesta final: la lista de pasos desaparece
         const finalBubbles = splitBubbles(content).map((b) => b.trim()).filter(Boolean);
         const toDrop = assistantBubbles;
         setMessages((prev) => [
@@ -319,7 +329,10 @@ export function useChatMessages(
         });
       },
       onDone: async () => {
-        if (mountedRef.current) setIsStreaming(false);
+        if (mountedRef.current) {
+          setIsStreaming(false);
+          setTurnSteps([]);
+        }
         setWorking(false);
         feedbackReceive();
         // Message is already saved to DB by the edge function
@@ -603,5 +616,6 @@ export function useChatMessages(
     handleSend,
     handleSendAudio,
     retryLastTurn,
+    turnSteps,
   };
 }

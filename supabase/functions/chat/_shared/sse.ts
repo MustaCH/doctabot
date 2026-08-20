@@ -1,4 +1,13 @@
 // Server-Sent Events response builder for streaming chat output
+//
+// Tipos de evento del stream del chat (todos como `data: <json>`; el front ignora shapes
+// desconocidos, así que agregar tipos nuevos es retrocompatible):
+// - {"choices":[{"delta":{"content": "..."}}]}  → delta de texto (formato OpenAI-compatible).
+// - {"final": {"content": "..."}}               → REEMPLAZO: texto final saneado completo
+//   (86aj9w5nb; solo si el front declaró client_caps:["final_event"]).
+// - {"step": {"tool","label","status"}}         → paso del tool-loop (86ak3kd5r): "running" al
+//   arrancar una tool, "done" al terminar, con label determinista de tool-steps.ts.
+// - "data: [DONE]"                              → fin del stream.
 import { corsHeaders } from "./cors.ts";
 
 export const MSG_BREAK = "===MSG_BREAK===";

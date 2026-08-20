@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { MarkerStream } from "./stream-markers";
+import { parseStepEvent, type TurnStep } from "./turn-steps";
 
 export type MsgAttachment = {
   type: "image" | "file";
@@ -27,6 +28,7 @@ export async function streamChat({
   onDelta,
   onNewMessage,
   onFinal,
+  onStep,
   onDone,
   signal,
 }: {
@@ -41,6 +43,8 @@ export async function streamChat({
    * parseo que la recarga). Solo llega si declaramos la capacidad "final_event".
    */
   onFinal?: (content: string) => void;
+  /** Paso del tool-loop (86ak3kd5r): canal aparte del texto — no toca el parseo de deltas. */
+  onStep?: (step: TurnStep) => void;
   onDone: () => void;
   signal?: AbortSignal;
 }) {
@@ -98,6 +102,11 @@ export async function streamChat({
           onFinal?.(finalContent);
           continue;
         }
+        const step = parseStepEvent(parsed.step);
+        if (step) {
+          onStep?.(step);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) markers.push(content);
       } catch {
@@ -119,6 +128,11 @@ export async function streamChat({
         const finalContent = parsed.final?.content as string | undefined;
         if (typeof finalContent === "string") {
           onFinal?.(finalContent);
+          continue;
+        }
+        const step = parseStepEvent(parsed.step);
+        if (step) {
+          onStep?.(step);
           continue;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;

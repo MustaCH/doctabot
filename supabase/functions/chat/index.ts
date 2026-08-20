@@ -525,6 +525,17 @@ serve(async (req) => {
             clientOpen = false;
           }
         };
+        // Pasos del tool-loop (86ak3kd5r): evento {"step": {tool, label, status}}. Los bundles
+        // viejos lo ignoran solos (su parser solo lee `final` y `choices`), así que se emite
+        // sin handshake.
+        const emitStep = (step: { tool: string; label: string; status: "running" | "done" }) => {
+          if (!clientOpen) return;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ step })}\n\n`));
+          } catch {
+            clientOpen = false;
+          }
+        };
 
         let finalContent = "";
         let executedTools: string[] = [];
@@ -557,6 +568,7 @@ serve(async (req) => {
             // Espejo en vivo de las tools ejecutadas: si streamTurn tira, el catch sabe qué
             // corrió y arma un mensaje de error honesto (qué se hizo / si conviene reintentar).
             onToolsExecuted: (turnTools) => { executedTools = turnTools; },
+            emitStep,
             deadlineAt: TURN_DEADLINE_AT,
             onDeadlineExhausted: (turnTools) => reportEdgeErrorBg({
               context: "chat-turnDeadline",

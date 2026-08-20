@@ -8,7 +8,7 @@ import ChatInput from "@/components/ChatInput";
 import ConversationList from "@/components/ConversationList";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, UserCircle, ChevronDown, Loader2, Search, PenLine, CalendarPlus, Sparkles, LayoutDashboard } from "lucide-react";
+import { Menu, UserCircle, ChevronDown, Loader2, Search, PenLine, CalendarPlus, Sparkles, LayoutDashboard, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AlanOrb } from "@/components/AlanOrb";
 import { deriveOrbState, isTurnErrorMessage } from "@/lib/alan-orb-state";
@@ -56,6 +56,7 @@ const Chat = () => {
     handleSend,
     handleSendAudio,
     retryLastTurn,
+    turnSteps,
   } = useChatMessages(activeConvId, createConversation, setActiveConvId, loadConversations, markAsRead);
 
   // Load conversations on mount
@@ -293,14 +294,37 @@ const Chat = () => {
           ))}
           {/* "Alan trabajando": al inicio del turno y en los gaps del tool-loop (ticket 86aj1naw2).
               Aparece debajo de la última burbuja y se va apenas entra texto nuevo o termina el turno. */}
-          {isWorking && (
+          {turnSteps.length > 0 && isStreaming ? (
+            /* Pasos del tool-loop (86ak3kd5r): orb en ejecuta + lista ✓/⟳. Desaparece con el
+               evento final. Tope visible de 6 pasos (el tool-loop puede usar 7 iteraciones). */
+            <div className="flex gap-2.5 px-4 py-1.5">
+              <AlanOrb size="sm" state="executing" className="mt-1" />
+              <div className="rounded-[20px] rounded-bl-[6px] border border-white/[0.07] bg-white/[0.055] px-4 py-3">
+                <ul className="space-y-1.5">
+                  {turnSteps.length > 6 && (
+                    <li className="text-[10px] text-muted-foreground">+{turnSteps.length - 6} pasos anteriores</li>
+                  )}
+                  {turnSteps.slice(-6).map((s, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      {s.status === "done" ? (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--success))]" aria-label="Completado" />
+                      ) : (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="En curso" />
+                      )}
+                      <span className={s.status === "done" ? "text-muted-foreground" : "text-foreground"}>{s.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : isWorking ? (
             <div className="flex gap-2.5 px-4 py-1.5">
               <AlanOrb size="sm" state="thinking" className="mt-1" />
               <div className="flex items-center rounded-[20px] rounded-bl-[6px] border border-white/[0.07] bg-white/[0.055] px-4 py-3">
                 <span className="text-xs text-muted-foreground">Alan está trabajando…</span>
               </div>
             </div>
-          )}
+          ) : null}
           </div>
 
           {/* Grabando: el orb se adelanta a 76px sobre la barra de input ("le hablás a Alan").
