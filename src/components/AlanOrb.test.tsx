@@ -92,4 +92,15 @@ describe("AlanOrb — extras por estado", () => {
     expect(container.querySelector(".ripple, .sweep, .pulse, .pulse2")).toBeNull();
     expect(layers(container).orb!.getAttribute("data-state")).toBe(state);
   });
+
+  it("cambiar el estado NO re-monta el componente: mismo nodo DOM, cambia data-state", () => {
+    const { container, rerender } = render(<AlanOrb state="idle" />);
+    const before = layers(container).orb;
+    rerender(<AlanOrb state="thinking" />);
+    const after = layers(container).orb;
+    expect(after).toBe(before);
+    expect(after!.getAttribute("data-state")).toBe("thinking");
+    rerender(<AlanOrb state="executing" />);
+    expect(layers(container).orb).toBe(before);
+  });
 });

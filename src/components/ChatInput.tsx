@@ -16,9 +16,11 @@ interface ChatInputProps {
   disabled?: boolean;
   quotedText?: string | null;
   onClearQuote?: () => void;
+  /** Notifica al padre cuando arranca/termina la grabación (el orb entra en "escucha"). */
+  onRecordingChange?: (recording: boolean) => void;
 }
 
-const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: ChatInputProps) => {
+const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, onRecordingChange }: ChatInputProps) => {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -88,6 +90,11 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
   };
 
   const isRecording = recordingState === "recording";
+
+  useEffect(() => {
+    onRecordingChange?.(isRecording);
+  }, [isRecording, onRecordingChange]);
+
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didHoldRef = useRef(false);
 
@@ -160,7 +167,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote }: 
           const title = titleMatch?.[1]?.replace(/\*\*/g, "").trim();
           return title ? `🏠 ${title.length > 60 ? title.slice(0, 60) + "…" : title}` : "🏠 Propiedad";
         }
-        let cleaned = quotedText
+        const cleaned = quotedText
           .replace(/!\[.*?\]\(.*?\)/g, "[imagen]")
           .replace(/https?:\/\/\S{40,}/g, "[enlace]")
           .replace(/\*\*/g, "");

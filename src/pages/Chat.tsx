@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Menu, UserCircle, ChevronDown, Loader2, Search, PenLine, CalendarPlus, Sparkles, LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import alanAvatar from "@/assets/alan-avatar.png";
+import { AlanOrb } from "@/components/AlanOrb";
+import { deriveOrbState, isTurnErrorMessage } from "@/lib/alan-orb-state";
 import { useSwUpdate } from "@/hooks/use-sw-update";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
@@ -116,6 +118,20 @@ const Chat = () => {
     [activeConvId, conversations]
   );
 
+  // Estado del orb: banderas reales del turno + grabación + no-leídos + turno fallido.
+  const [isRecording, setIsRecording] = useState(false);
+  const lastTurnFailed = useMemo(() => {
+    const last = messages[messages.length - 1];
+    return !!last && last.role === "assistant" && isTurnErrorMessage(last.content);
+  }, [messages]);
+  const orbState = deriveOrbState({
+    isRecording,
+    isWorking,
+    isStreaming,
+    hasUnread: totalUnread > 0,
+    lastTurnFailed,
+  });
+
   const userAvatar = user?.user_metadata?.avatar_url;
   const userName = user?.user_metadata?.full_name;
 
@@ -166,7 +182,7 @@ const Chat = () => {
               </span>
             )}
           </Button>
-          <img src={alanAvatar} alt="Alan" className="h-8 w-8 rounded-lg" />
+          <AlanOrb size="md" state={orbState} aria-label="Alan" />
           <div className="flex-1 overflow-hidden">
             <p className="text-sm font-semibold">Alan</p>
             <div className="h-4 relative overflow-hidden">
@@ -301,6 +317,7 @@ const Chat = () => {
           disabled={isStreaming || isProcessingPdf || isTranscribing}
           quotedText={quotedText}
           onClearQuote={() => setQuotedText(null)}
+          onRecordingChange={setIsRecording}
         />
       </div>
     </div>
