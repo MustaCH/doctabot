@@ -1,0 +1,290 @@
+/* AlanOrb — F2 · Corriente (docs/design/redesign-premium: F2Spec, EstadosF2, UsoGrabando).
+   Cinco capas: .halo (única que sale del círculo), .vessel (recorte), .fa/.fb/.fc
+   (corrientes), .shell (vidrio), .spec (reflejo fijo; se omite a 28px).
+   El estado y el tamaño se cambian con data-state / data-size; lo único que varía
+   entre estados son estas variables. El blur se escala a mano por tamaño — nunca
+   con transform (escalar agranda el desenfoque y ensucia el chico). */
+
+/* Registrada para que el cambio de estado transicione en vez de saltar
+   (las variables CSS no transicionan salvo que se registren con @property). */
+@property --halo-op {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.18;
+}
+
+.alan-orb {
+  /* reposo: base */
+  --flow-a: 14s;
+  --flow-b: 20s;
+  --halo-op: 0.18;
+  --halo-t: 7s;
+  --halo-hue: 78, 214, 192;
+  --core: rgba(255, 244, 232, 0.95);
+  --accent: rgba(78, 214, 192, 0.9);
+  --sc: 1;
+  position: relative;
+  flex-shrink: 0;
+  transition: --halo-op 0.6s ease;
+}
+
+.alan-orb .orb-scale {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--sc));
+  transition: transform 0.5s ease;
+}
+
+.alan-orb .halo {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(var(--halo-hue), var(--halo-op)) 0%,
+    rgba(var(--halo-hue), 0) 70%
+  );
+  animation: orb-breathe var(--halo-t) ease-in-out infinite;
+}
+
+.alan-orb .vessel {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: #16201f;
+  box-shadow:
+    inset 0 -14px 30px rgba(0, 0, 0, 0.5),
+    0 22px 46px -18px rgba(0, 0, 0, 0.95);
+}
+
+.alan-orb .fa {
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(
+    circle at 30% 35%,
+    var(--core) 0%,
+    rgba(255, 244, 232, 0.3) 18%,
+    rgba(255, 244, 232, 0) 46%
+  );
+  animation: orb-spin var(--flow-a) linear infinite;
+}
+
+.alan-orb .fb {
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(
+    circle at 70% 62%,
+    var(--accent) 0%,
+    rgba(78, 214, 192, 0.25) 22%,
+    rgba(78, 214, 192, 0) 54%
+  );
+  animation: orb-spin-r var(--flow-b) linear infinite;
+}
+
+.alan-orb .fc {
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(
+    circle at 50% 80%,
+    rgba(46, 143, 134, 0.7) 0%,
+    rgba(46, 143, 134, 0) 48%
+  );
+  animation: orb-spin calc(var(--flow-b) * 1.6) linear infinite reverse;
+}
+
+.alan-orb .shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  backdrop-filter: blur(2px);
+  background: radial-gradient(
+    circle at 34% 26%,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.04) 44%,
+    rgba(255, 255, 255, 0.11) 100%
+  );
+  box-shadow:
+    inset 0 -11px 24px rgba(0, 0, 0, 0.35),
+    inset 0 8px 18px rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.alan-orb .spec {
+  position: absolute;
+  top: 14%;
+  left: 25%;
+  width: 27%;
+  height: 18%;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0) 72%
+  );
+}
+
+/* ── Tamaños — blur propio por tamaño ── */
+
+.alan-orb[data-size="hero"] { width: 112px; height: 112px; }
+.alan-orb[data-size="hero"] .halo { inset: -30px; filter: blur(11px); }
+.alan-orb[data-size="hero"] .fa,
+.alan-orb[data-size="hero"] .fb,
+.alan-orb[data-size="hero"] .fc { filter: blur(9px); }
+.alan-orb[data-size="hero"] .spec { filter: blur(3px); }
+
+.alan-orb[data-size="lg"] { width: 76px; height: 76px; }
+.alan-orb[data-size="lg"] .halo { inset: -22px; filter: blur(8px); }
+.alan-orb[data-size="lg"] .fa,
+.alan-orb[data-size="lg"] .fb,
+.alan-orb[data-size="lg"] .fc { filter: blur(6px); }
+.alan-orb[data-size="lg"] .spec { filter: blur(2px); }
+
+.alan-orb[data-size="md"] { width: 36px; height: 36px; }
+.alan-orb[data-size="md"] .halo { inset: -8px; filter: blur(3px); }
+.alan-orb[data-size="md"] .fa,
+.alan-orb[data-size="md"] .fb,
+.alan-orb[data-size="md"] .fc { filter: blur(3px); }
+.alan-orb[data-size="md"] .spec { filter: blur(1px); }
+
+/* A 28px no hay .spec (se omite en el componente); queda el reflejo del .shell. */
+.alan-orb[data-size="sm"] { width: 28px; height: 28px; }
+.alan-orb[data-size="sm"] .halo { inset: -7px; filter: blur(2.6px); }
+.alan-orb[data-size="sm"] .fa,
+.alan-orb[data-size="sm"] .fb,
+.alan-orb[data-size="sm"] .fc { filter: blur(2.4px); }
+
+/* ── Estados ── */
+
+/* escucha: late suave y más seguido, con onda mínima */
+.alan-orb[data-state="listening"] {
+  --flow-a: 10s;
+  --flow-b: 14s;
+  --halo-op: 0.24;
+  --halo-t: 3.2s;
+}
+.alan-orb .ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 1.5px rgba(78, 214, 192, 0.55);
+  animation: orb-ripple 3.2s ease-out infinite;
+}
+
+/* piensa: la luz circula */
+.alan-orb[data-state="thinking"] {
+  --flow-a: 4s;
+  --flow-b: 6s;
+  --halo-op: 0.3;
+  --halo-t: 3s;
+}
+.alan-orb .sweep {
+  position: absolute;
+  inset: -30%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 244, 232, 0) 0deg,
+    rgba(255, 244, 232, 0) 200deg,
+    rgba(168, 236, 223, 0.5) 300deg,
+    rgba(255, 244, 232, 0.85) 340deg,
+    rgba(255, 244, 232, 0) 360deg
+  );
+  filter: blur(10px);
+  animation: orb-spin 2.4s linear infinite;
+}
+
+/* ejecuta: se compacta a 0,93 y emite dos pulsos desfasados */
+.alan-orb[data-state="executing"] {
+  --flow-a: 3s;
+  --flow-b: 4.5s;
+  --halo-op: 0.34;
+  --halo-t: 1.2s;
+  --sc: 0.93;
+}
+.alan-orb .pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px rgba(78, 214, 192, 0.7);
+  animation: orb-pulse 1.2s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.alan-orb .pulse2 {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px rgba(255, 244, 232, 0.45);
+  animation: orb-pulse 1.2s cubic-bezier(0.2, 0.6, 0.3, 1) infinite 0.6s;
+}
+
+/* atención: núcleo cálido, late fuerte y lento */
+.alan-orb[data-state="attention"] {
+  --flow-a: 12s;
+  --flow-b: 17s;
+  --halo-op: 0.32;
+  --halo-t: 2.2s;
+  --halo-hue: 255, 184, 107;
+  --core: rgba(255, 240, 214, 0.95);
+  --accent: rgba(255, 184, 107, 0.9);
+}
+.alan-orb[data-state="attention"] .fc {
+  background: radial-gradient(
+    circle at 50% 80%,
+    rgba(214, 132, 52, 0.65) 0%,
+    rgba(214, 132, 52, 0) 48%
+  );
+}
+
+/* error: casi quieto, núcleo frío y apagado */
+.alan-orb[data-state="error"] {
+  --flow-a: 22s;
+  --flow-b: 30s;
+  --halo-op: 0.16;
+  --halo-t: 4.5s;
+  --halo-hue: 255, 90, 77;
+  --core: rgba(255, 226, 222, 0.7);
+  --accent: rgba(255, 122, 110, 0.6);
+}
+.alan-orb[data-state="error"] .fc {
+  background: radial-gradient(
+    circle at 50% 80%,
+    rgba(120, 48, 42, 0.6) 0%,
+    rgba(120, 48, 42, 0) 48%
+  );
+}
+.alan-orb[data-state="error"] .vessel {
+  box-shadow:
+    inset 0 -14px 30px rgba(0, 0, 0, 0.65),
+    0 22px 46px -18px rgba(0, 0, 0, 0.95);
+}
+
+/* ── Pausa (document.hidden / hero fuera de viewport) ── */
+.alan-orb[data-paused="true"],
+.alan-orb[data-paused="true"] * {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alan-orb,
+  .alan-orb * {
+    animation: none !important;
+  }
+}
+
+@keyframes orb-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes orb-spin-r {
+  to { transform: rotate(-360deg); }
+}
+@keyframes orb-breathe {
+  0%, 100% { opacity: 0.72; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+@keyframes orb-ripple {
+  0% { transform: scale(1); opacity: 0.7; }
+  80% { transform: scale(1.28); opacity: 0; }
+  100% { transform: scale(1.28); opacity: 0; }
+}
+@keyframes orb-pulse {
+  0% { transform: scale(0.95); opacity: 0.85; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
