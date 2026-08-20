@@ -55,7 +55,16 @@ npm test           # Vitest (una corrida)
 ## Idioma y tono
 
 - Strings de usuario y respuestas de Alan: **español argentino con voseo** (vos, usás, tenés). Términos técnicos en inglés.
-- Emojis con moderación (el front y el prompt ya tienen convenciones de emojis para tarjetas de propiedad: 🏠 💰 📍 📐 🏢 🔗 — no los uses fuera de ese contexto).
+- Emojis con moderación. Las tarjetas de propiedad ya NO usan emojis como iconos (ticket 86ak3kcx3): el formato server-side es título con 🏠 (único emoji — es el marcador con el que el front detecta tarjetas) + líneas rotuladas `Oficina:`/`Precio:`/`Ubicación:`/`Superficie:`/`[Ver propiedad](url)`. El parser del front (`src/lib/property-card-parse.ts`) tolera además el formato viejo con 💰 📍 📐 🏢 🔗 por los mensajes persistidos — no romper esa retrocompatibilidad.
+
+## Diseño (en transición)
+
+La UI de producción es la que describe `docs/design-system.md` (claro + oscuro, DM Sans). Pero la
+dirección **aprobada** para todo lo nuevo es **"Carbón & Vidrio"**: paleta única oscura (sin modo
+claro) y Schibsted Grotesk. Antes de diseñar o implementar UI, leé
+`docs/design/redesign-premium/README.md`; el porqué está en
+`docs/adrs/0004-tema-oscuro-fijo-sin-modo-claro.md`. Ojo: el rediseño saca los emojis 💰📍📐 de las
+tarjetas y los 🔥☀️❄️ de los estados de cliente, así que toca `card-render.ts` y el prompt, no solo CSS.
 
 ## Tests
 

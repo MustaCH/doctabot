@@ -50,15 +50,19 @@ export function buildListingUrl(url: string, agentCode?: string | null): string 
  * link. Omite líneas/partes cuando falta el dato. Puro y testeable.
  */
 export function renderPropertyCard(p: PropertyCardData, agentCode?: string | null): string {
+  // Rediseño (ticket 86ak3kcx3): sin 💰📍📐🏢🔗 como iconos — líneas rotuladas.
+  // El 🏠 del título SE QUEDA: es el marcador con el que el front detecta bloques de
+  // tarjeta (parseo, QuotedBlock, preview de cita). El parser del front tolera ambos
+  // formatos por los mensajes viejos persistidos (src/lib/property-card-parse.ts).
   const lines: string[] = [];
   if (p.photo) lines.push(`![foto](${p.photo})`);
   lines.push(`🏠 **${p.title ?? "Propiedad"}**`);
-  if (p.office) lines.push(`🏢 ${p.office}`);
+  if (p.office) lines.push(`Oficina: ${p.office}`);
 
   if (p.price_exposure === false || p.price == null || p.price === "") {
-    lines.push(`💰 Precio: a consultar`);
+    lines.push(`Precio: a consultar`);
   } else {
-    lines.push(`💰 Precio: ${p.currency ? `${p.currency} ` : ""}${p.price}`);
+    lines.push(`Precio: ${p.currency ? `${p.currency} ` : ""}${p.price}`);
   }
   if (p.expenses_price != null && p.expenses_price !== "" && Number(p.expenses_price) > 0) {
     lines.push(`Expensas: $${p.expenses_price} ${p.expenses_currency ?? "ARS"}/mes`);
@@ -70,16 +74,16 @@ export function renderPropertyCard(p: PropertyCardData, agentCode?: string | nul
   let locLine = loc.join(", ");
   const paren = p.zone_neighborhood || p.zone_city;
   if (paren) locLine += `${locLine ? " " : ""}(${paren})`;
-  if (locLine) lines.push(`📍 Ubicación: ${locLine}`);
+  if (locLine) lines.push(`Ubicación: ${locLine}`);
 
   if (p.m2_total != null && p.m2_total !== "") {
     const extras: string[] = [];
     if (p.habitaciones != null) extras.push(`${p.habitaciones} hab`);
     if (p.banos != null) extras.push(`${p.banos} baños`);
-    lines.push(`📐 Superficie: ${p.m2_total} m² totales${extras.length ? ` (${extras.join(" · ")})` : ""}`);
+    lines.push(`Superficie: ${p.m2_total} m² totales${extras.length ? ` (${extras.join(" · ")})` : ""}`);
   }
 
-  if (p.url) lines.push(`🔗 [Ver propiedad](${buildListingUrl(p.url, agentCode)})`);
+  if (p.url) lines.push(`[Ver propiedad](${buildListingUrl(p.url, agentCode)})`);
 
   return lines.join("\n");
 }

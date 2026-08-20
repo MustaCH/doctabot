@@ -714,7 +714,7 @@ export async function executeTool(
       }
       const { data, error } = await supabase.from("properties").select("*").eq("id", args.property_id).single();
       if (error) return JSON.stringify({ error: safeDbError(error) });
-      return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con el cliente, en PROSA organizada (NO tarjeta con emojis 🏠💰📍). Envolvé TODA la ficha entre <<<DRAFT_START>>> y <<<DRAFT_END>>> (cada marcador solo en su línea) para que sea un texto copiable. Incluí el link de la propiedad con la atribución ?associate." });
+      return JSON.stringify({ property: data, instruction: "Generá una ficha profesional y detallada de esta propiedad para compartir con el cliente, en PROSA organizada (NO formato tarjeta: nada de título con 🏠 ni líneas Precio:/Ubicación:/Superficie:). Envolvé TODA la ficha entre <<<DRAFT_START>>> y <<<DRAFT_END>>> (cada marcador solo en su línea) para que sea un texto copiable. Incluí el link de la propiedad con la atribución ?associate." });
     }
 
     // ---- Clients ----
@@ -1210,7 +1210,7 @@ export async function executeTool(
         linked_client: mediaClientId !== null,
         linked_property: mediaPropertyId !== null,
         analysis,
-        instruction: "Análisis guardado. Presentale al agente el resultado en prosa/lista clara (NO tarjeta con emojis 🏠💰): estado, ambientes y features detectados + observaciones. Si no quedó vinculado a un cliente/propiedad y el contexto lo sugiere, ofrecé vincularlo.",
+        instruction: "Análisis guardado. Presentale al agente el resultado en prosa/lista clara (NO formato tarjeta de propiedad): estado, ambientes y features detectados + observaciones. Si no quedó vinculado a un cliente/propiedad y el contexto lo sugiere, ofrecé vincularlo.",
       });
     }
 

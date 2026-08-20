@@ -39,21 +39,23 @@ describe("buildListingUrl", () => {
 });
 
 describe("renderPropertyCard", () => {
-  it("arma la tarjeta con el slug EXACTO de la DB + atribución", () => {
+  it("arma la tarjeta con el slug EXACTO de la DB + atribución (formato rotulado, sin emojis de iconos)", () => {
     const card = renderPropertyCard(P, "42040122");
-    expect(card).toContain("🔗 [Ver propiedad](https://www.remax.com.ar/listings/alquiler-departamento-1-dormitorio-b-nva-cordoba?associate=42040122)");
+    expect(card).toContain("[Ver propiedad](https://www.remax.com.ar/listings/alquiler-departamento-1-dormitorio-b-nva-cordoba?associate=42040122)");
     expect(card).toContain("![foto](https://d1acdg20u0pmxj.cloudfront.net/listings/5f4c9f1f/x.webp)");
     expect(card).toContain("🏠 **ALQUILER DEPARTAMENTO 1 DORMITORIO B° NVA CÓRDOBA**");
-    expect(card).toContain("🏢 REMAX Boulevard");
-    expect(card).toContain("💰 Precio: ARS 750000");
+    expect(card).toContain("Oficina: REMAX Boulevard");
+    expect(card).toContain("Precio: ARS 750000");
     expect(card).toContain("Expensas: $174000 ARS/mes");
-    expect(card).toContain("📍 Ubicación: Obispo Salguero 500, Nueva Cordoba, Cordoba, Capital, Córdoba (nueva cordoba)");
-    expect(card).toContain("📐 Superficie: 59 m² totales (1 hab · 1 baños)");
+    expect(card).toContain("Ubicación: Obispo Salguero 500, Nueva Cordoba, Cordoba, Capital, Córdoba (nueva cordoba)");
+    expect(card).toContain("Superficie: 59 m² totales (1 hab · 1 baños)");
+    // rediseño 86ak3kcx3: sin 💰📍📐🏢🔗 — el único emoji es el 🏠 del título (marcador de tarjeta)
+    expect(card).not.toMatch(/💰|📍|📐|🏢|🔗/u);
   });
 
   it("price_exposure=false → 'a consultar' y sin monto", () => {
     const card = renderPropertyCard({ ...P, price_exposure: false }, "1");
-    expect(card).toContain("💰 Precio: a consultar");
+    expect(card).toContain("Precio: a consultar");
     expect(card).not.toContain("750000");
   });
 
@@ -61,14 +63,14 @@ describe("renderPropertyCard", () => {
     const card = renderPropertyCard(
       { title: "Depto", price: "100", currency: "USD", url: "https://www.remax.com.ar/listings/y" }, "1");
     expect(card).not.toContain("![foto]");
-    expect(card).not.toContain("🏢");
+    expect(card).not.toContain("Oficina:");
     expect(card).not.toContain("Expensas");
-    expect(card).not.toContain("📐");
-    expect(card).toContain("🔗 [Ver propiedad](https://www.remax.com.ar/listings/y?associate=1)");
+    expect(card).not.toContain("Superficie:");
+    expect(card).toContain("[Ver propiedad](https://www.remax.com.ar/listings/y?associate=1)");
   });
 
   it("sin url no pone línea de link (nunca inventa uno)", () => {
-    expect(renderPropertyCard({ title: "X", url: null }, "1")).not.toContain("🔗");
+    expect(renderPropertyCard({ title: "X", url: null }, "1")).not.toContain("[Ver propiedad]");
   });
 });
 
