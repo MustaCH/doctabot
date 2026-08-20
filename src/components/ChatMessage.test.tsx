@@ -35,8 +35,11 @@ describe("ChatMessage — tarjetas fuera de la burbuja", () => {
     const content = `Encontré 2 opciones:\n\n${cardMd(1)}\n\n¿Te sirven estas?\n\n${cardMd(2)}`;
     const { container } = render(<ChatMessage role="assistant" content={content} />);
 
-    const cards = container.querySelectorAll('[data-testid="property-card"]');
+    // primera propiedad completa, la segunda compacta
+    const cards = container.querySelectorAll('[data-testid^="property-card"]');
     expect(cards.length).toBe(2);
+    expect(cards[0].getAttribute("data-testid")).toBe("property-card");
+    expect(cards[1].getAttribute("data-testid")).toBe("property-card-compact");
 
     const bubbles = container.querySelectorAll(bubbleSel);
     expect(bubbles.length).toBe(2);
@@ -49,6 +52,13 @@ describe("ChatMessage — tarjetas fuera de la burbuja", () => {
 
     // full-bleed: la tarjeta no está anidada en la columna del 80%
     cards.forEach((c) => expect(c.closest(".max-w-\\[80\\%\\]")).toBeNull());
+  });
+
+  it("con 3+ propiedades, solo la primera es completa", () => {
+    const content = [cardMd(1), cardMd(2), cardMd(3)].join("\n\n");
+    const { container } = render(<ChatMessage role="assistant" content={content} />);
+    expect(container.querySelectorAll('[data-testid="property-card"]').length).toBe(1);
+    expect(container.querySelectorAll('[data-testid="property-card-compact"]').length).toBe(2);
   });
 
   it("una sola tarjeta renderiza fuera de burbuja y sin burbuja vacía", () => {
@@ -70,6 +80,25 @@ describe("ChatMessage — tarjetas fuera de la burbuja", () => {
     expect(screen.getByText("2 hab")).toBeTruthy();
     expect(screen.getByText("1 baños")).toBeTruthy();
     expect(container.textContent).not.toMatch(/📐|💰|📍/u);
+  });
+
+  it("la compacta de una propiedad Docta lleva punto rojo y rótulo; sin match no reserva badge", () => {
+    const doctaCard = [
+      "🏠 **Depto Docta**",
+      "🏢 RE/MAX Docta",
+      "💰 Precio: USD 90.000",
+      "📐 Superficie: 58 m² totales (2 hab · 1 baños)",
+      "🔗 [Ver propiedad](https://remax.com.ar/pd)",
+    ].join("\n");
+    const { container } = render(
+      <ChatMessage role="assistant" content={`${cardMd(1)}\n\n${doctaCard}`} />
+    );
+    const compact = container.querySelector('[data-testid="property-card-compact"]')!;
+    expect(compact.querySelector('[data-testid="docta-dot"]')).not.toBeNull();
+    expect(compact.textContent).toContain("RE/MAX Docta");
+    // línea de datos compacta y sin badge de match
+    expect(compact.textContent).toContain("58 m² totales · 2 hab");
+    expect(compact.textContent).not.toMatch(/%/);
   });
 
   it("un mensaje sin tarjetas sigue yendo entero en burbuja", () => {

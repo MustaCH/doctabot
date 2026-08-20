@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import PropertyCard from "@/components/PropertyCard";
+import PropertyCard, { PropertyCardCompact } from "@/components/PropertyCard";
 import ContactCard from "@/components/ContactCard";
 import { parsePropertyCard, parseMultiplePropertyCards } from "@/lib/property-card-parse";
 import { parseContactCardSegments } from "@/lib/contact-card-parse";
@@ -362,12 +362,19 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply }: { conte
   }
 
   const firstTextIdx = cardSegments.findIndex((s) => s.type === "text");
+  // Listados: la primera propiedad va con tarjeta completa, el resto compactas
+  // (4 tarjetas grandes seguidas = 4 pantallas de scroll; así se comparan de un vistazo).
+  let propertyOrdinal = 0;
   return (
     <div className="group px-4 py-1.5">
       {cardSegments.map((seg, i) =>
         seg.type === "property" && seg.property ? (
           <div key={i} className="py-1">
-            <PropertyCard {...seg.property} agentCode={agentCode} whatsappPhone={whatsappPhone} />
+            {propertyOrdinal++ === 0 ? (
+              <PropertyCard {...seg.property} agentCode={agentCode} whatsappPhone={whatsappPhone} />
+            ) : (
+              <PropertyCardCompact {...seg.property} agentCode={agentCode} />
+            )}
           </div>
         ) : (
           <div key={i} className="flex gap-2.5 py-1">

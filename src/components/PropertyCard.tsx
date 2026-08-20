@@ -41,6 +41,81 @@ function buildChips(surface?: string, extras: string[] = [], office?: string, is
 const glassSquare =
   "flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[14px] border border-white/10 bg-white/5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-50";
 
+/**
+ * Variante compacta para listados de varios resultados (artboard Resultados): la primera
+ * propiedad va con la tarjeta completa y el resto con esta — miniatura 84px + título +
+ * precio tabular + una línea de datos (~104px de alto). Sin botones: la tarjeta entera
+ * linkea a la propiedad. El badge de % de match solo aparece si `matchPercent` viene
+ * definido (depende del spike de property-matching; sin número presentable no se muestra
+ * ni reserva espacio).
+ */
+export const PropertyCardCompact = ({ photo, title, office, price, surface, url, extras = [], agentCode, matchPercent }: PropertyCardProps & { matchPercent?: number }) => {
+  const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
+  const isDocta = office?.toLowerCase().includes("docta") ?? false;
+  const [imgError, setImgError] = useState(false);
+  const meta = buildChips(surface, extras).slice(0, 2).join(" · ");
+
+  const card = (
+    <div
+      data-testid="property-card-compact"
+      className="flex w-full items-center gap-3 rounded-[16px] border border-white/[0.09] bg-white/5 p-2.5 shadow-[0_16px_34px_-22px_rgba(0,0,0,0.9)]"
+    >
+      <div className="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-[10px] bg-muted">
+        {photo && !imgError ? (
+          <img
+            src={photo}
+            alt={title ?? "Propiedad"}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Home className="h-7 w-7 text-muted-foreground/30" />
+          </div>
+        )}
+        {isDocta && (
+          <span
+            data-testid="docta-dot"
+            className="absolute top-1.5 left-1.5 h-2 w-2 rounded-full bg-[hsl(var(--accent))] ring-2 ring-[rgba(19,21,25,0.7)]"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        {isDocta && (
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--accent-soft-foreground))]">
+            RE/MAX Docta
+          </p>
+        )}
+        {title && <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug text-foreground">{title}</p>}
+        {(price || meta) && (
+          <div className="mt-1 flex min-w-0 items-baseline gap-2">
+            {price && (
+              <span className="shrink-0 text-base font-bold tracking-tight text-white [font-variant-numeric:tabular-nums]">
+                {price}
+              </span>
+            )}
+            {meta && <span className="truncate text-[11px] text-muted-foreground [font-variant-numeric:tabular-nums]">{meta}</span>}
+          </div>
+        )}
+      </div>
+      {typeof matchPercent === "number" && (
+        <span className="shrink-0 self-center rounded-lg border border-[rgba(91,147,255,0.35)] bg-[rgba(91,147,255,0.18)] px-2 py-1 text-[10px] font-semibold text-[hsl(var(--primary-soft-foreground))]">
+          {matchPercent}%
+        </span>
+      )}
+    </div>
+  );
+
+  return finalUrl ? (
+    <a href={finalUrl} target="_blank" rel="noopener noreferrer" className="block w-full">
+      {card}
+    </a>
+  ) : (
+    card
+  );
+};
+
 const PropertyCard = ({ photo, title, office, price, location, surface, url, extras = [], agentCode, contactPhone, contactEmail, whatsappPhone }: PropertyCardProps) => {
   const finalUrl = url ? buildPropertyUrl(url, agentCode) : undefined;
   const isDocta = office?.toLowerCase().includes("docta") ?? false;
