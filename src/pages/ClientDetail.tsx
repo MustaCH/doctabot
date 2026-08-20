@@ -87,21 +87,22 @@ const propStatusChip: Record<string, string> = {
 };
 
 // Semáforo del widget Último contacto (verde <7 días, ámbar <30, rojo 30+ / nunca).
+// Misma lógica de siempre; colores del sistema nuevo (éxito #3EC98A, tibio #F5B23F, rojo #FF5A4D).
 const contactTiers = {
   green: {
-    panel: "bg-green-900/25 border-green-800",
-    text: "text-green-300",
-    dot: "bg-green-500",
+    panel: "bg-[rgba(62,201,138,0.12)] border-[rgba(62,201,138,0.32)]",
+    text: "text-[hsl(var(--success))]",
+    dot: "bg-[hsl(var(--success))]",
   },
   amber: {
-    panel: "bg-amber-900/25 border-amber-800",
-    text: "text-amber-300",
-    dot: "bg-amber-500",
+    panel: "bg-[rgba(245,178,63,0.12)] border-[rgba(245,178,63,0.32)]",
+    text: "text-[hsl(var(--warm-soft-foreground))]",
+    dot: "bg-[hsl(var(--warm))]",
   },
   red: {
-    panel: "bg-red-900/25 border-red-800",
-    text: "text-red-300",
-    dot: "bg-red-500",
+    panel: "bg-[rgba(255,90,77,0.12)] border-[rgba(255,90,77,0.32)]",
+    text: "text-[hsl(var(--accent-soft-foreground))]",
+    dot: "bg-[hsl(var(--accent))]",
   },
 } as const;
 
@@ -525,6 +526,7 @@ const ClientDetail = () => {
             <p className="text-[11px] text-muted-foreground">Activá para datos comerciales y matching</p>
           </div>
           <Switch
+            className="data-[state=checked]:bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))]"
             checked={!!client.is_client}
             onCheckedChange={async (v) => {
               await supabase.from("clients").update({ is_client: v }).eq("id", client.id);
@@ -536,7 +538,7 @@ const ClientDetail = () => {
         {/* Acciones rápidas */}
         <div className="grid grid-cols-3 gap-2">
           <a href={client.phone ? `tel:${client.phone}` : undefined} className={client.phone ? "" : "pointer-events-none opacity-40"}>
-            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
               <Phone className="h-4 w-4" /> Llamar
             </Button>
           </a>
@@ -545,12 +547,12 @@ const ClientDetail = () => {
             target="_blank" rel="noopener noreferrer"
             className={client.phone ? "" : "pointer-events-none opacity-40"}
           >
-            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
               <WhatsAppIcon className="h-4 w-4 text-[#25D366]" /> WhatsApp
             </Button>
           </a>
           <a href={client.email ? `mailto:${client.email}` : undefined} className={client.email ? "" : "pointer-events-none opacity-40"}>
-            <Button variant="outline" className="h-11 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
               <Mail className="h-4 w-4" /> Email
             </Button>
           </a>

@@ -136,13 +136,26 @@ const Clients = () => {
             </Button>
           )}
         </div>
-        <div className="flex gap-1 overflow-x-auto">
+        {/* Chips de píldora con shrink-0 en fila con scroll horizontal (antes se aplastaban). */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
           {filterButtons.map((fb) => (
-            <Button key={fb.key} size="sm" variant={kind === fb.key ? "default" : "ghost"} className="h-7 text-xs px-3 shrink-0" onClick={() => setKind(fb.key)}>
+            <button
+              key={fb.key}
+              onClick={() => setKind(fb.key)}
+              className={`h-8 shrink-0 rounded-full border px-3.5 text-xs font-medium transition-colors ${
+                kind === fb.key
+                  ? "border-transparent bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white"
+                  : "border-white/[0.08] bg-white/5 text-foreground/80 hover:bg-white/10"
+              }`}
+            >
               {fb.label}
-            </Button>
+            </button>
           ))}
-          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="h-7 rounded-md border border-border bg-background px-2 text-xs">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusFilter)}
+            className="h-8 shrink-0 rounded-full border border-white/[0.08] bg-white/5 px-3 text-xs text-foreground/80"
+          >
             <option value="all">Estado: todos</option>
             <option value="hot">Caliente</option>
             <option value="warm">Tibio</option>

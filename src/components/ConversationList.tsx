@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X, Search } from "lucide-react";
+import { MessageSquare, Plus, LogOut, Trash2, Pencil, Check, X, Search, Mail, Bell, Target, type LucideIcon } from "lucide-react";
 import SwipeableConversationItem from "@/components/SwipeableConversationItem";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,6 +25,14 @@ interface Conversation {
   conversation_type?: string;
   has_unread?: boolean;
 }
+
+// Tipos de conversación como iconos SVG en tiles (rediseño 86ak3kdgw) — antes emojis.
+const conversationTypeIcon: Record<string, LucideIcon> = {
+  search: Search,
+  email: Mail,
+  followup: Bell,
+  proactive_match: Target,
+};
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -122,6 +130,9 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
               <div
                 className={`group flex items-center gap-1 pr-2 transition-colors hover:bg-muted/50 ${
                   c.id === activeId ? "bg-muted" : ""
+                } ${
+                  // Sin leer: fondo azul tenue + borde izquierdo de 3px (además del punto rojo).
+                  c.has_unread ? "bg-[rgba(59,123,255,0.08)] border-l-[3px] border-l-[hsl(var(--primary))]" : "border-l-[3px] border-l-transparent"
                 }`}
               >
                 {editingId === c.id ? (
@@ -144,28 +155,33 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                   <>
                     <button
                       onClick={() => { onSelect(c.id); onClose?.(); }}
-                      className="flex-1 min-w-0 px-4 py-3 text-left"
+                      className="flex flex-1 min-w-0 items-center gap-2.5 px-3 py-3 text-left"
                     >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {c.conversation_type && (
-                          <span className="shrink-0 text-xs" title={c.conversation_type}>
-                            {c.conversation_type === "search" ? "🔍" :
-                             c.conversation_type === "email" ? "✉️" :
-                             c.conversation_type === "followup" ? "🔔" :
-                             c.conversation_type === "proactive_match" ? "🎯" : "💬"}
-                          </span>
-                        )}
-                        <p className="truncate text-sm font-medium">{c.title}</p>
-                        {c.has_unread && (
-                          <span className="shrink-0 ml-1 h-2 w-2 rounded-full bg-destructive" />
-                        )}
-                      </div>
-                      {c.client_name && (
-                        <p className="truncate text-xs text-muted-foreground font-medium mt-0.5">👤 {c.client_name}</p>
+                      {c.conversation_type && (
+                        <span
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.07] bg-white/5"
+                          title={c.conversation_type}
+                        >
+                          {(() => {
+                            const TypeIcon = conversationTypeIcon[c.conversation_type] ?? MessageSquare;
+                            return <TypeIcon className="h-4 w-4 text-[hsl(var(--brand))]" />;
+                          })()}
+                        </span>
                       )}
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="truncate text-sm font-medium">{c.title}</p>
+                          {c.has_unread && (
+                            <span className="shrink-0 ml-1 h-2 w-2 rounded-full bg-destructive" />
+                          )}
+                        </div>
+                        {c.client_name && (
+                          <p className="truncate text-xs text-muted-foreground font-medium mt-0.5">{c.client_name}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
+                        </p>
+                      </div>
                     </button>
                     {onRename && (
                       <Button

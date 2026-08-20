@@ -1,7 +1,14 @@
-/** Paleta de fondos para avatares (clases Tailwind). */
+/** Paleta de fondos para avatares: los 7 gradientes del rediseño Carbón & Vidrio
+    (clases Tailwind con valor arbitrario — el JIT las ve como literales estáticos acá).
+    El hash de getAvatarColorIndex no cambia; solo cambia el array de colores. */
 export const AVATAR_COLORS = [
-  "bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-violet-500",
-  "bg-rose-500", "bg-cyan-500", "bg-indigo-500", "bg-teal-500",
+  "bg-[linear-gradient(150deg,#7A5CBA_0%,#4E3A85_100%)]",
+  "bg-[linear-gradient(150deg,#3E8E7E_0%,#2A6152_100%)]",
+  "bg-[linear-gradient(150deg,#C2603F_0%,#8A3E27_100%)]",
+  "bg-[linear-gradient(150deg,#4A6FA5_0%,#2F4870_100%)]",
+  "bg-[linear-gradient(150deg,#8A6BB5_0%,#5B4382_100%)]",
+  "bg-[linear-gradient(150deg,#B5843E_0%,#7E5A25_100%)]",
+  "bg-[linear-gradient(150deg,#2F6F9E_0%,#1E4A6B_100%)]",
 ] as const;
 
 /** Iniciales (1-2 letras) a partir del nombre completo. */
