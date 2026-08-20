@@ -1101,6 +1101,63 @@ export async function executeTool(
       return JSON.stringify({ client, conversations: convs ?? [], properties: clientProps ?? [], pending_notes: pendingNotes ?? [], upcoming_events });
     }
 
+    // Memoria de cliente entre conversaciones (86aj9w5nu): recupera el HISTORIAL de trabajo con
+    // un cliente — el ai_summary generado post-turno + notas recientes + propiedades por estado —
+    // resolviendo por NOMBRE (get_client exige UUID). Para "¿en qué quedamos con X?" o trabajar
+    // "para X" sin vincular la conversación. Solo lectura, todo scopeado por user_id.
+    case "recall_client_history": {
+      let resolvedClientId = args.client_id && UUID_REGEX.test(args.client_id) ? args.client_id : null;
+      if (!resolvedClientId) {
+        if (!args.client_name) return JSON.stringify({ error: "Necesito el nombre o ID del cliente." });
+        const searchName = sanitizePattern(args.client_name);
+        const { data: clients } = await supabase.from("clients").select("id, full_name").eq("user_id", userId).ilike("full_name", `%${searchName}%`).limit(5);
+        if (!clients || clients.length === 0) return JSON.stringify({ error: `No encontré un cliente con el nombre "${args.client_name}".` });
+        if (clients.length > 1) return JSON.stringify({ error: `Encontré ${clients.length} clientes: ${clients.map((c: { full_name: string | null }) => c.full_name).join(", ")}. ¿Cuál querés?`, clients });
+        resolvedClientId = clients[0].id;
+      }
+      const { data: recallClient } = await supabase
+        .from("clients")
+        .select("id, full_name, status, client_type, phone, email, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, notes, last_contact_at, ai_summary, ai_summary_updated_at")
+        .eq("id", resolvedClientId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!recallClient) return JSON.stringify({ error: "Cliente no encontrado o no te pertenece." });
+      registerContact(ctx, recallClient.full_name, recallClient.phone);
+      const [{ data: recentNotes }, { data: linkedProps }] = await Promise.all([
+        supabase
+          .from("client_notes")
+          .select("content, is_action, is_done, created_at")
+          .eq("client_id", resolvedClientId)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(8),
+        supabase
+          .from("client_properties")
+          .select("status, notes, created_at, properties(title, price, currency, zone, operation)")
+          .eq("client_id", resolvedClientId)
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(10),
+      ]);
+      type LinkedRow = { status: string; notes: string | null; created_at: string; properties: { title?: string | null; price?: number | null; currency?: string | null; zone?: string | null; operation?: string | null } | null };
+      const propiedades = ((linkedProps ?? []) as LinkedRow[]).map((cp) => ({
+        status: cp.status,
+        title: cp.properties?.title ?? null,
+        price: cp.properties?.price ?? null,
+        currency: cp.properties?.currency ?? null,
+        zone: cp.properties?.zone ?? null,
+        notes: cp.notes ?? null,
+      }));
+      return JSON.stringify({
+        client: recallClient,
+        memoria: recallClient.ai_summary ?? null,
+        memoria_actualizada: recallClient.ai_summary_updated_at ?? null,
+        notas_recientes: recentNotes ?? [],
+        propiedades_vinculadas: propiedades,
+        instruction: "Este es el historial REAL de trabajo con el cliente (la 'memoria' la genera el sistema tras cada conversación vinculada). Usalo para retomar el hilo sin re-preguntar lo ya hablado; si la memoria está vacía, decí que todavía no hay historial registrado — no lo inventes.",
+      });
+    }
+
     case "link_conversation": {
       if (!conversationId || !UUID_REGEX.test(conversationId)) return JSON.stringify({ error: "ID de conversación inválido" });
       const updates: Record<string, any> = {};

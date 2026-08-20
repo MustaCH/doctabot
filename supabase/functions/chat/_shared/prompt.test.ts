@@ -306,3 +306,19 @@ describe("prefijo estático + fecha al final (86aj9w5n8)", () => {
     expect(b).toMatch(/\d{1,2}:\d{2}/);
   });
 });
+
+// 86aj9w5nu: memoria de cliente inyectada en el bloque CLIENTE ACTIVO.
+describe("MEMORIA DEL CLIENTE en buildActiveClientBlock (86aj9w5nu)", () => {
+  it("con ai_summary presente, agrega la sección MEMORIA al final del bloque", () => {
+    const b = buildActiveClientBlock({ full_name: "Ana Pérez", ai_summary: "Quedamos en visitar el viernes." });
+    expect(b).toContain("MEMORIA DEL CLIENTE");
+    expect(b).toContain("Quedamos en visitar el viernes.");
+    expect(b.indexOf("MEMORIA DEL CLIENTE")).toBeGreaterThan(b.indexOf("- Nombre: Ana Pérez"));
+    expect(b).toMatch(/vale lo del agente/);
+  });
+
+  it("sin ai_summary (o vacío) el bloque queda como siempre, sin sección MEMORIA", () => {
+    expect(buildActiveClientBlock({ full_name: "Ana" })).not.toContain("MEMORIA DEL CLIENTE");
+    expect(buildActiveClientBlock({ full_name: "Ana", ai_summary: "   " })).not.toContain("MEMORIA DEL CLIENTE");
+  });
+});

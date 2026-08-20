@@ -251,6 +251,8 @@ export type Database = {
       clients: {
         Row: {
           address: string | null
+          ai_summary: string | null
+          ai_summary_updated_at: string | null
           birthday: string | null
           budget_currency: string | null
           budget_max: number | null
@@ -274,6 +276,8 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          ai_summary?: string | null
+          ai_summary_updated_at?: string | null
           birthday?: string | null
           budget_currency?: string | null
           budget_max?: number | null
@@ -297,6 +301,8 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          ai_summary?: string | null
+          ai_summary_updated_at?: string | null
           birthday?: string | null
           budget_currency?: string | null
           budget_max?: number | null

@@ -575,6 +575,9 @@ export interface ActiveClientInfo {
   property_type_interest?: string | null;
   birthday?: string | null;
   company?: string | null;
+  // Memoria entre conversaciones (86aj9w5nu): resumen generado post-turno por el sistema
+  // (client-summary.ts). Se inyecta como sección MEMORIA para que Alan retome el hilo.
+  ai_summary?: string | null;
 }
 
 const CLIENT_STATUS_LABEL: Record<string, string> = {
@@ -610,9 +613,13 @@ export function buildActiveClientBlock(client: ActiveClientInfo | null | undefin
   if (client.property_type_interest) lines.push(`- Tipo de propiedad buscada: ${client.property_type_interest}`);
   if (client.company) lines.push(`- Empresa/ocupación: ${client.company}`);
   if (client.birthday) lines.push(`- Cumpleaños: ${client.birthday}`);
+  // Memoria entre conversaciones (86aj9w5nu): va al FINAL del bloque, como contexto de fondo.
+  const memoria = client.ai_summary?.trim()
+    ? `\n\nMEMORIA DEL CLIENTE (resumen de conversaciones anteriores, generado por el sistema): ${client.ai_summary.trim()}\nUsala para retomar el hilo sin re-preguntar lo ya hablado; si contradice algo que el agente dice AHORA, vale lo del agente.`
+    : "";
   return `## CLIENTE ACTIVO EN ESTA CONVERSACIÓN
 Esta conversación YA está vinculada a este cliente. Usá estos datos directamente: NO vuelvas a preguntar ni a buscar (get_client/list_clients) los datos que ya figuran acá, y dirigí cualquier borrador (email/WhatsApp) a este cliente salvo que el agente indique otro destinatario.
-${lines.join("\n")}`;
+${lines.join("\n")}${memoria}`;
 }
 
 // Tope de historial que se reenvía a Gemini (aplicado ANTES de armar el payload multimodal):

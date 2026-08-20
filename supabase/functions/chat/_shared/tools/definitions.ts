@@ -272,6 +272,21 @@ export const toolDefinitions = [
   {
     type: "function",
     function: {
+      name: "recall_client_history",
+      description: "Recuperar la MEMORIA de trabajo con un cliente entre conversaciones: resumen de lo hablado/decidido en charlas anteriores (lo mantiene el sistema), notas recientes y propiedades vistas/descartadas. Usala cuando el agente pregunte '¿en qué quedamos con X?' / '¿qué hablamos con X?' o al retomar trabajo 'para [cliente]' en una conversación NO vinculada. Acepta nombre (no hace falta ID).",
+      parameters: {
+        type: "object",
+        properties: {
+          client_name: { type: "string", description: "Nombre del cliente (búsqueda parcial; si hay varios, pide desambiguar)." },
+          client_id: { type: "string", description: "ID del cliente si ya lo tenés (opcional, tiene prioridad sobre el nombre)." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "link_conversation",
       description: "Vincular la conversación actual a un cliente y/o asignarle un tipo. Usar automáticamente cuando se identifica un cliente o el tipo de conversación.",
       parameters: {

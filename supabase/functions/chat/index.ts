@@ -22,6 +22,7 @@ import { toolDefinitions } from "./_shared/tools/definitions.ts";
 import { executeTool, fetchAllClientContactRows } from "./_shared/tools/executor.ts";
 import { getValidCalendarToken } from "./_shared/tools/google.ts";
 import { generateTitle, regenerateTitle } from "./_shared/title.ts";
+import { updateClientSummary } from "./_shared/client-summary.ts";
 import { runSupervisorEval, logSupervisorResult } from "./_shared/supervisor.ts";
 import { streamTurn } from "./_shared/stream-turn.ts";
 import { extractListingSlugs, neutralizeFabricatedListings, validSlugSetFromUrls } from "./_shared/link-guardrail.ts";
@@ -151,15 +152,19 @@ serve(async (req) => {
     // bypassa RLS). Fail-open: si no hay client_id, la query falla o no hay cliente, no se
     // inyecta nada y el chat sigue normal.
     let activeClientBlock = "";
+    // Cliente vinculado del turno (86aj9w5nu): lo conserva el background para regenerar su
+    // ai_summary post-turno.
+    let activeClientId: string | null = null;
     if (conversationId) {
       try {
         const { data: conv } = await supabase
           .from("conversations")
-          .select("client_id, clients(full_name, status, client_type, phone, email, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, birthday, company)")
+          .select("client_id, clients(full_name, status, client_type, phone, email, preferred_zones, budget_min, budget_max, budget_currency, property_type_interest, birthday, company, ai_summary)")
           .eq("id", conversationId)
           .eq("user_id", userId)
           .maybeSingle();
         if (conv?.client_id && conv.clients) {
+          activeClientId = conv.client_id;
           activeClientBlock = buildActiveClientBlock(conv.clients as any);
           // Sembrar el registro para el guardarraíl de WhatsApp: cubre "mandale un WhatsApp a este
           // cliente" sin que Alan haya llamado list_clients/get_client en el turno.
@@ -639,6 +644,36 @@ serve(async (req) => {
                 const clientName = (conv as any)?.clients?.full_name ?? null;
                 const recentMessages = [...messages.slice(-5), { role: "assistant", content: finalContent }];
                 regenerateTitle({ conversationId, userId, supabase, apiKey: GEMINI_API_KEY, recentMessages, clientName });
+              }
+            }
+
+            // Memoria de cliente (86aj9w5nu): con cliente vinculado (de antes, o vinculado EN
+            // este turno vía link_conversation), regeneramos su ai_summary con el último
+            // intercambio. Fail-open y en background: nunca toca el turno.
+            if (!streamFailed && finalContent && conversationId) {
+              try {
+                let summaryClientId = activeClientId;
+                if (!summaryClientId && executedTools.includes("link_conversation")) {
+                  const { data: convNow } = await supabase
+                    .from("conversations")
+                    .select("client_id")
+                    .eq("id", conversationId)
+                    .eq("user_id", userId)
+                    .maybeSingle();
+                  summaryClientId = convNow?.client_id ?? null;
+                }
+                if (summaryClientId) {
+                  await updateClientSummary({
+                    supabase,
+                    apiKey: GEMINI_API_KEY,
+                    userId,
+                    clientId: summaryClientId,
+                    userMessage: typeof userMessage === "string" ? userMessage : "",
+                    assistantMessage: finalContent,
+                  });
+                }
+              } catch (sumErr) {
+                console.error("client-summary bg error:", sumErr);
               }
             }
 

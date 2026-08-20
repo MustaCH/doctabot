@@ -197,6 +197,22 @@ tocan antes de ajustar el default). Los evals no pasan `deadlineAt` (sin límite
   expone caching explícito") resultó falsa para la medición; migrar solo se justificaría si más
   adelante quisiéramos caching EXPLÍCITO (cachedContents con TTL), que es otro scope.
 
+## Memoria de cliente entre conversaciones (86aj9w5nu, 2026-08-20)
+
+- **Persistencia:** `clients.ai_summary` + `ai_summary_updated_at` (migración `client_ai_summary`,
+  aplicada con OK). Tope 1.500 chars, saneado de marcadores (`sanitizeSummary` — un marcador
+  inyectado al system rompería el turno siguiente).
+- **Generación:** post-turno en el background del chat (junto al supervisor), solo con cliente
+  vinculado (previo o vía `link_conversation` del mismo turno). Modelo `gemini-2.5-flash`
+  (max_tokens 512, thinking off — patrón title.ts). Input: summary anterior + último intercambio;
+  el system instruye devolver el anterior tal cual si no hay nada nuevo (anti-drift). Fail-open.
+- **Uso:** (a) el bloque CLIENTE ACTIVO inyecta la sección "MEMORIA DEL CLIENTE" (con la regla:
+  si contradice al agente AHORA, vale lo del agente); (b) tool `recall_client_history` (acepta
+  NOMBRE, a diferencia de get_client) → memoria + notas recientes + propiedades por estado, para
+  "¿en qué quedamos con X?" sin vincular. Hechos canónicos actualizados en alan-facts.
+- Costo por turno vinculado: 1 llamada 2.5-flash (~centavos de centavo). Tests:
+  `client-summary.test.ts`, `executor.recall.test.ts` (incl. cross-tenant), prompt.test.
+
 ## Retrieval etapa 2: pgvector + hybrid search (86aj9w5pn, 2026-08-19)
 
 - **Infra (migración `20260819210000`, aplicada con OK de Nacho):** extensión `vector`, columna
