@@ -153,11 +153,11 @@ const SuperAdmin = () => {
             type="password" placeholder="PIN" value={pin}
             onChange={(e) => { setPin(e.target.value); setPinError(false); }}
             onKeyDown={(e) => e.key === "Enter" && handlePin()}
-            className={`h-11 rounded-[12px] border-white/[0.08] bg-white/5 font-mono tracking-[0.3em] text-center ${pinError ? "border-destructive" : ""}`} autoFocus
+            className={`h-[46px] font-mono tracking-[0.3em] text-center ${pinError ? "border-destructive" : ""}`} autoFocus
             disabled={validating}
           />
           {pinError && <p className="text-xs text-destructive text-center">PIN incorrecto</p>}
-          <Button className="h-11 w-full" onClick={handlePin} disabled={validating}>
+          <Button className="h-[46px] w-full" onClick={handlePin} disabled={validating}>
             {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Acceder"}
           </Button>
           <p className="text-[11px] leading-relaxed text-center text-muted-foreground">
@@ -215,7 +215,7 @@ function AdminDashboard({ pin }: { pin: string }) {
           <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
             {lastUpdated ? `Actualizado ${lastUpdated.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : "Cargando…"}
           </span>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={loadStats} aria-label="Actualizar">
+          <Button variant="ghost" size="icon-xs" className="h-9 w-9" onClick={loadStats} aria-label="Actualizar">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -493,11 +493,11 @@ function ScrapingStatus({ pin }: { pin: string }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setShowLogs(!showLogs)} className="text-xs">
+          <Button size="xs" variant="ghost" onClick={() => setShowLogs(!showLogs)} className="text-xs">
             <Eye className="h-3.5 w-3.5 mr-1" />
             {showLogs ? "Ocultar logs" : "Ver logs"}
           </Button>
-          <Button size="sm" variant="outline" onClick={triggerScraping} disabled={scraping || isLive}>
+          <Button size="xs" variant="outline" onClick={triggerScraping} disabled={scraping || isLive}>
             {(scraping || isLive) ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
             {isLive ? "Ejecutando..." : scraping ? "Iniciando..." : "Ejecutar ahora"}
           </Button>
@@ -664,7 +664,7 @@ function ScrapingHistory({ pin }: { pin: string }) {
           <h2 className="text-sm font-semibold">Historial de Scraping</h2>
           <Badge variant="outline" className="text-[10px]">{batches.length} lotes</Badge>
         </div>
-        <Button size="sm" variant="ghost" onClick={load} disabled={loading} className="text-xs">
+        <Button size="xs" variant="ghost" onClick={load} disabled={loading} className="text-xs">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         </Button>
       </div>
@@ -833,7 +833,7 @@ function PushTestPanel({ pin }: { pin: string }) {
           <Send className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Probar notificaciones push</h2>
         </div>
-        <Button size="sm" variant="ghost" onClick={loadSubscribers} disabled={loading}>
+        <Button size="xs" variant="ghost" onClick={loadSubscribers} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -883,7 +883,7 @@ function PushTestPanel({ pin }: { pin: string }) {
             <p className="text-xs text-muted-foreground">
               {selectedSub ? `${selectedSub.subscription_count} suscripción(es) activa(s)` : ""}
             </p>
-            <Button size="sm" onClick={sendTest} disabled={sending || !selectedUserId}>
+            <Button size="xs" onClick={sendTest} disabled={sending || !selectedUserId}>
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
               {sending ? "Enviando..." : "Enviar prueba"}
             </Button>
@@ -943,7 +943,7 @@ function MorningMatchesPanel() {
           <BarChart3 className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Morning Matches</h2>
         </div>
-        <Button size="sm" variant="outline" onClick={runMatches} disabled={running}>
+        <Button size="xs" variant="outline" onClick={runMatches} disabled={running}>
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
           {running ? "Ejecutando..." : "Ejecutar ahora"}
         </Button>
@@ -1016,7 +1016,7 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
           <BarChart3 className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Delivery de notificaciones push (últimos 7 días)</h2>
         </div>
-        <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+        <Button size="xs" variant="ghost" onClick={load} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -1146,9 +1146,9 @@ function PropertiesTable({ pin }: { pin: string }) {
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input placeholder="Buscar por título, dirección o zona..." value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="max-w-sm" />
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 max-w-sm rounded-[10px]" />
         <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} resultados</span>
-        <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "propiedades")}>
+        <Button variant="outline" size="xs" onClick={() => downloadCSV(data, "propiedades")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
         </Button>
       </div>
@@ -1211,9 +1211,9 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input placeholder="Buscar por nombre o código de agente..." value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="max-w-sm" />
+          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 max-w-sm rounded-[10px]" />
         <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} usuarios</span>
-        <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "usuarios")}>
+        <Button variant="outline" size="xs" onClick={() => downloadCSV(data, "usuarios")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
         </Button>
       </div>
@@ -1243,7 +1243,7 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
                     <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"
+                      <Button variant="ghost" size="icon-xs" className="h-7 w-7"
                         title="Ver conversaciones" onClick={() => onViewConversations(u.user_id)}>
                         <MessageSquare className="h-3.5 w-3.5" />
                       </Button>
@@ -1318,7 +1318,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
             <option value="">Todos los usuarios</option>
             {allUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <Button variant="outline" size="sm" onClick={() => downloadCSV(data, "conversaciones")}>
+          <Button variant="outline" size="xs" onClick={() => downloadCSV(data, "conversaciones")}>
             <Download className="h-3.5 w-3.5 mr-1.5" />CSV
           </Button>
         </div>
@@ -1330,7 +1330,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
             <h3 className="text-sm font-semibold">
               Mensajes — {data.find(c => c.id === selectedConv)?.title ?? "Conversación"}
             </h3>
-            <Button variant="ghost" size="icon" onClick={() => { setSelectedConv(null); setMessages([]); }}>
+            <Button variant="ghost" size="icon-xs" onClick={() => { setSelectedConv(null); setMessages([]); }}>
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -1373,7 +1373,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
                     <TableCell className="text-xs">{c.conversation_type ?? "general"}</TableCell>
                     <TableCell className="text-xs">{new Date(c.updated_at).toLocaleDateString("es-AR")}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => openMessages(c.id)} className="h-7 w-7">
+                      <Button variant="ghost" size="icon-xs" onClick={() => openMessages(c.id)} className="h-7 w-7">
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -1413,7 +1413,7 @@ function FavoritesTable({ pin }: { pin: string }) {
     <div className="mt-4 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} favoritos</span>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(data, "favoritos")}>
+        <Button variant="outline" size="xs" className="ml-auto" onClick={() => downloadCSV(data, "favoritos")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
         </Button>
       </div>
@@ -1474,7 +1474,7 @@ function ClientsTable({ pin }: { pin: string }) {
     <div className="mt-4 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} clientes</span>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(data, "clientes")}>
+        <Button variant="outline" size="xs" className="ml-auto" onClick={() => downloadCSV(data, "clientes")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
         </Button>
       </div>
@@ -1667,7 +1667,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
             <option value="error">Errores</option>
             <option value="unevaluated">Sin evaluar</option>
           </select>
-          <Button variant="outline" size="sm" className="ml-auto" onClick={() => downloadCSV(logs, "supervisor-logs")}>
+          <Button variant="outline" size="xs" className="ml-auto" onClick={() => downloadCSV(logs, "supervisor-logs")}>
             <Download className="h-3.5 w-3.5 mr-1.5" />CSV
           </Button>
         </div>
@@ -1706,7 +1706,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
                         <TableCell className="text-xs">{l.retry_count}</TableCell>
                         <TableCell className="text-xs">{l.latency_ms ? `${l.latency_ms}ms` : "—"}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                          <Button variant="ghost" size="icon-xs" className="h-7 w-7"
                             onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}>
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
@@ -1886,7 +1886,7 @@ function ReportsPanel({ pin }: { pin: string }) {
     <div className="mt-4 space-y-6">
       {/* Export Button */}
       <div className="flex items-center justify-end">
-        <Button variant="outline" size="sm" onClick={exportPDF} disabled={exporting}>
+        <Button variant="outline" size="xs" onClick={exportPDF} disabled={exporting}>
           {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <FileDown className="h-3.5 w-3.5 mr-1.5" />}
           {exporting ? "Generando PDF..." : "Exportar PDF"}
         </Button>
@@ -2054,11 +2054,11 @@ function Pagination({ page, totalPages, onPageChange }: { page: number; totalPag
   if (totalPages <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-2">
-      <Button variant="ghost" size="icon" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
+      <Button variant="ghost" size="icon-xs" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <span className="text-xs text-muted-foreground">{page + 1} / {totalPages}</span>
-      <Button variant="ghost" size="icon" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
+      <Button variant="ghost" size="icon-xs" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
         <ChevronRight className="h-4 w-4" />
       </Button>
     </div>

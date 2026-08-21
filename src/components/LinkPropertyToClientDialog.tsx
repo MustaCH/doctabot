@@ -134,7 +134,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Buscar cliente"
-              className="h-11 rounded-[14px] border-white/[0.09] bg-white/[0.04] pl-10 text-sm focus-visible:ring-offset-0"
+              className="pl-10 text-sm"
             />
           </div>
 
@@ -213,7 +213,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
 
           {/* Action: primario de 48 */}
           <Button
-            className="h-12 w-full rounded-[14px] bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-[15px] font-semibold text-white shadow-[0_14px_30px_-14px_rgba(59,123,255,0.95)] hover:opacity-90"
+            className="w-full text-[15px]"
             disabled={!selectedClient || linking}
             onClick={handleLink}
           >

@@ -32,7 +32,7 @@ const APP_VERSION = "1.8.7";
 const GLASS_CARD = "rounded-[16px] border border-white/[0.09] bg-white/5";
 const GRADIENT_PRIMARY = "bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white";
 const INPUT_GLASS =
-  "h-[46px] rounded-[14px] border-white/[0.09] bg-white/[0.04] px-[15px] text-[15px] md:text-[15px] text-foreground placeholder:text-muted-foreground/70 focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)] focus-visible:ring-offset-0";
+  "h-[46px] px-[15px] text-[15px] md:text-[15px] placeholder:text-muted-foreground/70"; // 46 en tarjeta; vidrio y foco vienen de la primitiva Input
 
 const GoogleLogo = () => (
   <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
