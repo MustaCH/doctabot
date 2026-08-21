@@ -137,12 +137,13 @@ const Clients = () => {
           )}
         </div>
         {/* Chips de píldora con shrink-0 en fila con scroll horizontal (antes se aplastaban). */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+        {/* Chips 32 como el artboard; el hit de cada botón se extiende a 44 con un pseudo (el <select> nativo no lo admite — abre el picker del sistema al tocar). */}
+        <div className="flex items-center gap-2 overflow-x-auto py-2 [scrollbar-width:none]">
           {filterButtons.map((fb) => (
             <button
               key={fb.key}
               onClick={() => setKind(fb.key)}
-              className={`h-8 shrink-0 rounded-full border px-3.5 text-xs font-medium transition-colors ${
+              className={`relative h-8 shrink-0 rounded-full border px-3.5 text-xs font-medium transition-colors after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] ${
                 kind === fb.key
                   ? "border-transparent bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white"
                   : "border-white/[0.08] bg-white/5 text-foreground/80 hover:bg-white/10"
@@ -154,7 +155,8 @@ const Clients = () => {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            className="h-8 shrink-0 rounded-full border border-white/[0.08] bg-white/5 px-3 text-xs text-foreground/80"
+            aria-label="Filtrar por estado"
+            className="h-8 shrink-0 rounded-full border border-white/[0.08] bg-white/5 px-3 py-0 text-xs text-foreground/80"
           >
             <option value="all">Estado: todos</option>
             <option value="hot">Caliente</option>

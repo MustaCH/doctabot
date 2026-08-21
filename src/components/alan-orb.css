@@ -36,6 +36,7 @@
 }
 
 .alan-orb .halo {
+  pointer-events: none; /* decorativo: no captura taps de los controles vecinos (86ak481c5) */
   position: absolute;
   border-radius: 9999px;
   background: radial-gradient(

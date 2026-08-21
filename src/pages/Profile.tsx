@@ -329,7 +329,7 @@ const Profile = () => {
                 </div>
                 <button
                   type="button"
-                  className={`flex h-9 shrink-0 items-center justify-center rounded-[12px] px-3.5 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
+                  className={`relative flex h-9 shrink-0 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] items-center justify-center rounded-[12px] px-3.5 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
                   onClick={async () => {
                     setUpdating(true);
                     await applyUpdate();
@@ -361,7 +361,7 @@ const Profile = () => {
                 {calendarConnected ? (
                   <button
                     type="button"
-                    className="flex h-9 shrink-0 items-center rounded-[12px] border border-[rgba(255,90,77,0.26)] bg-[rgba(255,90,77,0.10)] px-3 text-xs font-semibold text-[hsl(var(--hot))] transition-colors hover:bg-[rgba(255,90,77,0.16)] disabled:opacity-60"
+                    className="relative flex h-9 shrink-0 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] items-center rounded-[12px] border border-[rgba(255,90,77,0.26)] bg-[rgba(255,90,77,0.10)] px-3 text-xs font-semibold text-[hsl(var(--hot))] transition-colors hover:bg-[rgba(255,90,77,0.16)] disabled:opacity-60"
                     onClick={handleDisconnectCalendar}
                     disabled={calendarLoading}
                   >
@@ -370,7 +370,7 @@ const Profile = () => {
                 ) : (
                   <button
                     type="button"
-                    className={`flex h-9 shrink-0 items-center rounded-[12px] px-3 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
+                    className={`relative flex h-9 shrink-0 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] items-center rounded-[12px] px-3 text-xs font-semibold shadow-[0_8px_20px_-10px_rgba(59,123,255,0.9)] transition-opacity hover:opacity-90 disabled:opacity-60 ${GRADIENT_PRIMARY}`}
                     onClick={handleConnectCalendar}
                     disabled={calendarLoading}
                   >
@@ -384,7 +384,7 @@ const Profile = () => {
                   <p className="flex-1 text-xs leading-[1.45] text-foreground/80">Alan no puede mandar emails por vos hasta que reconectes.</p>
                   <button
                     type="button"
-                    className="flex h-9 shrink-0 items-center rounded-[12px] border border-[rgba(245,178,63,0.34)] bg-[rgba(245,178,63,0.16)] px-[13px] text-xs font-semibold text-[hsl(var(--warm-soft-foreground))] transition-colors hover:bg-[rgba(245,178,63,0.24)] disabled:opacity-60"
+                    className="relative flex h-9 shrink-0 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-[''] items-center rounded-[12px] border border-[rgba(245,178,63,0.34)] bg-[rgba(245,178,63,0.16)] px-[13px] text-xs font-semibold text-[hsl(var(--warm-soft-foreground))] transition-colors hover:bg-[rgba(245,178,63,0.24)] disabled:opacity-60"
                     onClick={handleConnectCalendar}
                     disabled={calendarLoading}
                   >

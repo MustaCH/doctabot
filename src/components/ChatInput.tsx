@@ -209,7 +209,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
     >
       {/* Quote preview */}
       {quotePreview && (
-        <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+        <div className="mb-2 flex items-start gap-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
           <div className="flex-1 min-w-0 rounded-lg border-l-2 border-primary bg-muted/50 px-3 py-1.5 overflow-hidden">
             <p className="text-[11px] font-medium text-primary mb-0.5">Alan</p>
             <p className="flex items-start gap-1.5 overflow-hidden break-words text-xs leading-relaxed text-muted-foreground">
@@ -218,8 +218,10 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
             </p>
           </div>
           <button
+            type="button"
             onClick={onClearQuote}
-            className="mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Quitar cita"
+            className="-my-2 -mr-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -228,7 +230,7 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
 
       {/* Attachment previews */}
       {attachments.length > 0 && (
-        <div className="flex gap-2 mb-2 px-1 overflow-x-auto">
+        <div className="mb-2 flex gap-2.5 overflow-x-auto px-1 pb-1 pt-3">
           {attachments.map((att, i) => {
             const isImage = att.file.type.startsWith("image/");
             return (
@@ -253,8 +255,10 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
                   </div>
                 )}
                 <button
+                  type="button"
                   onClick={() => removeAttachment(i)}
-                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                  aria-label="Quitar adjunto"
+                  className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-100 transition-opacity after:absolute after:-inset-3 after:content-[''] md:opacity-0 md:group-hover:opacity-100"
                 >
                   <X className="h-3 w-3" />
                 </button>

@@ -186,7 +186,7 @@ const PropertyCard = ({ photo, title, office, price, location, surface, url, ext
             onClick={toggle}
             disabled={favLoading}
             aria-label={isFavorite ? "Quitar de favoritos" : "Guardar en favoritos"}
-            className="absolute top-3 right-3 flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/10 bg-[rgba(19,21,25,0.5)] backdrop-blur-sm transition-colors hover:bg-[rgba(19,21,25,0.7)]"
+            className="absolute top-3 right-3 flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/10 bg-[rgba(19,21,25,0.5)] backdrop-blur-sm transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-[rgba(19,21,25,0.7)]"
           >
             <Heart className={`h-4 w-4 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-white"}`} />
           </button>

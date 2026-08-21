@@ -346,7 +346,8 @@ const Chat = () => {
         <div className="relative">
           <button
             onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })}
-            className={`absolute -top-12 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-md transition-all duration-200 ${
+            aria-label="Ir al final"
+            className={`absolute -top-14 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[rgba(31,33,37,0.92)] shadow-[0_12px_28px_-12px_rgba(0,0,0,0.9)] backdrop-blur-sm transition-all duration-200 ${
               showScrollBtn ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
             }`}
           >

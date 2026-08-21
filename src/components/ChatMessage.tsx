@@ -86,7 +86,7 @@ const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscr
           type="button"
           onClick={toggle}
           aria-label={playing ? "Pausar" : "Reproducir"}
-          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-white/[0.22] transition-transform active:scale-95"
+          className="relative after:absolute after:content-[''] flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-white/[0.22] transition-transform after:-inset-1 active:scale-95"
         >
           {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
         </button>
@@ -124,7 +124,7 @@ const CopyButton = ({ content }: { content: string }) => {
   return (
     <button
       onClick={handleCopy}
-      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 ml-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
+      className="relative -mb-3.5 -mt-2.5 flex min-h-11 items-center gap-1 px-1 text-xs text-muted-foreground transition-colors hover:text-foreground opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
     >
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       {copied ? "Copiado" : "Copiar"}
@@ -191,7 +191,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
       ) : (
         <AlanAvatar />
       )}
-      <div className="max-w-[80%] min-w-0 overflow-hidden">
+      <div className="-mb-3.5 max-w-[80%] min-w-0 overflow-hidden pb-3.5">
         <div
           data-bubble={isUser ? "user" : "assistant"}
           className={`px-4 py-3 text-[15px] leading-[1.5] overflow-hidden ${
@@ -244,7 +244,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
             {onReply && (
               <button
                 onClick={() => onReply(stripAllMarkers(content))}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
+                className="relative -mx-1 -mb-3.5 -mt-2.5 flex min-h-11 items-center gap-1 px-1 text-xs text-muted-foreground transition-colors hover:text-foreground opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
               >
                 <Reply className="h-3 w-3" />
                 Citar
@@ -388,7 +388,7 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
       {onReply && (
         <button
           onClick={() => onReply(stripAllMarkers(content))}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
+          className="relative -mx-1 -mb-3.5 -mt-2.5 flex min-h-11 items-center gap-1 px-1 text-xs text-muted-foreground transition-colors hover:text-foreground opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100"
         >
           <Reply className="h-3 w-3" />
           Citar
@@ -406,7 +406,7 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
     return (
       <div className="group flex gap-2.5 px-4 py-1.5">
         {isError ? <AlanOrb size="sm" state="error" className="mt-1" /> : <AlanAvatar />}
-        <div className="max-w-[80%] min-w-0 overflow-hidden">
+        <div className="-mb-3.5 max-w-[80%] min-w-0 overflow-hidden pb-3.5">
           <div
             data-bubble="assistant"
             className={`${assistantBubbleCls} ${isError ? "border-[rgba(255,90,77,0.35)] bg-[rgba(255,90,77,0.06)]" : ""}`}
@@ -417,7 +417,7 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
           {canRetry && (
             <button
               onClick={onRetry}
-              className="mt-2 flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white/10"
+              className="mb-2.5 mt-2 flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-foreground transition-colors hover:bg-white/10"
             >
               <RotateCcw className="h-4 w-4" />
               Reintentar
