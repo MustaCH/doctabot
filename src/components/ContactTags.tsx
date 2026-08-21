@@ -55,30 +55,37 @@ export default function ContactTags({ clientId }: { clientId: string }) {
   const unassignedTags = allTags.filter((t) => !assigned.some((a) => a.id === t.id));
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       {assigned.map((t) => (
-        <span key={t.id} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ backgroundColor: t.color }}>
+        <span key={t.id} className="inline-flex h-8 items-center gap-0.5 rounded-full pl-3 pr-1 text-[11px] font-medium text-white" style={{ backgroundColor: t.color }}>
           {t.name}
-          <button onClick={() => unassign(t)} className="opacity-80 hover:opacity-100"><X className="h-3 w-3" /></button>
+          <button
+            type="button"
+            onClick={() => unassign(t)}
+            aria-label={`Quitar etiqueta ${t.name}`}
+            className="flex h-7 w-7 items-center justify-center rounded-full opacity-80 transition-opacity hover:bg-black/15 hover:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </span>
       ))}
       <Popover>
         <PopoverTrigger asChild>
-          <Button size="sm" variant="outline" className="h-6 gap-1 px-2 text-[11px]"><Plus className="h-3 w-3" /> Etiqueta</Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1 rounded-full border-white/10 bg-white/[0.06] px-3 text-[11px]"><Plus className="h-3.5 w-3.5" /> Etiqueta</Button>
         </PopoverTrigger>
-        <PopoverContent className="w-56 space-y-2" align="start">
+        <PopoverContent className="w-64 space-y-2.5 rounded-[14px] border-white/[0.09] bg-[hsl(var(--card))] p-3" align="start">
           {unassignedTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {unassignedTags.map((t) => (
-                <button key={t.id} onClick={() => assign(t)} className="rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ backgroundColor: t.color }}>
+                <button key={t.id} type="button" onClick={() => assign(t)} className="inline-flex h-8 items-center rounded-full px-3 text-[11px] font-medium text-white" style={{ backgroundColor: t.color }}>
                   {t.name}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex gap-1.5">
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva etiqueta" className="h-7 text-xs" maxLength={40} onKeyDown={(e) => { if (e.key === "Enter") createAndAssign(); }} />
-            <Button size="sm" className="h-7 px-2 text-xs" onClick={createAndAssign} disabled={!newName.trim()}>Crear</Button>
+          <div className="flex gap-2">
+            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva etiqueta" aria-label="Nueva etiqueta" className="h-[38px] rounded-[12px] px-3 text-xs md:text-xs" maxLength={40} onKeyDown={(e) => { if (e.key === "Enter") createAndAssign(); }} />
+            <Button size="sm" className="px-3 text-xs" onClick={createAndAssign} disabled={!newName.trim()}>Crear</Button>
           </div>
         </PopoverContent>
       </Popover>

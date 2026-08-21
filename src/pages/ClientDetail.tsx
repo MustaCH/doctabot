@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import ClientFormFields, { ClientFormData, emptyClientForm } from "@/components/ClientFormFields";
 import { ClientStatusChip } from "@/components/ClientStatusChip";
 import { CLIENT_TYPE_LABEL } from "@/lib/client-status";
+import { getInitials, getAvatarColorIndex, AVATAR_COLORS, AVATAR_TINTS } from "@/lib/contact-avatar";
 import { Switch } from "@/components/ui/switch";
 import ContactTags from "@/components/ContactTags";
 
@@ -78,13 +79,16 @@ const clientTypeLabel = CLIENT_TYPE_LABEL;
 const propStatusLabel: Record<string, string> = {
   sugerida: "Sugerida", enviada: "Enviada", visitada: "Visitada", descartada: "Descartada",
 };
-// Chips de estado de propiedad, según el rediseño (gris / primario / celeste / rojo).
+// Chips de estado de propiedad con tintes token (artboard Ficha): neutro / azul tenue / frío / rojo.
 const propStatusChip: Record<string, string> = {
-  sugerida: "bg-muted text-muted-foreground",
-  enviada: "bg-primary/10 text-primary",
-  visitada: "bg-sky-900/30 text-sky-400",
-  descartada: "bg-red-900/30 text-red-400",
+  sugerida: "border-white/10 bg-white/[0.06] text-[#A7AEBA]",
+  enviada: "border-[rgba(91,147,255,0.35)] bg-[rgba(91,147,255,0.18)] text-[hsl(var(--primary-soft-foreground))]",
+  visitada: "border-[rgba(79,195,232,0.32)] bg-[rgba(79,195,232,0.16)] text-[hsl(var(--cold-soft-foreground))]",
+  descartada: "border-[rgba(255,90,77,0.32)] bg-[rgba(255,90,77,0.16)] text-[hsl(var(--hot))]",
 };
+
+// Superficie de vidrio de las tarjetas de la ficha (radio 18).
+const GLASS_CARD = "rounded-[18px] border border-white/[0.09] bg-white/5";
 
 // Semáforo del widget Último contacto (verde <7 días, ámbar <30, rojo 30+ / nunca).
 // Misma lógica de siempre; colores del sistema nuevo (éxito #3EC98A, tibio #F5B23F, rojo #FF5A4D).
@@ -432,14 +436,14 @@ const ClientDetail = () => {
   if (loading) {
     return (
       <div className="min-h-[100dvh] bg-background">
-        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <div className="flex items-center gap-3 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3 safe-top">
           <Skeleton className="h-8 w-8 rounded" />
           <Skeleton className="h-5 w-40" />
         </div>
         <div className="p-4 space-y-4">
-          <Skeleton className="h-24 w-full rounded-2xl" />
-          <Skeleton className="h-40 w-full rounded-2xl" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-[18px] bg-white/[0.06]" />
+          <Skeleton className="h-40 w-full rounded-[18px] bg-white/[0.06]" />
+          <Skeleton className="h-32 w-full rounded-[18px] bg-white/[0.06]" />
         </div>
       </div>
     );
@@ -447,7 +451,10 @@ const ClientDetail = () => {
 
   if (!client) return null;
 
-  const initials = client.full_name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = getInitials(client.full_name);
+  const avatarIdx = getAvatarColorIndex(client.full_name);
+  const avatarGradient = AVATAR_COLORS[avatarIdx];
+  const avatarShadow = { boxShadow: `0 14px 32px -14px rgba(${AVATAR_TINTS[avatarIdx]},0.9)` };
 
   const budget = (() => {
     const { budget_min: min, budget_max: max, budget_currency: cur } = client;
@@ -465,26 +472,26 @@ const ClientDetail = () => {
   return (
     <div className="min-h-[100dvh] bg-background">
       {/* ===== Header sticky colapsable ===== */}
-      <div className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur-md safe-top">
+      <div className="sticky top-0 z-30 border-b border-white/[0.07] bg-background/90 backdrop-blur-md safe-top">
         <div className="flex min-h-12 items-center justify-between gap-2 px-3">
-          <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0" onClick={() => navigate("/clients")}>
+          <Button size="icon" variant="ghost" className="shrink-0" onClick={() => navigate("/clients")} aria-label="Volver a contactos">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex min-w-0 flex-1 items-center justify-center">
             {scrolled ? (
               <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${avatarGradient}`}>
                   {initials}
                 </div>
-                <span className="truncate text-sm font-bold">{client.full_name}</span>
+                <span className="truncate text-sm font-semibold">{client.full_name}</span>
               </div>
             ) : (
-              <span className="text-xs font-medium text-muted-foreground">Contacto</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.10em] text-[#7E8694]">Contacto</span>
             )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-10 w-10 shrink-0">
+              <Button size="icon" variant="ghost" className="shrink-0" aria-label="Más acciones">
                 <MoreVertical className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -500,14 +507,17 @@ const ClientDetail = () => {
         </div>
         {!scrolled && (
           <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-1">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-extrabold text-primary-foreground">
+            <div
+              className={`flex h-[66px] w-[66px] items-center justify-center rounded-full text-[23px] font-bold tracking-[-0.02em] text-white ${avatarGradient}`}
+              style={avatarShadow}
+            >
               {initials}
             </div>
-            <p className="max-w-full break-words text-center text-lg font-extrabold tracking-tight">{client.full_name}</p>
+            <p className="max-w-full break-words text-center text-[21px] font-bold leading-[1.1] tracking-[-0.03em]">{client.full_name}</p>
             {client.is_client && (
-              <div className="flex flex-wrap items-center justify-center gap-1.5">
-                <ClientStatusChip status={client.status} className="h-6 px-2.5 text-[11px] font-bold" />
-                <span className="inline-flex h-6 items-center rounded-full border bg-muted/40 px-2.5 text-[11px] font-bold text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <ClientStatusChip status={client.status} className="h-6 px-2.5 text-[11px] font-semibold" />
+                <span className="inline-flex h-6 items-center rounded-full border border-white/10 bg-white/[0.06] px-2.5 text-[11px] font-semibold text-[#A7AEBA]">
                   {clientTypeLabel[client.client_type] ?? client.client_type}
                 </span>
               </div>
@@ -520,9 +530,9 @@ const ClientDetail = () => {
       <div className="flex flex-col gap-4 px-4 py-4 pb-10 safe-bottom">
 
         {/* Es cliente */}
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3">
+        <div className={`flex items-center justify-between gap-3 px-4 py-3 ${GLASS_CARD}`}>
           <div>
-            <p className="text-sm font-bold">Es cliente</p>
+            <p className="text-sm font-semibold">Es cliente</p>
             <p className="text-[11px] text-muted-foreground">Activá para datos comerciales y matching</p>
           </div>
           <Switch
@@ -538,7 +548,7 @@ const ClientDetail = () => {
         {/* Acciones rápidas */}
         <div className="grid grid-cols-3 gap-2">
           <a href={client.phone ? `tel:${client.phone}` : undefined} className={client.phone ? "" : "pointer-events-none opacity-40"}>
-            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="w-full gap-1.5 text-[13px] font-semibold text-[#DDE1E8]">
               <Phone className="h-4 w-4" /> Llamar
             </Button>
           </a>
@@ -547,43 +557,43 @@ const ClientDetail = () => {
             target="_blank" rel="noopener noreferrer"
             className={client.phone ? "" : "pointer-events-none opacity-40"}
           >
-            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="w-full gap-1.5 text-[13px] font-semibold text-[#DDE1E8]">
               <WhatsAppIcon className="h-4 w-4 text-[#25D366]" /> WhatsApp
             </Button>
           </a>
           <a href={client.email ? `mailto:${client.email}` : undefined} className={client.email ? "" : "pointer-events-none opacity-40"}>
-            <Button variant="outline" className="h-12 w-full gap-1.5 rounded-xl text-[13px] font-bold">
+            <Button variant="outline" className="w-full gap-1.5 text-[13px] font-semibold text-[#DDE1E8]">
               <Mail className="h-4 w-4" /> Email
             </Button>
           </a>
         </div>
 
         {/* ===== Widget Último contacto ===== */}
-        <div className={`overflow-hidden rounded-2xl border shadow-sm ${tier.panel}`}>
+        <div className={`overflow-hidden rounded-[18px] border ${tier.panel}`}>
           <div className="px-4 pb-3.5 pt-4">
             <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${tier.dot} ring-4 ring-black/20`} />
-              <span className={`text-[11px] font-extrabold uppercase tracking-widest ${tier.text}`}>Último contacto</span>
+              <span className={`h-[9px] w-[9px] rounded-full ${tier.dot} ring-4 ring-black/20`} />
+              <span className={`text-[10px] font-bold uppercase tracking-[0.14em] ${tier.text}`}>Último contacto</span>
             </div>
-            <p className={`mb-0.5 mt-2 text-[22px] font-extrabold tracking-tight ${tier.text}`}>{lastContact?.human}</p>
-            <p className={`text-xs font-semibold opacity-80 ${tier.text}`}>{lastContact?.sub}</p>
-            <div className={`mt-2 flex items-center gap-1.5 text-[11px] opacity-70 ${tier.text}`}>
-              <Sparkles className="h-3 w-3" /> Alimenta la rotación de campañas del asistente IA
+            <p className={`mb-1 mt-2.5 text-2xl font-bold leading-none tracking-[-0.03em] ${tier.text}`}>{lastContact?.human}</p>
+            <p className={`text-xs font-medium opacity-75 ${tier.text}`}>{lastContact?.sub}</p>
+            <div className={`mt-2.5 flex items-center gap-1.5 text-[11px] opacity-70 ${tier.text}`}>
+              <Sparkles className="h-3 w-3" /> Alimenta la rotación de campañas de Alan
             </div>
           </div>
-          <div className="border-t border-inherit bg-card px-3.5 pb-3.5 pt-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Registrar contacto</p>
+          <div className="border-t border-inherit bg-[rgba(19,21,25,0.45)] px-3.5 pb-3.5 pt-3">
+            <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Registrar contacto</p>
             <div className="flex flex-wrap gap-2">
               {CONTACT_CHIPS.map((chip) => (
                 <button
                   key={chip.label}
                   onClick={() => handleMarkContacted(new Date(Date.now() - chip.daysAgo * 86400000), chip.label.toLowerCase())}
-                  className="min-h-11 rounded-full border border-border bg-card px-4 text-[13px] font-bold text-foreground transition-colors hover:border-primary hover:text-primary active:scale-95"
+                  className="min-h-11 rounded-full border border-white/10 bg-white/[0.06] px-4 text-[13px] font-medium text-[#DDE1E8] transition-colors hover:bg-white/10 active:scale-95"
                 >
                   {chip.label}
                 </button>
               ))}
-              <label className="relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-4 text-[13px] font-bold text-foreground transition-colors hover:border-primary hover:text-primary">
+              <label className="relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-4 text-[13px] font-medium text-[#DDE1E8] transition-colors hover:bg-white/10">
                 <CalendarDays className="h-4 w-4" /> Fecha exacta…
                 <input
                   type="date"
@@ -602,12 +612,12 @@ const ClientDetail = () => {
         </div>
 
         {/* Información (plegable, scroll de página) */}
-        <details open className="group rounded-2xl border border-border bg-card px-4 py-3.5">
-          <summary className="flex cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
-            <span className="text-sm font-bold">
+        <details className={`group px-4 py-3.5 ${GLASS_CARD}`}>
+          <summary className="flex min-h-11 cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2 text-sm font-semibold">
               Información
               {pendingActions.length > 0 && (
-                <span className="ml-2 inline-flex h-4 items-center rounded-full bg-destructive px-1.5 text-[9px] font-bold text-destructive-foreground">
+                <span className="inline-flex items-center rounded-full border border-[rgba(255,90,77,0.32)] bg-[rgba(255,90,77,0.18)] px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--hot))]">
                   {pendingActions.length} tarea{pendingActions.length > 1 ? "s" : ""}
                 </span>
               )}
@@ -654,9 +664,9 @@ const ClientDetail = () => {
 
         {/* Búsqueda (plegable) */}
         {client.is_client && (client.preferred_zones || budget || client.property_type_interest) && (
-          <details open className="group rounded-2xl border border-border bg-card px-4 py-3.5">
-            <summary className="flex cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
-              <span className="text-sm font-bold">Búsqueda</span>
+          <details open className={`group px-4 py-3.5 ${GLASS_CARD}`}>
+            <summary className="flex min-h-11 cursor-pointer select-none list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+              <span className="text-sm font-semibold">Búsqueda</span>
               <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
             </summary>
             <div className="mt-3 space-y-2.5">
@@ -676,7 +686,7 @@ const ClientDetail = () => {
                 </div>
               )}
               {client.source && (
-                <span className="inline-flex rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-[#A7AEBA]">
                   {client.source}
                 </span>
               )}
@@ -688,14 +698,14 @@ const ClientDetail = () => {
         {client.is_client && (
           <div className="flex flex-col gap-2.5">
             <div className="flex items-center gap-2 px-0.5">
-              <h2 className="text-base font-extrabold tracking-tight">Propiedades</h2>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-extrabold text-primary-foreground">
+              <h2 className="text-[15px] font-bold tracking-[-0.02em]">Propiedades</h2>
+              <span className="inline-flex items-center rounded-full border border-[rgba(91,147,255,0.35)] bg-[rgba(91,147,255,0.18)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[hsl(var(--primary-soft-foreground))]">
                 {properties.length}
               </span>
             </div>
 
             {properties.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-8 text-center">
+              <div className="rounded-[18px] border border-dashed border-white/[0.12] bg-white/[0.03] px-5 py-8 text-center">
                 <Home className="mx-auto mb-2 h-10 w-10 text-muted-foreground/30" />
                 <p className="text-sm font-semibold text-muted-foreground">Sin propiedades vinculadas todavía</p>
                 <p className="mt-1 text-xs text-muted-foreground/70">Vinculá desde el explorador o pedile a Alan en el chat.</p>
@@ -707,24 +717,24 @@ const ClientDetail = () => {
                   if (!p) return null;
                   const propUrl = withAssociate(p.url);
                   return (
-                    <div key={cp.id} className="flex gap-3 rounded-2xl border border-border bg-card p-3">
+                    <div key={cp.id} className={`flex gap-3 p-3 ${GLASS_CARD}`}>
                       {p.photo ? (
                         <img
                           src={p.photo}
                           alt=""
-                          className="h-[88px] w-[88px] shrink-0 rounded-xl bg-muted object-cover"
+                          className="h-[88px] w-[88px] shrink-0 rounded-xl bg-white/[0.06] object-cover"
                           loading="lazy"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                       ) : (
-                        <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground/40">
+                        <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-muted-foreground/40">
                           <Home className="h-6 w-6" />
                         </div>
                       )}
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="line-clamp-2 text-[13px] font-bold leading-snug">{p.title ?? "Sin título"}</p>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${propStatusChip[cp.status] ?? "bg-muted text-muted-foreground"}`}>
+                          <p className="line-clamp-2 text-[13px] font-semibold leading-[1.35] text-[#E4E8EE]">{p.title ?? "Sin título"}</p>
+                          <span className={`shrink-0 rounded-[8px] border px-2 py-[3px] text-[10px] font-semibold ${propStatusChip[cp.status] ?? propStatusChip.sugerida}`}>
                             {propStatusLabel[cp.status] ?? cp.status}
                           </span>
                         </div>
@@ -734,32 +744,39 @@ const ClientDetail = () => {
                           </p>
                         )}
                         {p.price != null && (
-                          <p className="text-sm font-extrabold text-primary">
+                          <p className="text-[15px] font-bold tabular-nums tracking-[-0.02em] text-white">
                             {p.currency ?? "USD"} {p.price.toLocaleString("es-AR")}
                           </p>
                         )}
-                        {cp.notes && <p className="truncate text-[10px] italic text-muted-foreground">💬 {cp.notes}</p>}
-                        <div className="mt-auto flex gap-1.5 pt-1.5">
+                        {cp.notes && (
+                          <p className="flex items-center gap-1 truncate text-[10px] italic text-muted-foreground">
+                            <StickyNote className="h-3 w-3 shrink-0" aria-hidden="true" /> <span className="truncate">{cp.notes}</span>
+                          </p>
+                        )}
+                        {/* Acciones 38 r12 (artboard Ficha); WhatsApp y quitar de 44 de ancho */}
+                        <div className="mt-auto flex gap-2 pt-1.5">
                           {propUrl && (
                             <a href={propUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
-                              <Button variant="outline" className="h-9 w-full gap-1 rounded-lg text-xs font-bold">
+                              <Button variant="outline" size="sm" className="w-full gap-1.5 rounded-[12px] border-white/10 bg-white/[0.06] text-xs font-semibold text-[#DDE1E8]">
                                 <ExternalLink className="h-3.5 w-3.5" /> Abrir
                               </Button>
                             </a>
                           )}
                           <Button
-                            variant="outline" size="icon"
-                            className="h-9 w-11 rounded-lg"
+                            variant="outline" size="icon-sm"
+                            className="w-11 rounded-[12px] border-white/10 bg-white/[0.06]"
                             onClick={() => handleWhatsApp(cp)}
                             disabled={!client.phone || !p.url}
                             title={client.phone ? "Enviar por WhatsApp" : "Sin teléfono"}
+                            aria-label="Enviar por WhatsApp"
                           >
                             <WhatsAppIcon className="h-4 w-4 text-[#25D366]" />
                           </Button>
                           <Button
-                            variant="outline" size="icon"
-                            className="h-9 w-11 rounded-lg text-destructive hover:text-destructive"
+                            variant="outline" size="icon-sm"
+                            className="w-11 rounded-[12px] border-[rgba(255,90,77,0.28)] bg-[rgba(255,90,77,0.10)] text-[hsl(var(--hot))] hover:bg-[rgba(255,90,77,0.16)] hover:text-[hsl(var(--hot))]"
                             onClick={() => handleUnlinkProperty(cp.id)}
+                            aria-label="Quitar propiedad"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -771,7 +788,8 @@ const ClientDetail = () => {
                 {properties.length > PROPS_PREVIEW_COUNT && (
                   <Button
                     variant="outline"
-                    className="h-11 w-full rounded-xl text-[13px] font-bold text-primary"
+                    size="md"
+                    className="w-full text-[13px] font-semibold text-[hsl(var(--primary-soft-foreground))]"
                     onClick={() => setShowAllProps(v => !v)}
                   >
                     {showAllProps ? "Ver menos" : `Ver todas (${properties.length})`}
@@ -785,30 +803,31 @@ const ClientDetail = () => {
         {/* ===== Notas ===== */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center gap-2 px-0.5">
-            <h2 className="text-base font-extrabold tracking-tight">Notas</h2>
+            <h2 className="text-[15px] font-bold tracking-[-0.02em]">Notas</h2>
             {notes.length > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-extrabold text-muted-foreground">
+              <span className="inline-flex items-center rounded-full bg-white/[0.07] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[#A7AEBA]">
                 {notes.length}
               </span>
             )}
           </div>
 
           {/* Composer */}
-          <div className="rounded-2xl border border-border bg-card p-3">
+          <div className={`p-3 ${GLASS_CARD}`}>
             <Textarea
               placeholder="Escribí una nota…"
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               className="min-h-[56px] resize-none border-none p-0 text-[13px] shadow-none focus-visible:ring-0"
             />
-            <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-2.5">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <Checkbox checked={isAction} onCheckedChange={(v) => setIsAction(v === true)} className="h-3.5 w-3.5" />
+            <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
+              {/* Área táctil 44 para el checkbox (el control visual sigue en 18) */}
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 pr-2 text-xs text-muted-foreground">
+                <Checkbox checked={isAction} onCheckedChange={(v) => setIsAction(v === true)} className="h-[18px] w-[18px] rounded-[5px] border-white/25" />
                 Acción pendiente
               </label>
               <Button
                 size="sm"
-                className="h-9 gap-1.5 rounded-lg px-4 text-[13px] font-bold"
+                className="gap-1.5 px-4 text-[13px] font-semibold"
                 onClick={handleAddNote}
                 disabled={!newNote.trim() || savingNote}
               >
@@ -818,7 +837,7 @@ const ClientDetail = () => {
           </div>
 
           {notes.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-6 text-center">
+            <div className="rounded-[18px] border border-dashed border-white/[0.12] bg-white/[0.03] px-5 py-6 text-center">
               <StickyNote className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
               <p className="text-xs text-muted-foreground">Sin notas todavía</p>
             </div>
@@ -827,21 +846,27 @@ const ClientDetail = () => {
           {notes.map((note) => (
             <div
               key={note.id}
-              className={`rounded-2xl border p-3.5 ${
+              className={`rounded-[18px] border p-3.5 ${
                 note.is_action && !note.is_done
-                  ? "border-primary/30 bg-primary/5"
+                  ? "border-[rgba(91,147,255,0.28)] bg-[rgba(91,147,255,0.10)]"
                   : note.is_done
-                  ? "border-border bg-muted/50 opacity-60"
-                  : "border-border bg-card"
+                  ? "border-white/[0.06] bg-white/[0.03] opacity-60"
+                  : "border-white/[0.09] bg-white/5"
               }`}
             >
               <div className="flex items-start gap-2.5">
                 {note.is_action && (
-                  <button onClick={() => handleToggleNoteDone(note)} className="mt-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleNoteDone(note)}
+                    aria-label={note.is_done ? "Marcar como pendiente" : "Marcar como hecha"}
+                    aria-pressed={note.is_done}
+                    className="-my-2.5 -ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {note.is_done ? (
-                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <CheckCircle2 className="h-5 w-5 text-[hsl(var(--primary-soft-foreground))]" />
                     ) : (
-                      <Circle className="h-5 w-5 text-muted-foreground" />
+                      <Circle className="h-5 w-5" />
                     )}
                   </button>
                 )}
@@ -856,7 +881,7 @@ const ClientDetail = () => {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <p className={`mt-1.5 text-[11px] text-muted-foreground ${note.is_action ? "pl-[30px]" : ""}`}>
+              <p className={`mt-1.5 text-[11px] text-muted-foreground ${note.is_action ? "pl-[42px]" : ""}`}>
                 {formatDateTime(note.created_at)}
               </p>
             </div>
@@ -873,7 +898,7 @@ const ClientDetail = () => {
           <div className="flex-1 overflow-y-auto px-5 pb-2 min-h-0">
             <ClientFormFields form={editForm} onChange={setEditForm} />
           </div>
-          <DialogFooter className="px-5 pb-5 pt-3 border-t border-border/40 gap-2">
+          <DialogFooter className="gap-2 border-t border-white/[0.06] px-5 pb-5 pt-3">
             <Button variant="outline" className="flex-1" onClick={() => setShowEdit(false)} disabled={saving}>Cancelar</Button>
             <Button className="flex-1" onClick={handleSaveEdit} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</Button>
           </DialogFooter>
