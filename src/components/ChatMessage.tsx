@@ -9,7 +9,7 @@ import { parseDraftSegments, stripAllMarkers, normalizeWhatsappNumber } from "@/
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check, Reply, Play, Pause, Mic, RotateCcw, FileText } from "lucide-react";
+import { Copy, Check, Reply, Play, Pause, RotateCcw, FileText } from "lucide-react";
 import { isTurnErrorMessage, turnErrorAllowsRetry } from "@/lib/alan-orb-state";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
@@ -29,6 +29,9 @@ interface ChatMessageProps {
       fallido y cuando el server marcó el reintento como seguro (sin tools con efecto). */
   onRetry?: () => void;
 }
+
+// Patrón fijo de la onda del reproductor (artboard Grabando): no es el audio real, es la forma.
+const AUDIO_WAVE_BARS = [8, 16, 24, 12, 20, 6, 14, 22, 10, 18, 8, 14, 20, 6, 12, 22, 8, 16, 10, 18, 6, 14, 8, 20, 10, 6] as const;
 
 const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscribing?: boolean }) => {
   const [playing, setPlaying] = useState(false);
@@ -72,31 +75,41 @@ const AudioBubble = ({ audioUrl, isTranscribing }: { audioUrl: string; isTranscr
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  // Onda en dos tonos (artboard Grabando): las barras ya reproducidas al 85 %, el resto al 38 %.
+  const litBars = Math.round(progress * AUDIO_WAVE_BARS.length);
+
   return (
-    <div className="flex items-center gap-3 min-w-[200px] py-0.5">
-      <button onClick={toggle} className="h-10 w-10 shrink-0 rounded-full bg-current/20 flex items-center justify-center active:scale-95 transition-transform" style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}>
-        {playing ? <Pause className="h-4.5 w-4.5 fill-current" /> : <Play className="h-4.5 w-4.5 fill-current ml-0.5" />}
-      </button>
-      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.3)' }}>
-            <div className="h-full rounded-full transition-all duration-200" style={{ width: `${progress * 100}%`, backgroundColor: 'rgba(255,255,255,0.8)' }} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 opacity-80">
-            <Mic className="h-3 w-3" />
-            <span className="text-[11px] font-medium">
-              {duration > 0 ? formatDur(playing ? progress * duration : duration) : "0:00"}
-            </span>
-          </div>
-          {isTranscribing && (
-            <span className="text-[10px] opacity-70 animate-pulse flex items-center gap-1">
-              Transcribiendo...
-            </span>
-          )}
-        </div>
+    <div data-testid="audio-bubble" className="min-w-[200px] py-0.5">
+      {/* Tope de ancho: la onda escala en X con la burbuja; más allá de ~320 se deformaría. */}
+      <div className="flex max-w-[320px] items-center gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={playing ? "Pausar" : "Reproducir"}
+          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-white/[0.22] transition-transform active:scale-95"
+        >
+          {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+        </button>
+        <svg viewBox={`0 0 ${AUDIO_WAVE_BARS.length * 7 - 4} 26`} preserveAspectRatio="none" className="block h-[26px] min-w-0 flex-1" aria-hidden="true">
+          {AUDIO_WAVE_BARS.map((h, i) => (
+            <rect
+              key={i}
+              x={i * 7}
+              y={(26 - h) / 2}
+              width="3"
+              height={h}
+              rx="1.5"
+              fill={i < litBars ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.38)"}
+            />
+          ))}
+        </svg>
+        <span className="shrink-0 text-xs font-medium tabular-nums opacity-85">
+          {duration > 0 ? formatDur(playing ? progress * duration : duration) : "0:00"}
+        </span>
       </div>
+      {isTranscribing && (
+        <p className="mt-1.5 animate-pulse text-[10px] opacity-70">Transcribiendo…</p>
+      )}
     </div>
   );
 };
@@ -209,7 +222,7 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
               <AudioBubble audioUrl={audioUrl} isTranscribing={isTranscribing} />
               {/* m3: el texto transcripto se muestra debajo del reproductor (antes se descartaba). */}
               {content && content !== "(mensaje de voz)" && (
-                <p className="whitespace-pre-wrap break-words overflow-hidden mt-1.5 text-[13px] opacity-90">{content}</p>
+                <p className="mt-2.5 overflow-hidden whitespace-pre-wrap break-words border-t border-white/20 pt-2.5 text-[13px] leading-[1.5] opacity-90">{content}</p>
               )}
             </>
           ) : isUser ? (

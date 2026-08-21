@@ -190,3 +190,18 @@
   padding-bottom: 0;
   font-size: 12px;
 }
+
+/* Onda del estado "Grabando" del ChatInput (ticket 86ak47r5p): las barras respiran con desfase.
+   Es indicación visual, no medición de audio. Sin movimiento si el usuario lo pide. */
+.rec-bar {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rec-bar 1.1s ease-in-out infinite;
+}
+@keyframes rec-bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-bar { animation: none; transform: scaleY(0.7); }
+}
