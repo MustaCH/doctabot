@@ -45,6 +45,11 @@ const installInstructions: Record<Exclude<Device, null>, { title: string; steps:
 
 const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
+// Rediseño Carbón & Vidrio (artboard Onboarding): label 12/600 y campos de 46 con radio 14 —
+// el vidrio y el foco azul ya vienen de la primitiva Input.
+const LABEL_CLS = "text-xs font-semibold text-[#C3CAD5]";
+const INPUT_CLS = "h-[46px] text-[15px] md:text-[15px]";
+
 const Onboarding = () => {
   const { user, hasProfile, refreshProfile, signOut } = useAuth();
   const navigate = useNavigate();
@@ -69,7 +74,7 @@ const Onboarding = () => {
     if (hasProfile) {
       const calendarParam = searchParams.get("calendar");
       if (calendarParam === "connected") {
-        toast.success("Google Calendar conectado correctamente ✅");
+        toast.success("Google Calendar conectado correctamente");
         setSearchParams({}, { replace: true });
         setStep(4);
       } else if (calendarParam === "error") {
@@ -184,35 +189,38 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="flex min-h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/5 px-6 safe-top safe-bottom">
+    <div
+      className="flex min-h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] flex-col items-center justify-center bg-background px-7 safe-top safe-bottom"
+      style={{ backgroundImage: "radial-gradient(ellipse 120% 45% at 50% 12%, rgba(76,141,255,0.22) 0%, rgba(76,141,255,0) 62%), radial-gradient(ellipse 100% 40% at 20% 100%, rgba(255,90,77,0.12) 0%, rgba(255,90,77,0) 60%)" }}
+    >
       <div className="w-full max-w-sm space-y-6">
         {/* Header */}
         <div className="space-y-3 text-center">
           <AlanOrb size="lg" aria-label="Alan" className="mx-auto" />
-          <h1 className="text-2xl font-bold tracking-tight">{stepTitles[step]}</h1>
-          <p className="text-sm text-muted-foreground">{stepSubtitles[step]}</p>
+          <h1 className="text-[25px] font-bold leading-[1.1] tracking-[-0.03em]">{stepTitles[step]}</h1>
+          <p className="text-sm leading-[1.55] text-[#A7AEBA] [text-wrap:pretty]">{stepSubtitles[step]}</p>
         </div>
 
         {/* Step indicators */}
         <div className="flex items-center justify-center gap-2">
           {([1, 2, 3, 4] as const).map((s) => (
-            <div key={s} className={`h-[5px] w-[34px] rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-white/10"}`} />
+            <div key={s} className={`h-[5px] w-[34px] rounded-full transition-colors ${step >= s ? "bg-primary" : "bg-[rgba(91,147,255,0.22)]"}`} />
           ))}
         </div>
 
         {step === 1 && (
           <form onSubmit={handleCodeSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="inviteCode">Código de invitación</Label>
+            <div className="space-y-[9px]">
+              <Label htmlFor="inviteCode" className={LABEL_CLS}>Código de invitación</Label>
               <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <KeyRound className="absolute left-4 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground" strokeWidth={1.7} aria-hidden="true" />
                 <Input
                   id="inviteCode"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   placeholder="Ej: RMX7K2P"
                   maxLength={20}
-                  className="h-12 rounded-[14px] border-white/[0.08] bg-white/5 pl-9 font-mono text-base uppercase tracking-[0.3em]"
+                  className="h-[52px] bg-white/5 pl-11 font-mono text-[17px] font-medium uppercase tracking-[0.22em] md:text-[17px]"
                   autoComplete="off"
                   autoCapitalize="characters"
                   autoCorrect="off"
@@ -230,14 +238,15 @@ const Onboarding = () => {
                 Si no tenés un código, contactá a tu broker.
               </p>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full text-[15px]" disabled={loading}>
               {loading ? "Verificando..." : "Verificar código"}
               {!loading && <ChevronRight className="ml-1 h-4 w-4" />}
             </Button>
             <Button
               type="button"
               variant="ghost"
-              className="w-full text-xs text-muted-foreground"
+              size="md"
+              className="w-full text-[13px] text-muted-foreground"
               onClick={() => signOut()}
             >
               Cerrar sesión
@@ -247,8 +256,8 @@ const Onboarding = () => {
 
         {step === 2 && (
           <form onSubmit={handleProfileSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nombre completo</Label>
+            <div className="space-y-[9px]">
+              <Label htmlFor="fullName" className={LABEL_CLS}>Nombre completo</Label>
               <Input
                 id="fullName"
                 value={fullName}
@@ -256,10 +265,11 @@ const Onboarding = () => {
                 placeholder="Ej: Juan Pérez"
                 maxLength={100}
                 required
+                className={INPUT_CLS}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agentCode">Código de asociado</Label>
+            <div className="space-y-[9px]">
+              <Label htmlFor="agentCode" className={LABEL_CLS}>Código de asociado</Label>
               <Input
                 id="agentCode"
                 value={agentCode}
@@ -267,9 +277,10 @@ const Onboarding = () => {
                 placeholder="Ej: 420401222"
                 maxLength={20}
                 required
+                className={INPUT_CLS}
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full text-[15px]" disabled={loading}>
               {loading ? "Guardando..." : "Siguiente"}
               {!loading && <ChevronRight className="ml-1 h-4 w-4" />}
             </Button>
@@ -278,9 +289,9 @@ const Onboarding = () => {
 
         {step === 3 && (
           <div className="space-y-4">
-            <div className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="space-y-3 rounded-[16px] border border-white/[0.09] bg-white/5 p-4">
               <div className="flex items-center gap-2">
-                <CalendarCheck className="h-5 w-5 text-primary" />
+                <CalendarCheck className="h-5 w-5 text-[hsl(var(--brand))]" strokeWidth={1.8} aria-hidden="true" />
                 <span className="text-sm font-medium">Conectar calendario</span>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -288,7 +299,7 @@ const Onboarding = () => {
               </p>
               <Button
                 type="button"
-                className="w-full"
+                className="w-full text-[15px]"
                 onClick={handleConnectCalendar}
                 disabled={calendarLoading}
               >
@@ -299,7 +310,8 @@ const Onboarding = () => {
             <Button
               type="button"
               variant="ghost"
-              className="w-full text-xs text-muted-foreground"
+              size="md"
+              className="w-full text-[13px] text-muted-foreground"
               onClick={() => setStep(4)}
             >
               Omitir por ahora
@@ -315,10 +327,11 @@ const Onboarding = () => {
                   key={d.key}
                   type="button"
                   onClick={() => setSelectedDevice(d.key)}
-                  className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 text-xs font-medium transition-all ${
+                  aria-pressed={selectedDevice === d.key}
+                  className={`flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-[16px] border p-3 text-xs font-medium transition-colors ${
                     selectedDevice === d.key
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                      ? "border-[rgba(91,147,255,0.45)] bg-[rgba(91,147,255,0.12)] text-[hsl(var(--primary-soft-foreground))]"
+                      : "border-white/[0.09] bg-white/5 text-muted-foreground hover:bg-white/[0.08]"
                   }`}
                 >
                   {d.icon}
@@ -328,7 +341,7 @@ const Onboarding = () => {
             </div>
 
             {selectedDevice && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 rounded-lg border bg-muted/50 p-4 space-y-3">
+              <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3 rounded-[16px] border border-white/[0.08] bg-white/[0.04] p-4">
                 <h3 className="text-sm font-semibold text-foreground">
                   {installInstructions[selectedDevice].title}
                 </h3>
@@ -341,10 +354,10 @@ const Onboarding = () => {
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep(3)} className="text-muted-foreground">
+              <Button variant="ghost" size="md" onClick={() => setStep(3)} className="text-[13px] text-muted-foreground">
                 <ArrowLeft className="mr-1 h-4 w-4" /> Atrás
               </Button>
-              <Button onClick={handleFinish} className="flex-1">
+              <Button onClick={handleFinish} className="flex-1 text-[15px]">
                 Comenzar
               </Button>
             </div>
