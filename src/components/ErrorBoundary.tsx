@@ -3,6 +3,7 @@
 // fallback en vez de una pantalla en blanco.
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { reportFrontendError } from "@/lib/error-reporting";
+import { AlanOrb } from "@/components/AlanOrb";
 
 interface Props {
   children: ReactNode;
@@ -36,15 +37,20 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
+      // Rediseño (ticket 86ak3z0dz): orb en estado error + botón Recargar de 48 del sistema.
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-          <h1 className="text-lg font-semibold">Algo salió mal</h1>
-          <p className="text-sm text-muted-foreground">
-            Tuvimos un problema cargando esta pantalla. Ya quedó registrado.
-          </p>
+        <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-6 bg-background p-6 text-center">
+          <AlanOrb size="lg" state="error" aria-label="Alan con un problema" />
+          <div className="max-w-sm space-y-2">
+            <h1 className="text-[22px] font-bold tracking-[-0.02em] text-foreground">Algo salió mal</h1>
+            <p className="text-sm leading-[1.6] text-muted-foreground">
+              Tuvimos un problema cargando esta pantalla. Ya quedó registrado.
+            </p>
+          </div>
           <button
+            type="button"
             onClick={this.handleReload}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            className="flex h-12 w-full max-w-xs items-center justify-center rounded-[14px] bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-[15px] font-semibold text-white shadow-[0_16px_34px_-16px_rgba(59,123,255,0.95)] transition-opacity hover:opacity-90"
           >
             Recargar
           </button>

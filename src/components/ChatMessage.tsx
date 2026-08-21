@@ -9,7 +9,7 @@ import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsapp
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check, Reply, Play, Pause, Mic, RotateCcw } from "lucide-react";
+import { Copy, Check, Reply, Play, Pause, Mic, RotateCcw, FileText } from "lucide-react";
 import { isTurnErrorMessage, turnErrorAllowsRetry } from "@/lib/alan-orb-state";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
@@ -196,8 +196,8 @@ const ChatMessage = ({ role, content, attachments, audioUrl, isTranscribing, use
                     className="max-w-full max-h-48 rounded-lg object-cover"
                   />
                 ) : (
-                  <div key={i} className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
-                    <span className="text-xs">📄</span>
+                  <div key={i} className="flex items-center gap-1.5 rounded-[10px] border border-white/10 bg-white/[0.06] px-2.5 py-1.5">
+                    <FileText className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
                     <span className="text-xs truncate max-w-[150px]">{att.fileName || "archivo"}</span>
                   </div>
                 )

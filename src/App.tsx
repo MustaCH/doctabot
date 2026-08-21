@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { useVisualViewport } from "@/hooks/use-visual-viewport";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AlanOrb } from "@/components/AlanOrb";
 
 const Login = lazy(() => import("./pages/Login"));
 const Chat = lazy(() => import("./pages/Chat"));
@@ -23,9 +24,10 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
+// Carga de rutas: el orb en reposo (tamaño md), no el anillo genérico (ticket 86ak3z0dz).
 const Spinner = () => (
-  <div className="flex min-h-screen items-center justify-center">
-    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  <div className="flex min-h-[100dvh] items-center justify-center bg-background" role="status" aria-live="polite">
+    <AlanOrb size="md" state="idle" aria-label="Cargando" />
   </div>
 );
 

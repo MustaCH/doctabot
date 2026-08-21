@@ -9,13 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import {
-  Shield, Database, Users, Heart, MessageSquare, Home,
-  RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X,
-  Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle,
-  BarChart3, Flame, Thermometer, Snowflake, FileDown, Send,
-  History, ChevronDown, ChevronUp, Clock,
-} from "lucide-react";
+import { Shield, Database, Users, Heart, MessageSquare, Home, RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X, Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle, BarChart3, Flame, Thermometer, Snowflake, FileDown, Send, History, ChevronDown, ChevronUp, Clock, Trash2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, PieChart, Pie, Cell,
@@ -431,9 +425,9 @@ function ScrapingStatus({ pin }: { pin: string }) {
       const res = await adminFetch(pin, "trigger-scraping");
       const newBatchId = res.batch_timestamp ?? new Date().toISOString();
       setActiveBatchId(newBatchId);
-      setScrapeResult(`🚀 Lote iniciado — encadenando operaciones en segundo plano...`);
+      setScrapeResult("Lote iniciado — encadenando operaciones en segundo plano...");
     } catch {
-      setScrapeResult("❌ Error al ejecutar el scraping");
+      setScrapeResult("Error al ejecutar el scraping");
     }
     setScraping(false);
   };
@@ -483,7 +477,7 @@ function ScrapingStatus({ pin }: { pin: string }) {
   };
 
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database className="h-4 w-4 text-primary" />
@@ -516,7 +510,7 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>
-                {isFinished ? "✅ Completado" : isLive ? "Procesando lote..." : isStale ? "⏸️ Sin actividad reciente" : "Último scraping"}
+                {isFinished ? "Completado" : isLive ? "Procesando lote..." : isStale ? "Sin actividad reciente" : "Último scraping"}
               </span>
               <span>{isFinished ? "100" : overallProgress}% · {totalDone}/{totalPagesAll || "?"} páginas</span>
             </div>
@@ -663,7 +657,7 @@ function ScrapingHistory({ pin }: { pin: string }) {
   };
 
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-primary" />
@@ -691,10 +685,10 @@ function ScrapingHistory({ pin }: { pin: string }) {
                 ? { label: "Completado", cls: "bg-green-500/10 text-green-600 border-green-500/30" }
                 : { label: "Incompleto", cls: "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" };
             return (
-              <div key={b.batch_id} className="rounded-lg border border-border bg-background/40">
+              <div key={b.batch_id} className="rounded-[12px] border border-white/[0.08] bg-white/[0.03]">
                 <button
                   onClick={() => toggle(b.batch_id)}
-                  className="w-full flex items-center justify-between p-3 text-left hover:bg-accent/30 transition-colors rounded-lg"
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-white/5 transition-colors rounded-[12px]"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
@@ -707,9 +701,9 @@ function ScrapingHistory({ pin }: { pin: string }) {
                         </span>
                       </div>
                       <div className="flex gap-3 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
-                        <span>✅ {b.total_upserted.toLocaleString("es-AR")} props</span>
-                        {b.deleted > 0 && <span>🗑️ {b.deleted} obsoletas</span>}
-                        {b.errors > 0 && <span className="text-destructive">⚠️ {b.errors} errores</span>}
+                        <span className="inline-flex items-center gap-1"><CheckCircle className="h-3 w-3 text-[hsl(var(--success))]" aria-hidden="true" />{b.total_upserted.toLocaleString("es-AR")} props</span>
+                        {b.deleted > 0 && <span className="inline-flex items-center gap-1"><Trash2 className="h-3 w-3" aria-hidden="true" />{b.deleted} obsoletas</span>}
+                        {b.errors > 0 && <span className="inline-flex items-center gap-1 text-destructive"><AlertTriangle className="h-3 w-3" aria-hidden="true" />{b.errors} errores</span>}
                         {b.warnings > 0 && <span className="text-yellow-600">{b.warnings} avisos</span>}
                       </div>
                     </div>
@@ -725,7 +719,7 @@ function ScrapingHistory({ pin }: { pin: string }) {
                           ? Math.min(100, Math.round((info.pages_done / info.total_pages) * 100))
                           : 0;
                         return (
-                          <div key={op} className="rounded-md border border-border bg-card p-2 text-xs">
+                          <div key={op} className="rounded-[12px] border border-white/[0.08] bg-white/[0.04] p-2 text-xs">
                             <div className="font-medium mb-1">{op}</div>
                             <div className="text-muted-foreground text-[11px]">
                               Páginas: {info.pages_done}{info.total_pages ? ` / ${info.total_pages}` : ""}
@@ -833,7 +827,7 @@ function PushTestPanel({ pin }: { pin: string }) {
   const selectedSub = subscribers.find((s) => s.user_id === selectedUserId);
 
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Send className="h-4 w-4 text-primary" />
@@ -857,7 +851,7 @@ function PushTestPanel({ pin }: { pin: string }) {
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="w-full h-11 rounded-[12px] border border-white/[0.09] bg-white/[0.04] px-3 text-sm"
               disabled={sending}
             >
               {subscribers.map((s) => (
@@ -869,7 +863,7 @@ function PushTestPanel({ pin }: { pin: string }) {
           </div>
 
           {selectedSub && selectedSub.devices.length > 0 && (
-            <div className="rounded-md border border-border bg-muted/30 p-2 space-y-1">
+            <div className="rounded-[12px] border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Dispositivos del usuario</p>
               {selectedSub.devices.map((d, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
@@ -897,7 +891,7 @@ function PushTestPanel({ pin }: { pin: string }) {
 
           {result && (
             <div
-              className={`rounded-md border p-2.5 text-xs ${
+              className={`rounded-[12px] border p-2.5 text-xs ${
                 result.ok
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                   : "border-destructive/30 bg-destructive/10 text-destructive"
@@ -943,7 +937,7 @@ function MorningMatchesPanel() {
   };
 
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-primary" />
@@ -956,7 +950,7 @@ function MorningMatchesPanel() {
       </div>
 
       {result && (
-        <div className={`rounded-lg border p-3 text-sm ${result.error ? "border-destructive bg-destructive/10" : "border-green-500/30 bg-green-500/10"}`}>
+        <div className={`rounded-[12px] border p-3 text-sm ${result.error ? "border-destructive bg-destructive/10" : "border-green-500/30 bg-green-500/10"}`}>
           {result.error ? (
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-destructive" />
@@ -967,7 +961,7 @@ function MorningMatchesPanel() {
               <CheckCircle className="h-4 w-4 text-green-500" />
               <span>
                 {result.matches > 0
-                  ? `✅ Se generaron ${result.matches} grupo${result.matches > 1 ? "s" : ""} de matches y se notificó a los agentes.`
+                  ? `Se generaron ${result.matches} grupo${result.matches > 1 ? "s" : ""} de matches y se notificó a los agentes.`
                   : "No se encontraron nuevos matches para notificar."}
               </span>
             </div>
@@ -1016,7 +1010,7 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="mt-6 rounded-xl border border-border bg-card p-4 space-y-4 shadow-sm">
+    <div className="mt-6 rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-primary" />
@@ -1035,22 +1029,22 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
         <>
           {/* Totals */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <div className="rounded-[12px] border border-white/[0.08] bg-white/[0.04] p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total enviadas</p>
               <p className="text-xl font-bold">{stats.totals.total.toLocaleString("es-AR")}</p>
             </div>
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+            <div className="rounded-[12px] border border-emerald-500/30 bg-emerald-500/10 p-3">
               <p className="text-[10px] uppercase tracking-wide text-emerald-400">Exitosas</p>
               <p className="text-xl font-bold text-emerald-400">
                 {stats.totals.sent.toLocaleString("es-AR")}
                 <span className="text-xs font-normal ml-1.5">({stats.totals.successRate}%)</span>
               </p>
             </div>
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+            <div className="rounded-[12px] border border-destructive/30 bg-destructive/10 p-3">
               <p className="text-[10px] uppercase tracking-wide text-destructive">Fallidas</p>
               <p className="text-xl font-bold text-destructive">{stats.totals.failed.toLocaleString("es-AR")}</p>
             </div>
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="rounded-[12px] border border-amber-500/30 bg-amber-500/10 p-3">
               <p className="text-[10px] uppercase tracking-wide text-amber-400">Suscripciones limpiadas</p>
               <p className="text-xl font-bold text-amber-400">{stats.totals.pruned.toLocaleString("es-AR")}</p>
             </div>
@@ -1079,7 +1073,7 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
             {stats.errors.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">Sin errores recientes.</p>
             ) : (
-              <div className="rounded-lg border border-border overflow-hidden">
+              <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1160,7 +1154,7 @@ function PropertiesTable({ pin }: { pin: string }) {
       </div>
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1225,7 +1219,7 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
       </div>
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1362,7 +1356,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
 
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1425,7 +1419,7 @@ function FavoritesTable({ pin }: { pin: string }) {
       </div>
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1486,7 +1480,7 @@ function ClientsTable({ pin }: { pin: string }) {
       </div>
       {loading ? <LoadingSpinner /> : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1680,7 +1674,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
 
         {logsLoading ? <LoadingSpinner /> : (
           <>
-            <div className="rounded-lg border border-border overflow-hidden">
+            <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -2012,7 +2006,7 @@ function ReportsPanel({ pin }: { pin: string }) {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Uso por usuario</h2>
         </div>
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-[12px] border border-white/[0.08] overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
