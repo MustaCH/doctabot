@@ -11,7 +11,7 @@ import {
   Users,
   CalendarCheck,
   Link2,
-  BellRing,
+  Target,
   Mail,
   MessageCircle,
   Lightbulb,
@@ -104,16 +104,16 @@ const steps: TutorialStep[] = [
     icon: (
       <div className="flex gap-3">
         <Link2 className="h-10 w-10 text-primary" />
-        <BellRing className="h-10 w-10 text-accent" />
+        <Target className="h-10 w-10 text-accent" />
       </div>
     ),
-    title: "Alan conecta propiedades con clientes 🔔",
+    title: "Alan conecta propiedades con clientes",
     subtitle: "Vos vinculás, Alan vigila y te avisa",
     description:
-      "Vinculá una propiedad con un cliente —o contale a Alan qué busca cada uno— y dejá de revisar el portal a mano. Cuando entra una propiedad que encaja con lo que alguien busca, Alan te abre una conversación nueva con el match 🔔.",
+      "Vinculá una propiedad con un cliente —o contale a Alan qué busca cada uno— y dejá de revisar el portal a mano. Cuando entra una propiedad que encaja con lo que alguien busca, Alan te abre una conversación nueva con el match.",
     example: '"Vinculá el depto de Nueva Córdoba con Juan Pérez"',
     tips: [
-      "Las conversaciones marcadas con 🔔 son matches que Alan encontró por vos.",
+      "Las conversaciones de tipo Match (el tile con la diana) son las que Alan encontró por vos.",
       "Cuanto mejor cargás qué busca cada cliente, más afilados son los avisos.",
     ],
   },
@@ -232,7 +232,10 @@ const Tutorial = () => {
   };
 
   return (
-    <div className="relative flex min-h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] flex-col overflow-hidden bg-background px-6 safe-top safe-bottom">
+    <div
+      className="relative flex min-h-[calc(var(--app-height,100dvh)-var(--keyboard-inset,0px))] flex-col overflow-hidden bg-background px-6 safe-top safe-bottom"
+      style={{ backgroundImage: "radial-gradient(ellipse 120% 45% at 50% 12%, rgba(76,141,255,0.22) 0%, rgba(76,141,255,0) 62%), radial-gradient(ellipse 100% 40% at 20% 100%, rgba(255,90,77,0.12) 0%, rgba(255,90,77,0) 60%)" }}
+    >
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
         {/* Paso n de N + Omitir */}
         <motion.div

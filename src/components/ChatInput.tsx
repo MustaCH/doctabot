@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Loader2 } from "lucide-react";
+import { SendHorizontal, Paperclip, X, FileText, Image as ImageIcon, Mic, Square, Loader2, Home } from "lucide-react";
 import { toast } from "sonner";
 import { feedbackSend, feedbackAttach, feedbackRemove } from "@/hooks/use-feedback";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
@@ -184,19 +184,20 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
   const hasContent = text.trim().length > 0 || attachments.length > 0;
 
   // Clean and truncate quoted text for preview
-  const quotePreview = quotedText
+  // Resumen de la cita: una tarjeta de propiedad se muestra con ícono lucide (el 🏠 es el
+  // delimitador del parser, no un ícono de UI — ticket 86ak481dm).
+  const quotePreview: { text: string; isProperty: boolean } | null = quotedText
     ? (() => {
-        // Detect property card content and summarize it
         if (quotedText.includes("🏠")) {
           const titleMatch = quotedText.match(/🏠\s*(.+)/);
           const title = titleMatch?.[1]?.replace(/\*\*/g, "").trim();
-          return title ? `🏠 ${title.length > 60 ? title.slice(0, 60) + "…" : title}` : "🏠 Propiedad";
+          return { isProperty: true, text: title ? (title.length > 60 ? title.slice(0, 60) + "…" : title) : "Propiedad" };
         }
         const cleaned = quotedText
           .replace(/!\[.*?\]\(.*?\)/g, "[imagen]")
           .replace(/https?:\/\/\S{40,}/g, "[enlace]")
           .replace(/\*\*/g, "");
-        return cleaned.length > 100 ? cleaned.slice(0, 100) + "…" : cleaned;
+        return { isProperty: false, text: cleaned.length > 100 ? cleaned.slice(0, 100) + "…" : cleaned };
       })()
     : null;
 
@@ -211,7 +212,10 @@ const ChatInput = ({ onSend, onSendAudio, disabled, quotedText, onClearQuote, on
         <div className="flex items-start gap-2 mb-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
           <div className="flex-1 min-w-0 rounded-lg border-l-2 border-primary bg-muted/50 px-3 py-1.5 overflow-hidden">
             <p className="text-[11px] font-medium text-primary mb-0.5">Alan</p>
-            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed break-words overflow-hidden">{quotePreview}</p>
+            <p className="flex items-start gap-1.5 overflow-hidden break-words text-xs leading-relaxed text-muted-foreground">
+              {quotePreview.isProperty && <Home className="mt-[3px] h-3 w-3 shrink-0" aria-hidden="true" />}
+              <span className="line-clamp-2">{quotePreview.text}</span>
+            </p>
           </div>
           <button
             onClick={onClearQuote}

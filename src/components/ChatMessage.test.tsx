@@ -323,3 +323,25 @@ describe("ChatMessage — borrador fuera de la burbuja (ticket 86ak47fmn)", () =
     expect(container.querySelector(draftSel)).not.toBeNull();
   });
 });
+
+// Ticket 86ak481dm: la cita de una tarjeta de propiedad muestra un ícono lucide, no el 🏠 del parser.
+describe("ChatMessage — cita de una tarjeta (QuotedBlock, ticket 86ak481dm)", () => {
+  it("la cita de una propiedad muestra el título sin 🏠 ni ** y con ícono", () => {
+    const { container } = render(
+      <ChatMessage role="user" content="¿Cuánto sale?" quotedText={"🏠 **Depto 2 dorm en Nueva Córdoba**\nPrecio: USD 90.000"} />
+    );
+    const bubble = container.querySelector('[data-bubble="user"]')!;
+    expect(bubble.textContent).toContain("Depto 2 dorm en Nueva Córdoba");
+    expect(bubble.textContent).not.toContain("🏠");
+    expect(bubble.textContent).not.toContain("**");
+    // el ícono de casa acompaña al resumen de la cita
+    expect(bubble.querySelector("svg.lucide-house, svg.lucide-home")).not.toBeNull();
+  });
+
+  it("una cita de texto común no lleva ícono de propiedad", () => {
+    const { container } = render(<ChatMessage role="user" content="ok" quotedText="Te paso el resumen del mercado" />);
+    const bubble = container.querySelector('[data-bubble="user"]')!;
+    expect(bubble.textContent).toContain("Te paso el resumen");
+    expect(bubble.querySelector("svg.lucide-house, svg.lucide-home")).toBeNull();
+  });
+});

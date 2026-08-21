@@ -9,7 +9,7 @@ import { parseDraftSegments, stripAllMarkers, normalizeWhatsappNumber } from "@/
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
-import { Copy, Check, Reply, Play, Pause, RotateCcw, FileText } from "lucide-react";
+import { Copy, Check, Reply, Play, Pause, RotateCcw, FileText, Home } from "lucide-react";
 import { isTurnErrorMessage, turnErrorAllowsRetry } from "@/lib/alan-orb-state";
 import type { MsgAttachment } from "@/lib/stream-chat";
 
@@ -133,12 +133,14 @@ const CopyButton = ({ content }: { content: string }) => {
 };
 
 const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
-  // Summarize property cards
+  // Resumen de una tarjeta citada: el 🏠 es el delimitador del parser, no un ícono de UI —
+  // se muestra un ícono lucide en su lugar (ticket 86ak481dm).
   let display = text;
-  if (text.includes("🏠")) {
+  const isProperty = text.includes("🏠");
+  if (isProperty) {
     const titleMatch = text.match(/🏠\s*(.+)/);
-    const title = titleMatch?.[1]?.trim();
-    display = title ? `🏠 ${title.length > 60 ? title.slice(0, 60) + "…" : title}` : "🏠 Propiedad";
+    const title = titleMatch?.[1]?.replace(/\*\*/g, "").trim();
+    display = title ? (title.length > 60 ? title.slice(0, 60) + "…" : title) : "Propiedad";
   } else if (display.length > 120) {
     display = display.slice(0, 120) + "…";
   }
@@ -152,7 +154,10 @@ const QuotedBlock = ({ text, isUser }: { text: string; isUser: boolean }) => {
       }`}
     >
       <p className={`text-[11px] font-semibold mb-0.5 ${isUser ? "text-white/80" : "text-primary"}`}>Alan</p>
-      <p className={`text-xs leading-relaxed line-clamp-2 ${isUser ? "text-white/70" : "text-muted-foreground"}`}>{display}</p>
+      <p className={`flex items-start gap-1.5 text-xs leading-relaxed ${isUser ? "text-white/70" : "text-muted-foreground"}`}>
+        {isProperty && <Home className="mt-[3px] h-3 w-3 shrink-0" aria-hidden="true" />}
+        <span className="line-clamp-2">{display}</span>
+      </p>
     </div>
   );
 };

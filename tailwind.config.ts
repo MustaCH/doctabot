@@ -21,7 +21,26 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          deep: "hsl(var(--primary-deep))",
+          "soft-foreground": "hsl(var(--primary-soft-foreground))",
         },
+        // Tokens del rediseño Carbón & Vidrio (src/index.css) — para no escribir
+        // text-[hsl(var(--brand))] a mano. Los estados hot|warm|cold son de presentación.
+        brand: {
+          DEFAULT: "hsl(var(--brand))",
+          deep: "hsl(var(--brand-deep))",
+        },
+        hot: "hsl(var(--hot))",
+        warm: {
+          DEFAULT: "hsl(var(--warm))",
+          "soft-foreground": "hsl(var(--warm-soft-foreground))",
+        },
+        cold: {
+          DEFAULT: "hsl(var(--cold))",
+          "soft-foreground": "hsl(var(--cold-soft-foreground))",
+        },
+        whatsapp: "hsl(var(--whatsapp))",
+        "chart-violet": "hsl(var(--chart-violet))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -51,6 +70,7 @@ export default {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
+          "soft-foreground": "hsl(var(--accent-soft-foreground))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -75,6 +95,13 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        // Radios del sistema (README rediseño §2): 20 burbuja · 18 tarjeta · 16 tarjeta compacta ·
+        // 14 botón · 12 ícono — rounded-bubble / rounded-card / rounded-card-sm / rounded-btn / rounded-icon.
+        bubble: "20px",
+        card: "18px",
+        "card-sm": "16px",
+        btn: "14px",
+        icon: "12px",
       },
       keyframes: {
         "accordion-down": {

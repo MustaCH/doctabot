@@ -15,7 +15,7 @@ const Login = () => {
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Alan</h1>
           <p className="text-sm text-muted-foreground">
-            Tu asistente IA para búsqueda de propiedades
+            Tu asistente de IA para buscar propiedades, ordenar clientes y llegar antes.
           </p>
           <div className="flex justify-center">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/5 px-3.5 py-1.5 text-xs text-muted-foreground">
