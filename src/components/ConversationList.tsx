@@ -85,8 +85,12 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3 safe-top">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
-            <MessageSquare className="h-4 w-4 text-accent-foreground" />
+          {/* Marca "A" azul (artboard Conversaciones) — --accent es el rojo Docta, no se usa acá. */}
+          <div
+            aria-hidden="true"
+            className="flex h-9 w-9 select-none items-center justify-center rounded-[12px] bg-[linear-gradient(150deg,hsl(var(--brand)),hsl(var(--brand-deep)))] text-base font-bold tracking-[-0.02em] text-white shadow-[0_0_0_1px_rgba(255,255,255,0.10),0_6px_20px_-6px_rgba(76,141,255,0.75)]"
+          >
+            A
           </div>
           <span className="text-lg font-semibold">Alan</span>
         </div>

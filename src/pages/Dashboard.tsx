@@ -444,7 +444,7 @@ const Dashboard = () => {
                     <button
                       key={conv.id}
                       onClick={() => navigate("/")}
-                      className="w-full flex items-center justify-between rounded-xl border border-border bg-card px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50 active:scale-[0.99]"
+                      className="w-full flex items-center justify-between rounded-xl border border-border bg-card px-3.5 py-2.5 text-left transition-colors hover:bg-white/10 active:scale-[0.99]"
                     >
                       <p className="text-sm font-medium truncate flex-1 min-w-0">{conv.title}</p>
                       <span className="text-[11px] text-muted-foreground shrink-0 ml-3">
