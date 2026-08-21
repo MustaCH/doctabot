@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { getInitials, getAvatarColorIndex, AVATAR_COLORS } from "@/lib/contact-avatar";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -34,6 +35,24 @@ const conversationTypeIcon: Record<string, LucideIcon> = {
   proactive_match: Target,
 };
 
+// Tinte del tile (artboard Conversaciones, ticket 86ak47kr1): las filas SIN LEER se tiñen por tipo
+// — búsqueda azul tenue, match proactivo rojo tenue (--accent) — y las leídas van en vidrio neutro
+// (en el artboard las búsquedas ya leídas tienen tile neutro). Para teñir siempre por tipo, sacar la
+// condición de has_unread en tileClass.
+const NEUTRAL_TILE = "border-white/[0.08] bg-white/5 text-[#A7AEBA]";
+const conversationTypeTile: Record<string, string> = {
+  search: "border-[rgba(91,147,255,0.28)] bg-[rgba(91,147,255,0.16)] text-[hsl(var(--primary-soft-foreground))]",
+  proactive_match: "border-[rgba(255,90,77,0.26)] bg-[rgba(255,90,77,0.14)] text-[hsl(var(--hot))]",
+};
+const tileClass = (type: string, unread: boolean) => (unread ? conversationTypeTile[type] : undefined) ?? NEUTRAL_TILE;
+
+const conversationTypeLabel: Record<string, string> = {
+  search: "Búsqueda",
+  email: "Email",
+  followup: "Seguimiento",
+  proactive_match: "Match",
+};
+
 interface ConversationListProps {
   conversations: Conversation[];
   activeId?: string;
@@ -46,11 +65,14 @@ interface ConversationListProps {
 
 const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onRename, onClose }: ConversationListProps) => {
   const { user, signOut } = useAuth();
+  const userName: string = user?.user_metadata?.full_name ?? "Usuario";
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [search, setSearch] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+
+  const unreadCount = useMemo(() => conversations.filter((c) => c.has_unread).length, [conversations]);
 
   const filtered = useMemo(
     () => search.trim()
@@ -81,10 +103,10 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
   const cancelEdit = () => setEditingId(null);
 
   return (
-    <div className="flex h-full flex-col bg-card">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 safe-top">
-        <div className="flex items-center gap-2">
+    <div className="flex h-full flex-col bg-background">
+      {/* Header: marca "A" + título + "N sin leer"; barra de vidrio 0.02 (artboard Conversaciones) */}
+      <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3.5 safe-top">
+        <div className="flex min-w-0 items-center gap-[11px]">
           {/* Marca "A" azul (artboard Conversaciones) — --accent es el rojo Docta, no se usa acá. */}
           <div
             aria-hidden="true"
@@ -92,22 +114,29 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
           >
             A
           </div>
-          <span className="text-lg font-semibold">Alan</span>
+          <div className="min-w-0">
+            <p className="text-[17px] font-semibold leading-[1.15] tracking-[-0.02em]">Conversaciones</p>
+            <p className="mt-[3px] text-[11px] leading-[1.2] text-muted-foreground">
+              {unreadCount > 0 ? `${unreadCount} sin leer` : "Todo leído"}
+            </p>
+          </div>
         </div>
-        <Button size="icon" variant="ghost" onClick={onNew} className="h-11 w-11 rounded-xl">
-          <Plus className="h-4 w-4" />
+        {/* "+" cuadrado r12 con gradiente (44 por área táctil mínima; el artboard dibuja 40) */}
+        <Button size="icon" onClick={onNew} aria-label="Nueva conversación" className="shadow-[0_10px_24px_-12px_rgba(76,141,255,0.9)]">
+          <Plus className="h-[19px] w-[19px]" strokeWidth={2} />
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="px-3 py-2 border-b border-border">
+      {/* Buscador pill de vidrio */}
+      <div className="border-b border-white/[0.07] px-4 py-3">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7E8694]" strokeWidth={1.8} aria-hidden="true" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar conversación..."
-            className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Buscar conversación…"
+            aria-label="Buscar conversación"
+            className="h-[42px] w-full rounded-full border border-white/[0.08] bg-white/5 pl-[42px] pr-4 text-sm text-foreground placeholder:text-[#7E8694] focus:outline-none focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)]"
           />
         </div>
       </div>
@@ -118,7 +147,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground">
             <MessageSquare className="h-8 w-8 opacity-40" />
             <p>No hay conversaciones aún</p>
-            <Button size="sm" variant="outline" onClick={onNew}>
+            <Button size="md" variant="outline" onClick={onNew}>
               Iniciar nueva conversación
             </Button>
           </div>
@@ -132,11 +161,14 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
               onRename={onRename ? () => startEditing(c) : undefined}
             >
               <div
-                className={`group flex items-center gap-1 pr-2 transition-colors hover:bg-muted/50 ${
-                  c.id === activeId ? "bg-muted" : ""
-                } ${
-                  // Sin leer: fondo azul tenue + borde izquierdo de 3px (además del punto rojo).
-                  c.has_unread ? "bg-[rgba(59,123,255,0.08)] border-l-[3px] border-l-[hsl(var(--primary))]" : "border-l-[3px] border-l-transparent"
+                className={`group flex items-center gap-1 border-b border-l-[3px] border-white/[0.05] pr-2 transition-colors ${
+                  // Sin leer: fondo azul tenue + borde izquierdo (además del punto rojo); si no, la
+                  // activa en vidrio y hover neutro. Una sola clase de fondo por fila, sin disputas.
+                  c.has_unread
+                    ? "border-l-[hsl(var(--primary))] bg-[rgba(91,147,255,0.10)]"
+                    : c.id === activeId
+                      ? "border-l-transparent bg-white/[0.06]"
+                      : "border-l-transparent hover:bg-white/[0.04]"
                 }`}
               >
                 {editingId === c.id ? (
@@ -146,7 +178,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") confirmEdit(); if (e.key === "Escape") cancelEdit(); }}
-                      className="flex-1 min-w-0 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      className="h-9 min-w-0 flex-1 rounded-[10px] border border-white/[0.09] bg-white/[0.04] px-2.5 text-sm text-foreground focus:outline-none focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)]"
                     />
                     <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0 text-muted-foreground hover:text-primary" onClick={confirmEdit}>
                       <Check className="h-3.5 w-3.5" />
@@ -159,39 +191,43 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                   <>
                     <button
                       onClick={() => { onSelect(c.id); onClose?.(); }}
-                      className="flex flex-1 min-w-0 items-center gap-2.5 px-3 py-3 text-left"
+                      className="flex min-w-0 flex-1 items-start gap-3 py-[13px] pl-[13px] pr-2 text-left"
                     >
                       {c.conversation_type && (
                         <span
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/[0.07] bg-white/5"
-                          title={c.conversation_type}
+                          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border ${tileClass(c.conversation_type, !!c.has_unread)}`}
+                          title={conversationTypeLabel[c.conversation_type] ?? c.conversation_type}
                         >
                           {(() => {
                             const TypeIcon = conversationTypeIcon[c.conversation_type] ?? MessageSquare;
-                            return <TypeIcon className="h-4 w-4 text-[hsl(var(--brand))]" />;
+                            return <TypeIcon className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />;
                           })()}
                         </span>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <p className="truncate text-sm font-medium">{c.title}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className={`truncate text-sm ${c.has_unread ? "font-semibold text-foreground" : "font-medium text-[#C3CAD5]"}`}>
+                            {c.title}
+                            {c.has_unread && <span className="sr-only"> (sin leer)</span>}
+                          </p>
                           {c.has_unread && (
-                            <span className="shrink-0 ml-1 h-2 w-2 rounded-full bg-destructive" />
+                            <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-[hsl(var(--accent))]" aria-hidden="true" />
                           )}
                         </div>
                         {c.client_name && (
-                          <p className="truncate text-xs text-muted-foreground font-medium mt-0.5">{c.client_name}</p>
+                          <p className={`mt-1 truncate text-xs font-medium ${c.has_unread ? "text-[hsl(var(--primary-soft-foreground))]" : "text-muted-foreground"}`}>{c.client_name}</p>
                         )}
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="mt-[3px] text-[11px] text-[#7E8694]">
                           {formatDistanceToNow(new Date(c.updated_at), { addSuffix: true, locale: es })}
                         </p>
                       </div>
                     </button>
                     {onRename && (
                       <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary hidden md:inline-flex"
+                        aria-label="Renombrar"
+                        className="hidden shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 md:inline-flex"
                         onClick={(e) => { e.stopPropagation(); startEditing(c); }}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -199,9 +235,10 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
                     )}
                     {onDelete && (
                       <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hidden md:inline-flex"
+                        aria-label="Eliminar"
+                        className="hidden shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 md:inline-flex"
                         onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -216,20 +253,27 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
       </div>
 
       {/* User footer */}
-      <div className="border-t border-border px-4 py-3 safe-bottom">
-        <div className="flex items-center gap-2">
-          <Avatar className="h-8 w-8">
+      <div className="border-t border-white/[0.07] bg-white/[0.02] px-4 py-3 safe-bottom">
+        <div className="flex items-center gap-[11px]">
+          <Avatar className="h-[38px] w-[38px]">
             <AvatarImage src={user?.user_metadata?.avatar_url} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-              {user?.user_metadata?.full_name?.[0]?.toUpperCase() ?? "U"}
+            <AvatarFallback className={`text-sm font-semibold text-white ${AVATAR_COLORS[getAvatarColorIndex(userName)]}`}>
+              {getInitials(userName)}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="truncate text-sm font-medium">{user?.user_metadata?.full_name ?? "Usuario"}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-[#E4E8EE]">{userName}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[#7E8694]">{user?.email}</p>
           </div>
-          <Button size="icon" variant="ghost" onClick={signOut} className="h-11 w-11 shrink-0">
-            <LogOut className="h-4 w-4" />
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={signOut}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="shrink-0 border border-white/[0.07] bg-white/5 text-[#A7AEBA] hover:bg-white/10 hover:text-foreground"
+          >
+            <LogOut className="h-[17px] w-[17px]" strokeWidth={1.7} />
           </Button>
         </div>
       </div>

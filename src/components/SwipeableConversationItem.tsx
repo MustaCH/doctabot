@@ -88,7 +88,7 @@ const SwipeableConversationItem = ({ children, onDelete, onRename }: SwipeableCo
 
       {/* Sliding content */}
       <div
-        className="relative bg-card transition-transform duration-200 ease-out"
+        className="relative bg-background transition-transform duration-200 ease-out"
         style={{ transform: `translateX(-${offset}px)`, transitionDuration: swiping.current ? "0ms" : "200ms" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
