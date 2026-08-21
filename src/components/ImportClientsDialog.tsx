@@ -6,7 +6,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Upload, Loader2, FileSpreadsheet, CheckCircle, AlertTriangle, SkipForward, RefreshCw, X } from "lucide-react";
+import {
+  Upload, Loader2, FileSpreadsheet, CheckCircle, AlertTriangle, SkipForward, RefreshCw, X,
+  UserRound, Phone, Mail, Tag, MapPin, DollarSign, Home, Globe, Building2, FileText, type LucideIcon,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -312,9 +315,13 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     importResult.failed.reduce<Record<string, number>>((acc, f) => { acc[f.reason] = (acc[f.reason] ?? 0) + 1; return acc; }, {}),
   );
 
-  const renderMapSelect = (label: string, field: keyof ColumnMapping, allowNone: boolean) => (
+  // Rótulos del mapeo con ícono SVG de lucide (ticket 86ak3z09z) — antes llevaban emoji.
+  const renderMapSelect = (label: string, field: keyof ColumnMapping, allowNone: boolean, Icon: LucideIcon) => (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {label}
+      </span>
       <Select value={String((mapping?.[field] as number) ?? -1)} onValueChange={(v) => updateMapping(field, Number(v))}>
         <SelectTrigger className={cn("h-8 w-[60%] text-xs", !allowNone && (mapping?.[field] as number) < 0 && "border-warning text-warning")}>
           <SelectValue placeholder="Elegir columna" />
@@ -331,7 +338,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 pr-10">
             <FileSpreadsheet className="h-5 w-5 text-primary" />
             Importar contactos
             {(step === "upload" || step === "preview") && (
@@ -402,14 +409,14 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
               {/* Importar como */}
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium">Importar como:</span>
-                <div className="inline-flex rounded-lg bg-muted p-1 gap-1">
+                <div className="inline-flex rounded-[12px] border border-white/[0.08] bg-white/[0.04] p-1 gap-1">
                   {(["contact", "client"] as Destination[]).map(d => (
                     <button
                       key={d}
                       onClick={() => setDestination(d)}
                       className={cn(
-                        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                        destination === d ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                        "px-3 py-2 rounded-[10px] text-sm font-medium transition-colors",
+                        destination === d ? "bg-white/10 text-foreground" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       {d === "contact" ? "Contactos" : "Clientes"}
@@ -432,20 +439,20 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
               {/* Columnas detectadas (editable) */}
               <div className="rounded-lg border border-border bg-card p-3 space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">Columnas detectadas (tocá para corregir)</p>
-                {renderMapSelect("👤 Nombre", "name_column", false)}
-                {renderMapSelect("📱 Teléfono", "phone_column", true)}
-                {renderMapSelect("📧 Email", "email_column", true)}
-                {renderMapSelect("🏷️ Tipo", "client_type_column", true)}
+                {renderMapSelect("Nombre", "name_column", false, UserRound)}
+                {renderMapSelect("Teléfono", "phone_column", true, Phone)}
+                {renderMapSelect("Email", "email_column", true, Mail)}
+                {renderMapSelect("Tipo", "client_type_column", true, Tag)}
                 {nameUnmapped && (
                   <p className="text-xs text-warning">Elegí qué columna tiene el nombre para poder importar.</p>
                 )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  {mapping.preferred_zones_column >= 0 && <Badge variant="secondary" className="text-[10px]">🏠 Zona → {headers[mapping.preferred_zones_column]}</Badge>}
-                  {mapping.budget_max_column >= 0 && <Badge variant="secondary" className="text-[10px]">💰 Presup. → {headers[mapping.budget_max_column]}</Badge>}
-                  {mapping.property_type_interest_column >= 0 && <Badge variant="secondary" className="text-[10px]">🏗️ Tipo prop → {headers[mapping.property_type_interest_column]}</Badge>}
-                  {mapping.source_column >= 0 && <Badge variant="secondary" className="text-[10px]">📍 Fuente → {headers[mapping.source_column]}</Badge>}
-                  {mapping.company_column >= 0 && <Badge variant="secondary" className="text-[10px]">🏢 Empresa → {headers[mapping.company_column]}</Badge>}
-                  {mapping.extra_columns.length > 0 && <Badge variant="outline" className="text-[10px]">📝 +{mapping.extra_columns.length} cols → notas</Badge>}
+                  {mapping.preferred_zones_column >= 0 && <Badge variant="secondary" className="gap-1 text-[10px]"><MapPin className="h-3 w-3" aria-hidden="true" />Zona → {headers[mapping.preferred_zones_column]}</Badge>}
+                  {mapping.budget_max_column >= 0 && <Badge variant="secondary" className="gap-1 text-[10px]"><DollarSign className="h-3 w-3" aria-hidden="true" />Presup. → {headers[mapping.budget_max_column]}</Badge>}
+                  {mapping.property_type_interest_column >= 0 && <Badge variant="secondary" className="gap-1 text-[10px]"><Home className="h-3 w-3" aria-hidden="true" />Tipo prop → {headers[mapping.property_type_interest_column]}</Badge>}
+                  {mapping.source_column >= 0 && <Badge variant="secondary" className="gap-1 text-[10px]"><Globe className="h-3 w-3" aria-hidden="true" />Fuente → {headers[mapping.source_column]}</Badge>}
+                  {mapping.company_column >= 0 && <Badge variant="secondary" className="gap-1 text-[10px]"><Building2 className="h-3 w-3" aria-hidden="true" />Empresa → {headers[mapping.company_column]}</Badge>}
+                  {mapping.extra_columns.length > 0 && <Badge variant="outline" className="gap-1 text-[10px]"><FileText className="h-3 w-3" aria-hidden="true" />+{mapping.extra_columns.length} cols → notas</Badge>}
                 </div>
               </div>
 
@@ -457,7 +464,7 @@ export default function ImportClientsDialog({ open, onOpenChange, userId, onImpo
                   </span>
                 )}
                 {dupCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-muted-foreground">
                     {updateDuplicates && updateCount > 0
                       ? <><RefreshCw className="h-3.5 w-3.5" /> {dupCount} ya existen ({updateCount} se actualizan)</>
                       : <><SkipForward className="h-3.5 w-3.5" /> {dupCount} ya existen (se omiten)</>}
