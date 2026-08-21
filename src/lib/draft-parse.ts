@@ -20,8 +20,10 @@ export type DraftSegment =
 
 /**
  * ¿La burbuja contiene ALGÚN marcador de draft? Gate de precedencia en ChatMessage: si hay
- * marcadores, los parsers de tarjetas (property/contact) NO corren — si no, una campaña con 🏠
- * dentro de un borrador activaba parseMultiplePropertyCards y los marcadores se veían crudos.
+ * marcadores, primero se parte por borradores (parseDraftSegments) y los parsers de tarjetas
+ * (property/contact) corren SOLO sobre los tramos de texto entre borradores, nunca adentro de uno —
+ * si no, una campaña con 🏠 dentro de un borrador activaba parseMultiplePropertyCards y los
+ * marcadores se veían crudos (hoy el borrador va fuera de la burbuja, ticket 86ak47fmn).
  */
 export function hasDraftMarkers(content: string): boolean {
   return content.includes(DRAFT_START) || content.includes(DRAFT_END) || content.includes(WHATSAPP_TO_PREFIX);

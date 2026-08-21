@@ -5,7 +5,7 @@ import PropertyCard, { PropertyCardCompact } from "@/components/PropertyCard";
 import ContactCard, { ContactCardCompact } from "@/components/ContactCard";
 import { parsePropertyCard, parseMultiplePropertyCards, type PropertyCardProps } from "@/lib/property-card-parse";
 import { parseContactCardSegments, type ContactCardProps } from "@/lib/contact-card-parse";
-import { parseDraftSegments, hasDraftMarkers, stripAllMarkers, normalizeWhatsappNumber } from "@/lib/draft-parse";
+import { parseDraftSegments, stripAllMarkers, normalizeWhatsappNumber } from "@/lib/draft-parse";
 import { injectAssociate } from "@/lib/inject-associate";
 import { AlanOrb } from "@/components/AlanOrb";
 import { useAuth } from "@/contexts/AuthContext";
@@ -259,8 +259,10 @@ const CopyableDraft = ({ draft, whatsappNumber }: { draft: string; whatsappNumbe
     const url = `https://wa.me/${validNumber?.replace(/\+/g, "")}/?text=${encodeURIComponent(draft)}`;
     window.open(url, "_blank");
   };
+  // Full-bleed, hermano de la burbuja (artboard Borrador.dc.html): el contenedor del mensaje ya
+  // aporta los 16px laterales, acá solo va la tarjeta de vidrio r18.
   return (
-    <div className="mt-2 rounded-[18px] border border-white/[0.09] bg-white/5 overflow-hidden shadow-[0_20px_44px_-24px_rgba(0,0,0,0.9)]">
+    <div data-testid="copyable-draft" className="w-full rounded-[18px] border border-white/[0.09] bg-white/5 overflow-hidden shadow-[0_20px_44px_-24px_rgba(0,0,0,0.9)]">
       <div className="flex items-center justify-between gap-2.5 pl-3.5 pr-2 py-2 border-b border-white/[0.07] bg-white/[0.03]">
         <span className="flex items-center gap-2 min-w-0 text-xs font-medium text-muted-foreground whitespace-nowrap">
           {validNumber ? (
@@ -320,10 +322,21 @@ const assistantBubbleCls =
  * intercaladas en orden. Sin tarjetas, todo va en la burbuja como siempre.
  */
 type CardSegment = {
-  type: "text" | "property" | "contact";
+  type: "text" | "property" | "contact" | "draft";
   text?: string;
   property?: PropertyCardProps;
   contact?: ContactCardProps;
+  draft?: string;
+  whatsappNumber?: string;
+};
+
+/** Tarjetas de propiedad (🏠) y, si no hay, de contacto (👤 **) en un tramo de texto; null si no hay. */
+const parseCardSegments = (text: string): CardSegment[] | null => {
+  const multi = parseMultiplePropertyCards(text);
+  if (multi) return multi;
+  const single = parsePropertyCard(text);
+  if (single) return [{ type: "property", property: single }];
+  return parseContactCardSegments(text);
 };
 
 const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }: { content: string; clientPhone?: string; quotedText?: string; onReply?: (content: string) => void; onRetry?: () => void }) => {
@@ -331,17 +344,22 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
   // Sólo pasamos whatsappPhone si hay un teléfono real; undefined oculta el botón (sin cliente vinculado no se muestra).
   const whatsappPhone = clientPhone || undefined;
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
-  // Precedencia: los drafts GANAN. Si la burbuja contiene cualquier marcador <<<...>>> de borrador,
-  // los parsers de tarjetas no corren (ticket URGENT marcadores renderizados) — todo va en burbuja.
+  // Precedencia: los drafts GANAN. Si hay marcadores <<<...>>> de borrador, primero se parte por
+  // borradores (ticket 86ak47fmn: el borrador va FUERA de la burbuja, full-bleed como las tarjetas)
+  // y los parsers de tarjetas corren SOLO sobre los tramos de texto entre borradores — nunca
+  // adentro de uno (ticket URGENT marcadores renderizados: un 🏠 dentro del borrador no es tarjeta).
   // Después: propiedades (🏠) y, si no hay, contactos (👤 **) — ticket 86ak3z07b: las tarjetas de
   // contacto también van fuera de la burbuja, primera completa y el resto en fila compacta.
   const cardSegments = useMemo<CardSegment[] | null>(() => {
-    if (hasDraftMarkers(processedContent)) return null;
-    const multi = parseMultiplePropertyCards(processedContent);
-    if (multi) return multi;
-    const single = parsePropertyCard(processedContent);
-    if (single) return [{ type: "property", property: single }];
-    return parseContactCardSegments(processedContent);
+    const drafts = parseDraftSegments(processedContent);
+    if (drafts) {
+      return drafts.flatMap<CardSegment>((s) =>
+        s.type === "draft"
+          ? [{ type: "draft", draft: s.draft, whatsappNumber: s.whatsappNumber }]
+          : parseCardSegments(s.text) ?? [{ type: "text", text: s.text }]
+      );
+    }
+    return parseCardSegments(processedContent);
   }, [processedContent]);
 
   const actions = (
@@ -413,13 +431,18 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
           <div key={i} className="py-1">
             {contactOrdinal++ === 0 ? <ContactCard {...seg.contact} /> : <ContactCardCompact {...seg.contact} />}
           </div>
+        ) : seg.type === "draft" && seg.draft !== undefined ? (
+          <div key={i} className="py-1">
+            <CopyableDraft draft={seg.draft} whatsappNumber={seg.whatsappNumber} />
+          </div>
         ) : (
           <div key={i} className="flex gap-2.5 py-1">
             {i === firstTextIdx ? <AlanAvatar /> : <div className="w-7 shrink-0" aria-hidden />}
             <div className="max-w-[80%] min-w-0 overflow-hidden">
               <div data-bubble="assistant" className={assistantBubbleCls}>
                 {i === firstTextIdx && quotedText && <QuotedBlock text={quotedText} isUser={false} />}
-                <MarkdownProse text={seg.text || ""} />
+                {/* Red final: ningún <<<MARCADOR>>> suelto/desconocido llega crudo a ReactMarkdown. */}
+                <MarkdownProse text={stripAllMarkers(seg.text || "")} />
               </div>
             </div>
           </div>
@@ -430,31 +453,11 @@ const AssistantMessage = ({ content, clientPhone, quotedText, onReply, onRetry }
   );
 };
 
-/** Renders assistant content – borradores o markdown (las tarjetas de propiedad y de contacto
-    se resuelven arriba, en AssistantMessage, porque van fuera de la burbuja). */
+/** Renders assistant content – markdown de la burbuja (borradores, tarjetas de propiedad y de
+    contacto se resuelven arriba, en AssistantMessage, porque van fuera de la burbuja). */
 const AssistantContent = ({ content }: { content: string; clientPhone?: string }) => {
   const { agentCode } = useAuth();
   const processedContent = useMemo(() => injectAssociate(content, agentCode), [content, agentCode]);
-  const hasDrafts = useMemo(() => hasDraftMarkers(processedContent), [processedContent]);
-  const draftSegments = useMemo(() => hasDrafts ? parseDraftSegments(processedContent) : null, [hasDrafts, processedContent]);
-
-  if (draftSegments) {
-    return (
-      <div>
-        {draftSegments.map((seg, i) =>
-          seg.type === "draft" ? (
-            <CopyableDraft key={i} draft={seg.draft} whatsappNumber={seg.whatsappNumber} />
-          ) : (
-            <div key={i} className="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary overflow-hidden break-words [word-break:break-word] my-2">
-              <ReactMarkdown components={{
-                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="!text-blue-400 !font-semibold !underline !decoration-blue-400/50 hover:!decoration-blue-600">{children}</a>,
-              }}>{seg.text}</ReactMarkdown>
-            </div>
-          )
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-a:text-primary prose-a:font-semibold prose-a:underline prose-a:decoration-primary/40 hover:prose-a:decoration-primary prose-img:rounded-xl prose-img:my-2 overflow-hidden break-words [word-break:break-word]">

@@ -227,7 +227,7 @@ describe("precedencia con property cards", () => {
     const campaign =
       "<<<WHATSAPP_TO:+5491111111111>>> <<<DRAFT_START>>>Mirá esta 🏠 casa<<<DRAFT_END>>> " +
       "<<<WHATSAPP_TO:+5492222222222>>> <<<DRAFT_START>>>Y esta otra 🏠 también<<<DRAFT_END>>>";
-    expect(hasDraftMarkers(campaign)).toBe(true); // ChatMessage no corre parseMultiplePropertyCards acá
+    expect(hasDraftMarkers(campaign)).toBe(true); // ChatMessage parte por drafts primero: los 🏠 quedan adentro de los borradores
     const segs = parseDraftSegments(campaign)!;
     expect(draftSegments(segs).length).toBe(2);
     expectNoRawMarkers(segs);

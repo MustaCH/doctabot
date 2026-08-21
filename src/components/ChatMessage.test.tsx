@@ -243,3 +243,83 @@ describe("ChatMessage — turno fallido y Reintentar (ticket 86ak3kd99)", () => 
     expect(screen.queryByRole("button", { name: /reintentar/i })).toBeNull();
   });
 });
+
+// Ticket 86ak47fmn: el borrador (email/WhatsApp) sale de la burbuja del 80% y va full-bleed como
+// las tarjetas, hermano de la burbuja de intro (artboard Borrador.dc.html). Los parsers de
+// tarjetas corren sobre los tramos de texto entre borradores, nunca adentro de uno.
+describe("ChatMessage — borrador fuera de la burbuja (ticket 86ak47fmn)", () => {
+  const draftMd = (body: string, phone = "+5493515550001") =>
+    `<<<WHATSAPP_TO:${phone}>>>\n<<<DRAFT_START>>>${body}<<<DRAFT_END>>>`;
+  const draftSel = '[data-testid="copyable-draft"]';
+
+  it("texto de intro en burbuja y borrador full-bleed, fuera de la burbuja", () => {
+    const { container } = renderRouted(`Te lo dejo armado. Revisalo y lo mandás vos:\n${draftMd("Hola Marina, bajó el precio.")}`);
+    const draft = container.querySelector(draftSel);
+    expect(draft).not.toBeNull();
+    expect(draft!.closest(".max-w-\\[80\\%\\]")).toBeNull();
+    expect(draft!.closest(bubbleSel)).toBeNull();
+    const bubble = container.querySelector(bubbleSel);
+    expect(bubble).not.toBeNull();
+    expect(bubble!.textContent).toContain("Te lo dejo armado");
+    expect(bubble!.contains(draft!)).toBe(false);
+    expect(container.textContent).not.toContain("<<<");
+    // header de WhatsApp + cuerpo + acción copiar
+    expect(draft!.textContent).toContain("Mensaje de WhatsApp");
+    expect(draft!.textContent).toContain("Hola Marina, bajó el precio.");
+    expect(draft!.querySelector("button")!.textContent).toContain("Copiar");
+  });
+
+  it("borrador + tarjeta de contacto en el mismo mensaje: las dos salen de la burbuja", () => {
+    const content = `Es para este cliente:\n${contactMd("Marina Sosa", "c1")}\n\nY este es el mensaje:\n${draftMd("Hola Marina!")}`;
+    const { container } = renderRouted(content);
+    expect(container.querySelector('[data-testid="contact-card"]')).not.toBeNull();
+    expect(container.querySelector(draftSel)).not.toBeNull();
+    const bubbles = container.querySelectorAll(bubbleSel);
+    expect(bubbles.length).toBe(2);
+    expect(bubbles[0].textContent).toContain("Es para este cliente");
+    expect(bubbles[1].textContent).toContain("Y este es el mensaje");
+  });
+
+  it("un 🏠 dentro del borrador NO es tarjeta de propiedad (precedencia del borrador)", () => {
+    const content = `Te armé la campaña:\n${draftMd("Hola Juan! Mirá esta 🏠 casa en Argüello por USD 120.000: https://www.remax.com.ar/listings/casa-x1")}`;
+    const { container } = renderRouted(content);
+    expect(container.querySelector('[data-testid="property-card"]')).toBeNull();
+    expect(container.querySelector('[data-testid="property-card-compact"]')).toBeNull();
+    expect(container.querySelector(draftSel)!.textContent).toContain("casa en Argüello");
+    expect(container.textContent).not.toContain("<<<");
+  });
+
+  it("borrador + tarjetas de propiedad fuera del borrador: las tarjetas salen y el borrador también", () => {
+    const content = `Estas dos le pueden servir:\n${cardMd(1)}\n\n${cardMd(2)}\n\nY este es el mensaje:\n${draftMd("Hola Marina, te paso dos opciones.")}`;
+    const { container } = renderRouted(content);
+    expect(container.querySelectorAll('[data-testid="property-card"]').length).toBe(1);
+    expect(container.querySelectorAll('[data-testid="property-card-compact"]').length).toBe(1);
+    const draft = container.querySelector(draftSel)!;
+    expect(draft).not.toBeNull();
+    // orden DOM: la compacta va antes que el borrador (intercalado en el orden original)
+    const compact = container.querySelector('[data-testid="property-card-compact"]')!;
+    expect(compact.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.textContent).not.toContain("<<<");
+  });
+
+  it("marcador genérico suelto en el texto + borrador: nada crudo llega a la burbuja (red final)", () => {
+    const { container } = renderRouted(`Acá va <<<PROPERTIES>>> el mensaje:\n${draftMd("Hola!")}`);
+    expect(container.textContent).not.toContain("<<<");
+    expect(container.querySelector(bubbleSel)!.textContent).toContain("el mensaje");
+    expect(container.querySelector(draftSel)).not.toBeNull();
+  });
+
+  it('borrador sin número válido: header "Texto listo para copiar" y sin botón de WhatsApp', () => {
+    const { container } = renderRouted("<<<WHATSAPP_TO:hola mundo>>>\n<<<DRAFT_START>>>Hola!<<<DRAFT_END>>>");
+    const draft = container.querySelector(draftSel)!;
+    expect(draft.textContent).toContain("Texto listo para copiar");
+    expect(draft.querySelector('button[title="Enviar por WhatsApp"]')).toBeNull();
+    expect(container.textContent).not.toContain("<<<");
+  });
+
+  it("un mensaje que es solo borrador no deja burbuja vacía", () => {
+    const { container } = renderRouted(draftMd("Solo el borrador"));
+    expect(container.querySelector(bubbleSel)).toBeNull();
+    expect(container.querySelector(draftSel)).not.toBeNull();
+  });
+});
