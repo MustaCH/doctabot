@@ -354,7 +354,7 @@ const Onboarding = () => {
             )}
 
             <div className="flex gap-2">
-              <Button variant="ghost" size="md" onClick={() => setStep(3)} className="text-[13px] text-muted-foreground">
+              <Button variant="ghost" size="default" onClick={() => setStep(3)} className="text-[13px] text-muted-foreground">
                 <ArrowLeft className="mr-1 h-4 w-4" /> Atrás
               </Button>
               <Button onClick={handleFinish} className="flex-1 text-[15px]">

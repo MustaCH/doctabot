@@ -817,7 +817,7 @@ const ClientDetail = () => {
               placeholder="Escribí una nota…"
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              className="min-h-[56px] resize-none border-none p-0 text-[13px] shadow-none focus-visible:ring-0"
+              className="min-h-[56px] resize-none rounded-none border-none bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
             />
             <div className="mt-1 flex items-center justify-between border-t border-white/[0.06] pt-1.5">
               {/* Área táctil 44 para el checkbox (el control visual sigue en 18) */}

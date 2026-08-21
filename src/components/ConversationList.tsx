@@ -289,7 +289,7 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-none bg-destructive font-medium text-destructive-foreground shadow-none hover:bg-destructive/90 hover:opacity-100"
               onClick={() => { if (deleteTarget) { onDelete?.(deleteTarget.id); setDeleteTarget(null); } }}
             >
               Eliminar
