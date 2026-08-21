@@ -1,12 +1,10 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowLeft, Search, Zap, Users, MessageSquare, CalendarDays,
-  AlertTriangle, Clock, TrendingUp, Phone, ChevronRight, CheckCircle2, Circle,
+  ArrowLeft, Zap, Users, MessageSquare, Building2, Phone, ChevronRight, Circle,
   Cake, Home, FileText, Pin, type LucideIcon
 } from "lucide-react";
 import { CLIENT_STATUS_META, type ClientStatus } from "@/lib/client-status";
@@ -66,6 +64,24 @@ const eventTypeIcon: Record<string, LucideIcon> = {
 
 const STALE_DAYS = 14;
 
+// Chips de conteo de los títulos de sección (artboard Panel): neutro, rojo (tareas), ámbar (sin contacto).
+const CHIP_TONES = {
+  neutral: "bg-white/[0.07] text-[#A7AEBA]",
+  hot: "border border-[rgba(255,90,77,0.32)] bg-[rgba(255,90,77,0.18)] text-[hsl(var(--hot))]",
+  amber: "border border-[rgba(245,178,63,0.30)] bg-[rgba(245,178,63,0.16)] text-[hsl(var(--warm-soft-foreground))]",
+} as const;
+
+const CountChip = ({ n, tone = "neutral" }: { n: number; tone?: keyof typeof CHIP_TONES }) => (
+  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${CHIP_TONES[tone]}`}>{n}</span>
+);
+
+const SectionHeader = ({ title, children }: { title: string; children?: ReactNode }) => (
+  <div className="mb-[11px] flex items-center gap-[9px]">
+    <h2 className="text-sm font-semibold tracking-[-0.01em]">{title}</h2>
+    {children}
+  </div>
+);
+
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -101,7 +117,7 @@ const Dashboard = () => {
       supabase.from("client_notes").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("is_action", true).eq("is_done", true).gte("completed_at", sevenDaysAgo),
     ]);
     const clientMap = new Map((allClientsRes.data as Client[] ?? []).map(c => [c.id, c.full_name]));
-    const pendingNotes: PendingNote[] = ((notesRes.data as any[]) ?? []).map((n: any) => ({
+    const pendingNotes: PendingNote[] = ((notesRes.data as Omit<PendingNote, "client_name">[] | null) ?? []).map((n) => ({
       ...n,
       client_name: clientMap.get(n.client_id) ?? "Cliente",
     }));
@@ -212,89 +228,92 @@ const Dashboard = () => {
     return d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" });
   };
 
+  // Métricas con ícono arriba-izquierda y color token (artboard Panel): ámbar acciones, azul de
+  // marca propiedades, verde éxito contactos, violeta conversaciones.
   const metricCards = data ? [
-    { label: "Acciones (7d)", value: data.weeklyActions, icon: Zap, color: "text-orange-500" },
-    { label: "Propiedades", value: data.totalProperties, icon: Search, color: "text-primary" },
-    { label: "Contactos", value: data.totalClients, icon: Users, color: "text-emerald-600" },
-    { label: "Conversaciones", value: data.totalConversations, icon: MessageSquare, color: "text-violet-500" },
+    { label: "Acciones · 7 días", value: data.weeklyActions, icon: Zap, color: "text-[hsl(var(--warm))]" },
+    { label: "Propiedades", value: data.totalProperties, icon: Building2, color: "text-[hsl(var(--brand))]" },
+    { label: "Contactos", value: data.totalClients, icon: Users, color: "text-[hsl(var(--success))]" },
+    { label: "Conversaciones", value: data.totalConversations, icon: MessageSquare, color: "text-[hsl(var(--chart-violet))]" },
   ] : [];
 
-  const pipelineOrder = ["hot", "warm", "cold"];
+  const pipelineOrder: ClientStatus[] = ["hot", "warm", "cold"];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  // "miércoles 19 de agosto" — es-AR mete una coma después del día de la semana; el artboard no.
+  const todayLabel = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }).replace(",", "");
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-background">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate(-1)}>
+      {/* Header estándar: flecha atrás + título 17/600 + subtítulo con la fecha */}
+      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
+        <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate(-1)} aria-label="Volver">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <TrendingUp className="h-5 w-5 text-primary" />
-        <h1 className="text-base font-bold tracking-tight">Centro de Control</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[17px] font-semibold leading-[1.15] tracking-[-0.02em]">Centro de control</h1>
+          <p className="mt-[3px] text-[11px] leading-[1.2] text-muted-foreground">{todayLabel}</p>
+        </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8 space-y-5 pt-4 safe-bottom">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-8 pt-4 space-y-4 safe-bottom">
         <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
         {loading ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
+            <div className="grid grid-cols-2 gap-2.5">
+              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-[88px] rounded-2xl bg-white/[0.06]" />)}
             </div>
-            <Skeleton className="h-40 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
+            <Skeleton className="h-36 rounded-[14px] bg-white/[0.06]" />
+            <Skeleton className="h-44 rounded-[14px] bg-white/[0.06]" />
           </div>
         ) : (
           <>
-            {/* Metric cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Métricas */}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {metricCards.map(card => (
-                <div key={card.label} className="rounded-2xl border border-white/[0.09] bg-white/5 p-3 text-center">
-                  <card.icon className={`h-4 w-4 mx-auto mb-1 ${card.color}`} />
-                  <p className="text-[22px] font-bold tracking-tight [font-variant-numeric:tabular-nums]">{card.value.toLocaleString("es-AR")}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{card.label}</p>
+                <div key={card.label} className="rounded-2xl border border-white/[0.09] bg-white/5 px-[13px] py-[11px]">
+                  <card.icon className={`h-[17px] w-[17px] ${card.color}`} strokeWidth={1.8} aria-hidden="true" />
+                  <p className="mt-[9px] text-[22px] font-bold leading-none tracking-[-0.03em] tabular-nums">{card.value.toLocaleString("es-AR")}</p>
+                  <p className="mt-[5px] text-[11px] text-muted-foreground">{card.label}</p>
                 </div>
               ))}
             </div>
 
-            {/* Upcoming events this week */}
-            <section className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold">Esta semana</h2>
-                  {upcomingEvents.length > 0 && (
-                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{upcomingEvents.length}</Badge>
-                  )}
-                </div>
-              </div>
+            {/* Esta semana */}
+            <section>
+              <SectionHeader title="Esta semana">
+                {upcomingEvents.length > 0 && <CountChip n={upcomingEvents.length} />}
+              </SectionHeader>
 
               {upcomingEvents.length === 0 ? (
-                <div className="rounded-xl border border-border bg-card p-4 text-center">
-                  <p className="text-xs text-muted-foreground">Sin eventos esta semana 🎉</p>
+                <div className="rounded-[14px] border border-white/[0.08] bg-white/[0.04] px-[13px] py-4 text-center">
+                  <p className="text-xs text-muted-foreground">Sin eventos esta semana</p>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {upcomingEvents.map(ev => {
-                    const isToday = ev.nextOccurrenceStr === new Date().toISOString().slice(0, 10);
+                    const isToday = ev.nextOccurrenceStr === todayStr;
+                    const EventIcon = eventTypeIcon[ev.event_type] ?? Pin;
                     return (
                       <div
                         key={ev.id}
-                        className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
+                        className={`flex min-h-11 items-center gap-3 rounded-[14px] border px-[13px] py-2.5 ${
                           isToday
-                            ? "border-primary/30 bg-primary/5 shadow-sm"
-                            : "border-border bg-card"
+                            ? "border-[rgba(91,147,255,0.28)] bg-[rgba(91,147,255,0.10)]"
+                            : "border-white/[0.09] bg-white/5"
                         }`}
                       >
-                        {(() => {
-                          const EventIcon = eventTypeIcon[ev.event_type] ?? Pin;
-                          return <EventIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
-                        })()}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{ev.title}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {ev.clients?.full_name}
-                          </p>
+                        <EventIcon
+                          className={`h-[19px] w-[19px] shrink-0 ${isToday ? "text-[hsl(var(--primary-soft-foreground))]" : "text-[#A7AEBA]"}`}
+                          strokeWidth={1.7}
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#E4E8EE]">{ev.title}</p>
+                          {ev.clients?.full_name && (
+                            <p className="mt-[3px] text-[11px] text-muted-foreground">{ev.clients.full_name}</p>
+                          )}
                         </div>
-                        <span className={`text-xs font-medium shrink-0 ${isToday ? "text-primary" : "text-muted-foreground"}`}>
+                        <span className={`shrink-0 text-xs ${isToday ? "font-semibold text-[hsl(var(--primary-soft-foreground))]" : "font-medium text-muted-foreground"}`}>
                           {formatEventDate(ev.nextOccurrenceStr)}
                         </span>
                       </div>
@@ -304,80 +323,60 @@ const Dashboard = () => {
               )}
             </section>
 
-            {/* Pending tasks */}
+            {/* Tareas pendientes */}
             {data!.pendingNotes.length > 0 && (
-              <section className="space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold">Tareas pendientes</h2>
-                  <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-                    {data!.pendingNotes.length}
-                  </Badge>
-                </div>
+              <section>
+                <SectionHeader title="Tareas pendientes">
+                  <CountChip n={data!.pendingNotes.length} tone="hot" />
+                </SectionHeader>
 
-                <div className="rounded-xl border border-primary/20 bg-primary/5 divide-y divide-primary/10 overflow-hidden">
+                <div className="divide-y divide-white/[0.06] overflow-hidden rounded-[14px] border border-white/[0.08] bg-white/[0.04]">
                   {data!.pendingNotes.map(note => (
-                    <div key={note.id} className="flex items-start gap-3 px-3.5 py-2.5">
+                    <div key={note.id} className="flex items-start gap-[11px] px-[13px] py-2.5">
+                      {/* Área táctil 44 con el círculo de 17 centrado (márgenes negativos para no inflar la fila) */}
                       <button
+                        type="button"
                         onClick={() => handleToggleNote(note.id)}
-                        className="mt-0.5 shrink-0"
+                        aria-label={`Marcar como hecha: ${note.content}`}
+                        className="-my-2.5 -ml-3 -mr-[15px] flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#7E8694] transition-colors hover:text-foreground"
                       >
-                        <Circle className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+                        <Circle className="h-[17px] w-[17px]" strokeWidth={1.7} aria-hidden="true" />
                       </button>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs">{note.content}</p>
-                        <p
-                          className="text-[10px] text-primary cursor-pointer hover:underline"
-                          onClick={() => navigate(`/clients/${note.client_id}`)}
-                        >
-                          {note.client_name}
-                        </p>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/clients/${note.client_id}`)}
+                        className="-my-2.5 min-w-0 flex-1 py-2.5 text-left"
+                      >
+                        <span className="block text-[13px] leading-[1.45] text-[#DDE1E8]">{note.content}</span>
+                        <span className="mt-1 block text-[11px] text-[hsl(var(--primary-soft-foreground))]">{note.client_name}</span>
+                      </button>
                     </div>
                   ))}
                 </div>
               </section>
             )}
 
-            {/* Client Pipeline */}
-            <section className="space-y-2.5">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-emerald-600" />
-                <h2 className="text-sm font-semibold">Pipeline de Clientes</h2>
-              </div>
+            {/* Pipeline de clientes: 3 columnas con tinte token por estado */}
+            <section>
+              <SectionHeader title="Pipeline de clientes" />
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2.5">
                 {pipelineOrder.map(status => {
-                  const config = CLIENT_STATUS_META[status as ClientStatus];
+                  const config = CLIENT_STATUS_META[status];
                   const clients = pipeline[status] ?? [];
-                  if (!config) return null;
                   return (
                     <div
                       key={status}
-                      className="rounded-xl border p-3 space-y-2"
+                      className="rounded-[14px] border p-3"
                       style={{ background: config.bg, borderColor: config.border }}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: config.text }}>
-                          <span aria-hidden className="h-[5px] w-[5px] rounded-full" style={{ background: config.dot }} />
-                          {config.plural}
-                        </span>
-                        <span className="text-lg font-bold [font-variant-numeric:tabular-nums]" style={{ color: config.text }}>{clients.length}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: config.dot }} />
+                        <span className="truncate text-[11px] font-semibold" style={{ color: config.text }}>{config.plural}</span>
                       </div>
-                      {clients.length > 0 && (
-                        <div className="space-y-0.5">
-                          {clients.slice(0, 3).map(c => (
-                            <p key={c.id} className="text-[11px] text-foreground/70 truncate">
-                              {c.full_name}
-                            </p>
-                          ))}
-                          {clients.length > 3 && (
-                            <p className="text-[10px] text-muted-foreground">
-                              +{clients.length - 3} más
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <p className="mt-2.5 text-[22px] font-bold leading-none tracking-[-0.03em] tabular-nums" style={{ color: config.text }}>
+                        {clients.length}
+                      </p>
                     </div>
                   );
                 })}
@@ -385,42 +384,41 @@ const Dashboard = () => {
 
               <Button
                 variant="ghost"
-                size="sm"
-                className="w-full text-xs text-muted-foreground h-8"
+                size="md"
+                className="mt-2 w-full text-xs text-muted-foreground"
                 onClick={() => navigate("/clients")}
               >
-                Ver todos los clientes <ChevronRight className="h-3 w-3 ml-1" />
+                Ver todos los clientes <ChevronRight className="ml-1 h-3.5 w-3.5" />
               </Button>
             </section>
 
-            {/* Stale contacts alert */}
+            {/* Sin contacto reciente: chip ámbar, contenedor neutro */}
             {staleClients.length > 0 && (
-              <section className="space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <h2 className="text-sm font-semibold">Sin contacto reciente</h2>
-                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-300 text-amber-600">
-                    {staleClients.length}
-                  </Badge>
-                </div>
+              <section>
+                <SectionHeader title="Sin contacto reciente">
+                  <CountChip n={staleClients.length} tone="amber" />
+                </SectionHeader>
 
-                <div className="rounded-xl border border-amber-800 bg-amber-950/20 divide-y divide-amber-900/30 overflow-hidden">
+                <div className="divide-y divide-white/[0.06] overflow-hidden rounded-[14px] border border-white/[0.08] bg-white/[0.04]">
                   {staleClients.map(c => {
                     const lastDate = c.last_contact_at ?? c.updated_at;
                     return (
-                      <div key={c.id} className="flex items-center gap-3 px-3.5 py-2.5">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{c.full_name}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            Último contacto: {formatRelative(lastDate)}
-                          </p>
-                        </div>
+                      <div key={c.id} className="flex items-center gap-3 px-[13px] py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/clients/${c.id}`)}
+                          className="-my-2.5 min-w-0 flex-1 py-2.5 text-left"
+                        >
+                          <span className="block truncate text-sm font-medium text-[#E4E8EE]">{c.full_name}</span>
+                          <span className="mt-[3px] block text-[11px] text-muted-foreground">Último contacto: {formatRelative(lastDate)}</span>
+                        </button>
                         {c.phone && (
                           <a
                             href={`tel:${c.phone}`}
-                            className="shrink-0 h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:bg-primary/20 transition-colors"
+                            aria-label={`Llamar a ${c.full_name}`}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[rgba(91,147,255,0.30)] bg-[rgba(91,147,255,0.16)] text-[hsl(var(--primary-soft-foreground))] transition-colors hover:bg-[rgba(91,147,255,0.24)]"
                           >
-                            <Phone className="h-3.5 w-3.5" />
+                            <Phone className="h-[15px] w-[15px]" strokeWidth={1.7} aria-hidden="true" />
                           </a>
                         )}
                       </div>
@@ -430,26 +428,24 @@ const Dashboard = () => {
               </section>
             )}
 
-            {/* Recent conversations */}
-            <section className="space-y-2.5">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">Conversaciones recientes</h2>
-              </div>
+            {/* Conversaciones recientes */}
+            <section>
+              <SectionHeader title="Conversaciones recientes" />
               {data!.recentConversations.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">Sin conversaciones aún</p>
+                <div className="rounded-[14px] border border-white/[0.08] bg-white/[0.04] px-[13px] py-4 text-center">
+                  <p className="text-xs text-muted-foreground">Sin conversaciones aún</p>
+                </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {data!.recentConversations.map(conv => (
                     <button
                       key={conv.id}
+                      type="button"
                       onClick={() => navigate("/")}
-                      className="w-full flex items-center justify-between rounded-xl border border-border bg-card px-3.5 py-2.5 text-left transition-colors hover:bg-white/10 active:scale-[0.99]"
+                      className="flex min-h-11 w-full items-center justify-between rounded-[14px] border border-white/[0.09] bg-white/5 px-[13px] py-2.5 text-left transition-colors hover:bg-white/10 active:scale-[0.99]"
                     >
-                      <p className="text-sm font-medium truncate flex-1 min-w-0">{conv.title}</p>
-                      <span className="text-[11px] text-muted-foreground shrink-0 ml-3">
-                        {formatRelative(conv.updated_at)}
-                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#E4E8EE]">{conv.title}</span>
+                      <span className="ml-3 shrink-0 text-[11px] text-muted-foreground">{formatRelative(conv.updated_at)}</span>
                     </button>
                   ))}
                 </div>
