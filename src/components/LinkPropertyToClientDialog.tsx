@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, UserPlus, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { getInitials, getAvatarColorIndex, AVATAR_COLORS } from "@/lib/contact-avatar";
+import { ClientStatusChip } from "@/components/ClientStatusChip";
+import { CLIENT_TYPE_LABEL as clientTypeLabel } from "@/lib/client-status";
 
-const clientTypeLabel: Record<string, string> = {
-  buyer: "Comprador",
-  seller: "Vendedor",
-  both: "Ambos",
-};
+// Diálogo "Vincular a cliente" del explorador (ticket 86ak3z09d): filas de 44+ con avatar de
+// AVATAR_COLORS, el seleccionado con fondo azul tenue, y "Vincular propiedad" como primario de 48.
 
 interface Client {
   id: string;
@@ -63,7 +63,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
         .select("client_id")
         .eq("property_id", propertyId)
         .eq("user_id", user.id);
-      setAlreadyLinked(new Set((linked ?? []).map((l: any) => l.client_id)));
+      setAlreadyLinked(new Set((linked ?? []).map((l: { client_id: string }) => l.client_id)));
 
       setLoading(false);
     };
@@ -121,27 +121,28 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
             Vincular a cliente
           </DialogTitle>
           {propertyTitle && (
-            <p className="text-xs text-muted-foreground truncate mt-1">{propertyTitle}</p>
+            <p className="text-xs text-muted-foreground truncate mt-1 pr-8">{propertyTitle}</p>
           )}
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Search clients */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               placeholder="Buscar cliente..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              aria-label="Buscar cliente"
+              className="h-11 rounded-[14px] border-white/[0.09] bg-white/[0.04] pl-10 text-sm focus-visible:ring-offset-0"
             />
           </div>
 
-          {/* Client list */}
-          <div className="max-h-48 overflow-y-auto rounded-md border border-border">
+          {/* Client list: filas de 44+ con avatar; la seleccionada con fondo azul tenue */}
+          <div className="max-h-56 overflow-y-auto rounded-[14px] border border-white/[0.09] bg-white/[0.03]" role="listbox" aria-label="Clientes">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Cargando" />
               </div>
             ) : filtered.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
@@ -154,24 +155,36 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
                 return (
                   <button
                     key={c.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
                     disabled={isLinked}
                     onClick={() => setSelectedClient(isSelected ? null : c.id)}
-                    className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors border-b border-border last:border-b-0 ${
+                    className={`flex min-h-[52px] w-full items-center gap-3 border-b border-white/[0.06] px-3 py-2 text-left text-sm transition-colors last:border-b-0 ${
                       isLinked
-                        ? "opacity-50 cursor-not-allowed bg-muted/50"
+                        ? "cursor-not-allowed opacity-50"
                         : isSelected
-                        ? "bg-primary/10"
-                        : "hover:bg-muted/50"
+                        ? "bg-[rgba(91,147,255,0.12)]"
+                        : "hover:bg-white/5"
                     }`}
                   >
+                    <div
+                      aria-hidden="true"
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${AVATAR_COLORS[getAvatarColorIndex(c.full_name)]}`}
+                    >
+                      {getInitials(c.full_name)}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{c.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{clientTypeLabel[c.client_type] ?? c.client_type}</p>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">{clientTypeLabel[c.client_type] ?? c.client_type}</span>
+                        <ClientStatusChip status={c.status} />
+                      </div>
                     </div>
                     {isLinked ? (
                       <span className="text-xs text-muted-foreground shrink-0">Ya vinculada</span>
                     ) : isSelected ? (
-                      <Check className="h-4 w-4 text-primary shrink-0" />
+                      <Check className="h-4 w-4 shrink-0 text-[hsl(var(--brand))]" aria-hidden="true" />
                     ) : null}
                   </button>
                 );
@@ -184,7 +197,7 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground shrink-0">Estado:</span>
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-9 text-xs flex-1">
+                <SelectTrigger className="h-11 flex-1 rounded-[14px] border-white/[0.09] bg-white/[0.04] text-sm" aria-label="Estado del vínculo">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -198,16 +211,16 @@ export function LinkPropertyToClientDialog({ open, onOpenChange, propertyId, pro
             </div>
           )}
 
-          {/* Action */}
+          {/* Action: primario de 48 */}
           <Button
-            className="w-full"
+            className="h-12 w-full rounded-[14px] bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-[15px] font-semibold text-white shadow-[0_14px_30px_-14px_rgba(59,123,255,0.95)] hover:opacity-90"
             disabled={!selectedClient || linking}
             onClick={handleLink}
           >
             {linking ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
             ) : (
-              <UserPlus className="mr-2 h-4 w-4" />
+              <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
             )}
             {linking ? "Vinculando..." : "Vincular propiedad"}
           </Button>
