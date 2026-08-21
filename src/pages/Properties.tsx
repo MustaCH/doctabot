@@ -11,7 +11,7 @@ import PropertyCard from "@/components/PropertyCard";
 import { LinkPropertyToClientDialog } from "@/components/LinkPropertyToClientDialog";
 import { PropertyMatchesDialog } from "@/components/PropertyMatchesDialog";
 import { usePropertyMatches } from "@/hooks/use-property-matches";
-import { ArrowLeft, Search, Heart, Trash2, Building2, SlidersHorizontal, X, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Search, Heart, Trash2, SlidersHorizontal, X, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 interface PropertyRow {
@@ -51,6 +51,10 @@ interface FavoriteProperty extends PropertyRow {
 }
 
 const PAGE_SIZE = 24;
+
+// Campos del panel de filtros (artboard Propiedades): 38 de alto, radio 12, vidrio, texto 12.
+const FILTER_FIELD_CLS =
+  "h-[38px] min-w-0 flex-1 rounded-[12px] border-white/[0.08] bg-white/5 px-3 text-xs text-[#C3CAD5] md:text-xs focus:ring-[3px] focus:ring-[rgba(91,147,255,0.12)] focus:ring-offset-0 focus:border-[rgba(91,147,255,0.45)]";
 
 const Properties = () => {
   const { user, agentCode } = useAuth();
@@ -234,17 +238,18 @@ const Properties = () => {
 
   const buildExtras = (p: PropertyRow): string[] => {
     const extras: string[] = [];
-    if (p.is_entrepreneurship) extras.push("🏗️ Emprendimiento");
-    if (p.zone_private_community) extras.push(`🏡 ${p.zone_private_community}`);
-    if (p.operation) extras.push(`🏷️ ${p.operation}`);
-    if (p.property_type) extras.push(`🏗️ ${p.property_type}`);
+    // Sin emojis: las tarjetas ya no usan emoji como ícono (rediseño Carbón & Vidrio).
+    if (p.is_entrepreneurship) extras.push("Emprendimiento");
+    if (p.zone_private_community) extras.push(p.zone_private_community);
+    if (p.operation) extras.push(p.operation);
+    if (p.property_type) extras.push(p.property_type);
     const parts: string[] = [];
     if (p.habitaciones) parts.push(`${p.habitaciones} hab`);
     if (p.banos) parts.push(`${p.banos} baños`);
-    if (parts.length > 0) extras.push(`🛋️ ${parts.join(" · ")}`);
+    if (parts.length > 0) extras.push(parts.join(" · "));
     if (p.expenses_price && p.expenses_price > 0) {
       const expCurr = p.expenses_currency === "USD" ? "USD" : "$";
-      extras.push(`💸 Expensas: ${expCurr} ${p.expenses_price.toLocaleString("es-AR")}`);
+      extras.push(`Expensas: ${expCurr} ${p.expenses_price.toLocaleString("es-AR")}`);
     }
     return extras;
   };
@@ -269,8 +274,9 @@ const Properties = () => {
           {isFavView && (
             <button
               onClick={() => handleRemoveFav((p as FavoriteProperty).favoriteId)}
-              className="absolute top-3 right-14 z-10 flex h-[38px] w-[38px] items-center justify-center rounded-full border border-white/10 bg-[rgba(255,90,77,0.55)] text-white backdrop-blur-sm transition-colors hover:bg-[rgba(255,90,77,0.75)]"
+              className="absolute right-14 top-2.5 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-[rgba(255,90,77,0.55)] text-white backdrop-blur-sm transition-colors hover:bg-[rgba(255,90,77,0.75)]"
               title="Quitar de favoritos"
+              aria-label="Quitar de favoritos"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -288,7 +294,8 @@ const Properties = () => {
             contactPhone={p.contact_phone ?? undefined}
             contactEmail={p.contact_email ?? undefined}
           />
-          {/* Action buttons row */}
+          {/* Action buttons row — solo en Buscar; el artboard de Favoritos muestra la tarjeta sola */}
+          {!isFavView && (
           <div className="mt-2 flex gap-2.5">
             <Button
               size="sm"
@@ -325,6 +332,7 @@ const Properties = () => {
               Vincular
             </Button>
           </div>
+          )}
         </div>
       ))}
     </div>
@@ -333,12 +341,12 @@ const Properties = () => {
   const LoadingSkeleton = () => (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
-          <Skeleton className="aspect-video w-full" />
+        <div key={i} className="overflow-hidden rounded-[18px] border border-white/[0.09] bg-white/5">
+          <Skeleton className="aspect-video w-full rounded-none bg-white/[0.06]" />
           <div className="space-y-2 p-3.5">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="h-3 w-2/3" />
+            <Skeleton className="h-4 w-3/4 bg-white/[0.06]" />
+            <Skeleton className="h-3 w-1/2 bg-white/[0.06]" />
+            <Skeleton className="h-3 w-2/3 bg-white/[0.06]" />
           </div>
         </div>
       ))}
@@ -348,32 +356,33 @@ const Properties = () => {
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 safe-top">
-        <Button size="icon" variant="ghost" className="h-11 w-11" onClick={() => navigate(-1)}>
+      <div className="flex items-center gap-3 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3 safe-top">
+        <Button size="icon" variant="ghost" className="h-11 w-11" onClick={() => navigate(-1)} aria-label="Volver">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Building2 className="h-5 w-5 text-primary" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold">Propiedades</p>
-          <p className="text-xs text-muted-foreground">
-            {totalCount !== null ? `${totalCount.toLocaleString("es-AR")} propiedades` : "Buscá propiedades"}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[17px] font-semibold leading-[1.15] tracking-[-0.02em]">Propiedades</h1>
+          <p className="mt-[3px] text-[11px] leading-[1.2] text-muted-foreground tabular-nums">
+            {activeTab === "favorites"
+              ? `${favorites.length} guardada${favorites.length === 1 ? "" : "s"}`
+              : totalCount !== null ? `${totalCount.toLocaleString("es-AR")} propiedad${totalCount === 1 ? "" : "es"}` : "Buscá propiedades"}
           </p>
         </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-border bg-card px-4">
-          <TabsList className="w-full bg-transparent h-11 p-0">
-            <TabsTrigger value="search" className="flex-1 gap-2 h-full rounded-none border-b-2 border-transparent text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
-              <Search className="h-3.5 w-3.5" />
+        <div className="border-b border-white/[0.07] bg-white/[0.02] px-4">
+          <TabsList className="h-[46px] w-full gap-2 bg-transparent p-0">
+            <TabsTrigger value="search" className="h-full flex-1 gap-2 rounded-none border-b-2 border-transparent text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none">
+              <Search className="h-[15px] w-[15px]" strokeWidth={1.9} aria-hidden="true" />
               Buscar
             </TabsTrigger>
-            <TabsTrigger value="favorites" className="flex-1 gap-2 h-full rounded-none border-b-2 border-transparent text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
-              <Heart className="h-3.5 w-3.5" />
+            <TabsTrigger value="favorites" className="h-full flex-1 gap-2 rounded-none border-b-2 border-transparent text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--primary))] data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none">
+              <Heart className="h-[15px] w-[15px]" strokeWidth={1.8} aria-hidden="true" />
               Favoritos
               {favorites.length > 0 && (
-                <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+                <span className="rounded-full border border-[rgba(255,90,77,0.34)] bg-[rgba(255,90,77,0.20)] px-[7px] py-px text-[10px] font-bold tabular-nums text-[hsl(var(--hot))]">
                   {favorites.length}
                 </span>
               )}
@@ -384,28 +393,36 @@ const Properties = () => {
         {/* Search Tab */}
         <TabsContent value="search" className="flex-1 overflow-y-auto m-0 safe-bottom">
           {/* Search bar + filters */}
-          <div className="sticky top-0 z-20 space-y-2 border-b border-border bg-background/95 backdrop-blur-sm px-4 py-3">
-            <div className="flex gap-2">
+          <div className="sticky top-0 z-20 space-y-2.5 border-b border-white/[0.07] bg-background/95 px-4 pb-3.5 pt-3 backdrop-blur-sm">
+            <div className="flex gap-2.5">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7E8694]" strokeWidth={1.8} aria-hidden="true" />
                 <Input
-                  placeholder="Buscar por título, zona, dirección..."
+                  placeholder="Buscar por título, zona, dirección…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 rounded-full border-white/[0.08] bg-white/5 pl-9"
+                  aria-label="Buscar propiedades"
+                  className="h-11 rounded-full border-white/[0.08] bg-white/5 pl-[42px] pr-11 text-sm placeholder:text-[#7E8694]"
                 />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Limpiar búsqueda"
+                    className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
               <Button
                 size="icon"
                 variant="outline"
-                className={`h-10 w-10 shrink-0 rounded-full ${
+                aria-label={showFilters ? "Ocultar filtros" : "Mostrar filtros"}
+                aria-pressed={showFilters}
+                className={`shrink-0 rounded-[14px] ${
                   showFilters || hasActiveFilters
-                    ? "border-transparent bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white hover:text-white hover:opacity-90"
+                    ? "border-transparent bg-[linear-gradient(150deg,hsl(var(--primary)),hsl(var(--primary-deep)))] text-white shadow-[0_10px_24px_-12px_rgba(76,141,255,0.9)] hover:text-white hover:opacity-90"
                     : "border-white/[0.08] bg-white/5 hover:bg-white/10"
                 }`}
                 onClick={() => setShowFilters(!showFilters)}
@@ -418,7 +435,7 @@ const Properties = () => {
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <Select value={operationFilter} onValueChange={setOperationFilter}>
-                    <SelectTrigger className="flex-1 h-9 text-xs">
+                    <SelectTrigger className={FILTER_FIELD_CLS} aria-label="Operación">
                       <SelectValue placeholder="Operación" />
                     </SelectTrigger>
                     <SelectContent>
@@ -429,7 +446,7 @@ const Properties = () => {
                     </SelectContent>
                   </Select>
                   <Select value={typeFilter} onValueChange={setTypeFilter}>
-                    <SelectTrigger className="flex-1 h-9 text-xs">
+                    <SelectTrigger className={FILTER_FIELD_CLS} aria-label="Tipo de propiedad">
                       <SelectValue placeholder="Tipo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -449,7 +466,7 @@ const Properties = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground shrink-0">Habitaciones:</span>
                   <Select value={roomsFilter} onValueChange={setRoomsFilter}>
-                    <SelectTrigger className="flex-1 h-9 text-xs">
+                    <SelectTrigger className={FILTER_FIELD_CLS} aria-label="Habitaciones">
                       <SelectValue placeholder="Cualquiera" />
                     </SelectTrigger>
                     <SelectContent>
@@ -463,24 +480,27 @@ const Properties = () => {
                   </Select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground shrink-0">Precio:</span>
                   <Input
                     type="number"
+                    inputMode="numeric"
                     placeholder="Desde"
+                    aria-label="Precio desde"
                     value={debouncedPriceMin}
                     onChange={(e) => setDebouncedPriceMin(e.target.value)}
-                    className="h-9 text-xs flex-1"
+                    className={`${FILTER_FIELD_CLS} tabular-nums`}
                   />
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-[#7E8694]">—</span>
                   <Input
                     type="number"
+                    inputMode="numeric"
                     placeholder="Hasta"
+                    aria-label="Precio hasta"
                     value={debouncedPriceMax}
                     onChange={(e) => setDebouncedPriceMax(e.target.value)}
-                    className="h-9 text-xs flex-1"
+                    className={`${FILTER_FIELD_CLS} tabular-nums`}
                   />
                   {hasActiveFilters && (
-                    <Button variant="ghost" size="sm" className="h-9 text-xs shrink-0" onClick={clearFilters}>
+                    <Button variant="ghost" size="sm" className="shrink-0 text-xs font-medium text-[hsl(var(--primary-soft-foreground))] hover:bg-white/5 hover:text-[hsl(var(--primary-soft-foreground))]" onClick={clearFilters}>
                       Limpiar
                     </Button>
                   )}
@@ -501,7 +521,7 @@ const Properties = () => {
                   Probá ajustando los filtros o cambiando el texto de búsqueda.
                 </p>
                 {hasActiveFilters && (
-                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                  <Button variant="outline" size="md" onClick={clearFilters}>
                     Limpiar filtros
                   </Button>
                 )}
@@ -537,7 +557,7 @@ const Properties = () => {
                 <p className="text-sm text-muted-foreground/70 max-w-xs">
                   Tocá el corazón en cualquier tarjeta de propiedad para guardarla acá.
                 </p>
-                <Button variant="outline" size="sm" onClick={() => setActiveTab("search")}>
+                <Button variant="outline" size="md" onClick={() => setActiveTab("search")}>
                   Buscar propiedades
                 </Button>
               </div>
