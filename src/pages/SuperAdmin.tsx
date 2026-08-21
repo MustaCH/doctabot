@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
-import { Shield, Database, Users, Heart, MessageSquare, Home, RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X, Download, UserCheck, TrendingUp, CheckCircle, XCircle, AlertTriangle, BarChart3, Flame, Thermometer, Snowflake, FileDown, Send, History, ChevronDown, ChevronUp, Clock, Trash2 } from "lucide-react";
+import { Shield, Database, Users, MessageSquare, RefreshCw, Search, ChevronLeft, ChevronRight, Loader2, Play, Eye, X, Download, TrendingUp, CheckCircle, XCircle, AlertTriangle, BarChart3, Flame, Thermometer, Snowflake, FileDown, Send, History, ChevronDown, ChevronUp, Clock, Trash2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, PieChart, Pie, Cell,
@@ -192,14 +192,15 @@ function AdminDashboard({ pin }: { pin: string }) {
     setTab("conversations");
   };
 
+  // KPI cards del artboard AdminResumen: vidrio r16, label 11, valor 26/700 tabular, sin ícono.
   const statCards = stats
     ? [
-        { label: "Propiedades", value: stats.properties, icon: Home, color: "text-blue-500" },
-        { label: "Usuarios", value: stats.users, icon: Users, color: "text-emerald-500" },
-        { label: "Conversaciones", value: stats.conversations, icon: MessageSquare, color: "text-violet-500" },
-        { label: "Mensajes", value: stats.messages, icon: MessageSquare, color: "text-amber-500" },
-        { label: "Favoritos", value: stats.favorites, icon: Heart, color: "text-rose-500" },
-        { label: "Clientes", value: stats.clients, icon: UserCheck, color: "text-cyan-500" },
+        { label: "Usuarios", value: stats.users },
+        { label: "Propiedades", value: stats.properties },
+        { label: "Conversaciones", value: stats.conversations },
+        { label: "Mensajes", value: stats.messages },
+        { label: "Favoritos", value: stats.favorites },
+        { label: "Clientes", value: stats.clients },
       ]
     : [];
 
@@ -211,7 +212,7 @@ function AdminDashboard({ pin }: { pin: string }) {
             <Shield className="h-4 w-4 text-[hsl(var(--accent-soft-foreground))]" />
           </span>
           <h1 className="text-[15px] font-semibold tracking-tight">Super Admin</h1>
-          <span className="rounded-full border border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--success))]">Producción</span>
+          <span className="rounded-full border border-[rgba(255,90,77,0.30)] bg-[rgba(255,90,77,0.14)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--hot))]">Producción</span>
           <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
             {lastUpdated ? `Actualizado ${lastUpdated.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}` : "Cargando…"}
           </span>
@@ -238,12 +239,9 @@ function AdminDashboard({ pin }: { pin: string }) {
             {loading ? <LoadingSpinner /> : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
                 {statCards.map((c) => (
-                  <div key={c.label} className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <c.icon className={`h-4 w-4 ${c.color}`} />
-                      <span className="text-xs text-muted-foreground">{c.label}</span>
-                    </div>
-                    <p className="text-2xl font-bold">{c.value.toLocaleString("es-AR")}</p>
+                  <div key={c.label} className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+                    <p className="text-[11px] text-muted-foreground">{c.label}</p>
+                    <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{c.value.toLocaleString("es-AR")}</p>
                   </div>
                 ))}
               </div>
@@ -470,8 +468,8 @@ function ScrapingStatus({ pin }: { pin: string }) {
   const logLevelColor = (level: string) => {
     switch (level) {
       case "error": return "text-destructive";
-      case "warning": return "text-yellow-500";
-      case "success": return "text-green-500";
+      case "warning": return "text-[hsl(var(--warm))]";
+      case "success": return "text-[hsl(var(--success))]";
       default: return "text-muted-foreground";
     }
   };
@@ -483,10 +481,10 @@ function ScrapingStatus({ pin }: { pin: string }) {
           <Database className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Estado del Scraping</h2>
           {isLive && (
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/30">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--success))]">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--success))] opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
               </span>
               EN VIVO
             </span>
@@ -516,7 +514,7 @@ function ScrapingStatus({ pin }: { pin: string }) {
             </div>
             <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${isFinished ? "bg-green-500" : "bg-primary"}`}
+                className={`h-full rounded-full transition-all duration-500 ${isFinished ? "bg-[hsl(var(--success))]" : "bg-primary"}`}
                 style={{ width: `${isFinished ? 100 : overallProgress}%` }}
               />
             </div>
@@ -530,10 +528,10 @@ function ScrapingStatus({ pin }: { pin: string }) {
                 const pct = info.total ? Math.min(100, Math.round((info.done / info.total) * 100)) : 0;
                 const done = info.finished || pct === 100;
                 return (
-                  <div key={op} className="rounded-md border border-border bg-background/40 p-2">
+                  <div key={op} className="rounded-[12px] border border-white/[0.08] bg-white/[0.03] p-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium flex items-center gap-1.5">
-                        {done ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+                        {done ? <CheckCircle className="h-3 w-3 text-[hsl(var(--success))]" /> : <Loader2 className="h-3 w-3 animate-spin text-primary" />}
                         {op}
                       </span>
                       <span className="text-muted-foreground text-[10px]">{pct}%</span>
@@ -542,7 +540,7 @@ function ScrapingStatus({ pin }: { pin: string }) {
                       {info.done}{info.total ? `/${info.total}` : ""} págs · {info.upserted.toLocaleString("es-AR")} guardadas
                     </div>
                     <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary mt-1">
-                      <div className={`h-full rounded-full transition-all duration-500 ${done ? "bg-green-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full transition-all duration-500 ${done ? "bg-[hsl(var(--success))]" : "bg-primary"}`} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -552,28 +550,24 @@ function ScrapingStatus({ pin }: { pin: string }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <div>
-          <span className="text-muted-foreground">Última actualización:</span>{" "}
-          <span className="font-medium">{lastProperty ? fmt(lastProperty.updated_at) : "—"}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Actualizadas hoy:</span>{" "}
-          <span className="font-medium">{totalToday.toLocaleString("es-AR")}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Total activas:</span>{" "}
-          <span className="font-medium">{totalProperties.toLocaleString("es-AR")}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Último lote:</span>{" "}
-          <span className="font-medium">{lastBatchTimestamp ? fmt(lastBatchTimestamp) : "—"}</span>
-        </div>
+      {/* 4 métricas como tarjetas (artboard AdminResumen) */}
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+        {[
+          { label: "Última actualización", value: lastProperty ? fmt(lastProperty.updated_at) : "—" },
+          { label: "Actualizadas hoy", value: totalToday.toLocaleString("es-AR") },
+          { label: "Total activas", value: totalProperties.toLocaleString("es-AR") },
+          { label: "Último lote", value: lastBatchTimestamp ? fmt(lastBatchTimestamp) : "—" },
+        ].map((m) => (
+          <div key={m.label} className="rounded-[12px] border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+            <p className="text-[11px] text-muted-foreground">{m.label}</p>
+            <p className="mt-1 text-[15px] font-semibold tabular-nums">{m.value}</p>
+          </div>
+        ))}
       </div>
 
       {/* Live logs */}
       {showLogs && logs.length > 0 && (
-        <div className="rounded-lg border border-border bg-background/50 p-3 max-h-48 overflow-y-auto font-mono text-xs space-y-0.5">
+        <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-[12px] border border-white/[0.08] bg-white/[0.03] p-3 font-mono text-xs">
           {logs.map((log) => (
             <div key={log.id} className={`flex gap-2 ${logLevelColor(log.level)}`}>
               <span className="text-muted-foreground/60 shrink-0">
@@ -650,8 +644,8 @@ function ScrapingHistory({ pin }: { pin: string }) {
   const logLevelColor = (level: string) => {
     switch (level) {
       case "error": return "text-destructive";
-      case "warning": return "text-yellow-500";
-      case "success": return "text-green-500";
+      case "warning": return "text-[hsl(var(--warm))]";
+      case "success": return "text-[hsl(var(--success))]";
       default: return "text-muted-foreground";
     }
   };
@@ -682,8 +676,8 @@ function ScrapingHistory({ pin }: { pin: string }) {
             const statusBadge = b.errors > 0
               ? { label: "Con errores", cls: "bg-destructive/10 text-destructive border-destructive/30" }
               : b.finished
-                ? { label: "Completado", cls: "bg-green-500/10 text-green-600 border-green-500/30" }
-                : { label: "Incompleto", cls: "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" };
+                ? { label: "Completado", cls: "border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] text-[hsl(var(--success))]" }
+                : { label: "Incompleto", cls: "border-[rgba(245,178,63,0.34)] bg-[rgba(245,178,63,0.16)] text-[hsl(var(--warm-soft-foreground))]" };
             return (
               <div key={b.batch_id} className="rounded-[12px] border border-white/[0.08] bg-white/[0.03]">
                 <button
@@ -704,14 +698,14 @@ function ScrapingHistory({ pin }: { pin: string }) {
                         <span className="inline-flex items-center gap-1"><CheckCircle className="h-3 w-3 text-[hsl(var(--success))]" aria-hidden="true" />{b.total_upserted.toLocaleString("es-AR")} props</span>
                         {b.deleted > 0 && <span className="inline-flex items-center gap-1"><Trash2 className="h-3 w-3" aria-hidden="true" />{b.deleted} obsoletas</span>}
                         {b.errors > 0 && <span className="inline-flex items-center gap-1 text-destructive"><AlertTriangle className="h-3 w-3" aria-hidden="true" />{b.errors} errores</span>}
-                        {b.warnings > 0 && <span className="text-yellow-600">{b.warnings} avisos</span>}
+                        {b.warnings > 0 && <span className="text-[hsl(var(--warm-soft-foreground))]">{b.warnings} avisos</span>}
                       </div>
                     </div>
                   </div>
                 </button>
 
                 {isOpen && (
-                  <div className="border-t border-border p-3 space-y-3">
+                  <div className="space-y-3 border-t border-white/[0.08] p-3">
                     {/* Per-operation breakdown */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {Object.entries(b.operations).map(([op, info]) => {
@@ -739,7 +733,7 @@ function ScrapingHistory({ pin }: { pin: string }) {
                     </div>
 
                     {/* Logs */}
-                    <div className="rounded-md border border-border bg-background/60 p-2 max-h-56 overflow-y-auto font-mono text-[11px] space-y-0.5">
+                    <div className="max-h-56 space-y-0.5 overflow-y-auto rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-2 font-mono text-[11px]">
                       {(batchLogs[b.batch_id] ?? []).map((log) => (
                         <div key={log.id} className={`flex gap-2 ${logLevelColor(log.level)}`}>
                           <span className="text-muted-foreground/60 shrink-0">
@@ -869,8 +863,8 @@ function PushTestPanel({ pin }: { pin: string }) {
                 <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
                   <span className="font-medium">
                     {d.device_label ?? "Desconocido"}
-                    {d.is_standalone === true && <span className="ml-1 text-emerald-400">· Instalada</span>}
-                    {d.is_standalone === false && <span className="ml-1 text-amber-400">· Tab navegador</span>}
+                    {d.is_standalone === true && <span className="ml-1 text-[hsl(var(--success))]">· Instalada</span>}
+                    {d.is_standalone === false && <span className="ml-1 text-[hsl(var(--warm-soft-foreground))]">· Tab navegador</span>}
                     {d.is_standalone === null && <span className="ml-1 text-muted-foreground">· Sin metadatos</span>}
                   </span>
                   <span className="font-mono text-muted-foreground truncate max-w-[180px]" title={d.endpoint_preview}>{d.endpoint_preview}</span>
@@ -893,7 +887,7 @@ function PushTestPanel({ pin }: { pin: string }) {
             <div
               className={`rounded-[12px] border p-2.5 text-xs ${
                 result.ok
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  ? "border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] text-[hsl(var(--success))]"
                   : "border-destructive/30 bg-destructive/10 text-destructive"
               }`}
             >
@@ -950,7 +944,7 @@ function MorningMatchesPanel() {
       </div>
 
       {result && (
-        <div className={`rounded-[12px] border p-3 text-sm ${result.error ? "border-destructive bg-destructive/10" : "border-green-500/30 bg-green-500/10"}`}>
+        <div className={`rounded-[12px] border p-3 text-sm ${result.error ? "border-destructive bg-destructive/10" : "border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)]"}`}>
           {result.error ? (
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-destructive" />
@@ -958,7 +952,7 @@ function MorningMatchesPanel() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CheckCircle className="h-4 w-4 text-[hsl(var(--success))]" />
               <span>
                 {result.matches > 0
                   ? `Se generaron ${result.matches} grupo${result.matches > 1 ? "s" : ""} de matches y se notificó a los agentes.`
@@ -1033,9 +1027,9 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total enviadas</p>
               <p className="text-xl font-bold">{stats.totals.total.toLocaleString("es-AR")}</p>
             </div>
-            <div className="rounded-[12px] border border-emerald-500/30 bg-emerald-500/10 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-emerald-400">Exitosas</p>
-              <p className="text-xl font-bold text-emerald-400">
+            <div className="rounded-[12px] border border-[rgba(62,201,138,0.32)] bg-[rgba(62,201,138,0.12)] p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[hsl(var(--success))]">Exitosas</p>
+              <p className="text-xl font-bold text-[hsl(var(--success))]">
                 {stats.totals.sent.toLocaleString("es-AR")}
                 <span className="text-xs font-normal ml-1.5">({stats.totals.successRate}%)</span>
               </p>
@@ -1044,9 +1038,9 @@ function PushDeliveryPanel({ pin }: { pin: string }) {
               <p className="text-[10px] uppercase tracking-wide text-destructive">Fallidas</p>
               <p className="text-xl font-bold text-destructive">{stats.totals.failed.toLocaleString("es-AR")}</p>
             </div>
-            <div className="rounded-[12px] border border-amber-500/30 bg-amber-500/10 p-3">
-              <p className="text-[10px] uppercase tracking-wide text-amber-400">Suscripciones limpiadas</p>
-              <p className="text-xl font-bold text-amber-400">{stats.totals.pruned.toLocaleString("es-AR")}</p>
+            <div className="rounded-[12px] border border-[rgba(245,178,63,0.34)] bg-[rgba(245,178,63,0.16)] p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[hsl(var(--warm-soft-foreground))]">Suscripciones limpiadas</p>
+              <p className="text-xl font-bold text-[hsl(var(--warm-soft-foreground))]">{stats.totals.pruned.toLocaleString("es-AR")}</p>
             </div>
           </div>
 
@@ -1144,9 +1138,11 @@ function PropertiesTable({ pin }: { pin: string }) {
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar por título, dirección o zona..." value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 max-w-sm rounded-[10px]" />
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7E8694]" aria-hidden="true" />
+          <Input placeholder="Buscar por título, dirección o zona…" value={search} aria-label="Buscar propiedades"
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 rounded-[12px] pl-10 text-[13px] md:text-[13px]" />
+        </div>
         <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} resultados</span>
         <Button variant="outline" size="xs" onClick={() => downloadCSV(data, "propiedades")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
@@ -1209,9 +1205,11 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar por nombre o código de agente..." value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 max-w-sm rounded-[10px]" />
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7E8694]" aria-hidden="true" />
+          <Input placeholder="Buscar por nombre o código de agente…" value={search} aria-label="Buscar usuarios"
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="h-9 rounded-[12px] pl-10 text-[13px] md:text-[13px]" />
+        </div>
         <span className="text-xs text-muted-foreground ml-auto">{total.toLocaleString("es-AR")} usuarios</span>
         <Button variant="outline" size="xs" onClick={() => downloadCSV(data, "usuarios")}>
           <Download className="h-3.5 w-3.5 mr-1.5" />CSV
@@ -1234,7 +1232,7 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
                     <TableCell className="text-xs font-medium">
                       {u.full_name}
                       {u.is_super_admin && (
-                        <Badge className="ml-2 bg-violet-500/15 text-violet-600 border-violet-500/30 hover:bg-violet-500/20 text-[10px] py-0">
+                        <Badge className="ml-2 border-[rgba(91,147,255,0.32)] bg-[rgba(91,147,255,0.14)] py-0 text-[10px] text-[hsl(var(--primary-soft-foreground))] hover:bg-[rgba(91,147,255,0.2)]">
                           <Shield className="h-2.5 w-2.5 mr-0.5" />SuperAdmin
                         </Badge>
                       )}
@@ -1243,8 +1241,8 @@ function UsersTable({ pin, onViewConversations }: { pin: string; onViewConversat
                     <TableCell className="text-xs font-mono text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
                     <TableCell className="text-xs">{new Date(u.created_at).toLocaleDateString("es-AR")}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon-xs" className="h-7 w-7"
-                        title="Ver conversaciones" onClick={() => onViewConversations(u.user_id)}>
+                      <Button variant="ghost" size="icon-xs"
+                        title="Ver conversaciones" aria-label="Ver conversaciones" onClick={() => onViewConversations(u.user_id)}>
                         <MessageSquare className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -1312,7 +1310,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
         <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} conversaciones</span>
         <div className="flex items-center gap-2 ml-auto">
           <Users className="h-3.5 w-3.5 text-muted-foreground" />
-          <select className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
+          <select className="h-9 rounded-[12px] border border-white/[0.08] bg-white/5 px-3 text-xs text-[#C3CAD5] focus:outline-none focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)] [color-scheme:dark]"
             value={filterUserId ?? ""}
             onChange={(e) => { setFilterUserId(e.target.value || null); setPage(0); }}>
             <option value="">Todos los usuarios</option>
@@ -1325,7 +1323,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
       </div>
 
       {selectedConv && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+        <div className="space-y-3 rounded-2xl border border-white/[0.09] bg-white/5 p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">
               Mensajes — {data.find(c => c.id === selectedConv)?.title ?? "Conversación"}
@@ -1339,7 +1337,7 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
               {messages.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">Sin mensajes</p>
               ) : messages.map((m) => (
-                <div key={m.id} className={`rounded-lg p-3 text-xs ${m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted mr-8"}`}>
+                <div key={m.id} className={`rounded-[12px] p-3 text-xs ${m.role === "user" ? "ml-8 bg-[rgba(91,147,255,0.12)]" : "mr-8 bg-white/[0.05]"}`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold capitalize">{m.role === "user" ? "Usuario" : "Alan"}</span>
                     <span className="text-[10px] text-muted-foreground">
@@ -1373,8 +1371,8 @@ function ConversationsTable({ pin, initialUserId }: { pin: string; initialUserId
                     <TableCell className="text-xs">{c.conversation_type ?? "general"}</TableCell>
                     <TableCell className="text-xs">{new Date(c.updated_at).toLocaleDateString("es-AR")}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon-xs" onClick={() => openMessages(c.id)} className="h-7 w-7">
-                        <Eye className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="icon-xs" onClick={() => openMessages(c.id)} aria-label="Ver mensajes">
+                        <ChevronRight className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1594,47 +1592,28 @@ function SupervisorPanel({ pin }: { pin: string }) {
     <div className="mt-4 space-y-6">
       {loading ? <LoadingSpinner /> : stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-            <span className="text-xs text-muted-foreground">Total evaluaciones</span>
-            <p className="text-2xl font-bold">{stats.total.toLocaleString("es-AR")}</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+            <p className="text-[11px] text-muted-foreground">Total evaluaciones</p>
+            <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{stats.total.toLocaleString("es-AR")}</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-            <span className="text-xs text-muted-foreground">Tasa aprobación</span>
-            <p className="text-2xl font-bold text-emerald-600">{approvalRate}%</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+            <p className="text-[11px] text-muted-foreground">Tasa de aprobación</p>
+            <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums text-[hsl(var(--success))]">{approvalRate}%</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-            <span className="text-xs text-muted-foreground">Score promedio</span>
-            <p className="text-2xl font-bold">{stats.avgScore}/10</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+            <p className="text-[11px] text-muted-foreground">Score promedio</p>
+            <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{stats.avgScore}<span className="text-[15px] font-medium text-muted-foreground">/10</span></p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-            <span className="text-xs text-muted-foreground">Errores supervisor</span>
-            <p className="text-2xl font-bold text-amber-600">{stats.errors}</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+            <p className="text-[11px] text-muted-foreground">Errores del supervisor</p>
+            <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums text-[hsl(var(--warm-soft-foreground))]">{stats.errors}</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-            <span className="text-xs text-muted-foreground">Sin evaluar</span>
-            <p className="text-2xl font-bold text-slate-500">{(stats.unevaluated ?? 0).toLocaleString("es-AR")}</p>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+            <p className="text-[11px] text-muted-foreground">Sin evaluar</p>
+            <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums text-muted-foreground">{(stats.unevaluated ?? 0).toLocaleString("es-AR")}</p>
           </div>
         </div>
       )}
-
-      {stats?.byCategory && Object.keys(stats.byCategory).length > 0 && (() => {
-        const rows = Object.entries(stats.byCategory)
-          .sort((a, b) => b[1] - a[1])
-          .map(([cat, count]) => ({ label: CATEGORY_LABEL[cat] ?? cat, count }));
-        return (
-          <div className="rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-2">
-            <h2 className="text-sm font-semibold">Rechazos por categoría</h2>
-            <ResponsiveContainer width="100%" height={rows.length * 32 + 12}>
-              <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 32, bottom: 0, left: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ fontSize: 12 }} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
-                <Bar dataKey="count" name="Rechazos" fill="hsl(var(--accent))" radius={[0, 4, 4, 0]} barSize={16} label={{ position: "right", fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        );
-      })()}
 
       {chartData.length > 0 && (
         <div className="rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-3">
@@ -1650,16 +1629,35 @@ function SupervisorPanel({ pin }: { pin: string }) {
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
               <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={36} />
               <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v) => [`${v}%`, "Tasa de aprobación"]} />
-              <Line type="monotone" dataKey="tasa" name="Tasa de aprobación" stroke="hsl(var(--success))" strokeWidth={2} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="tasa" name="Tasa de aprobación" stroke="hsl(var(--brand))" strokeWidth={2} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
 
+      {stats?.byCategory && Object.keys(stats.byCategory).length > 0 && (() => {
+        const rows = Object.entries(stats.byCategory)
+          .sort((a, b) => b[1] - a[1])
+          .map(([cat, count]) => ({ label: CATEGORY_LABEL[cat] ?? cat, count }));
+        return (
+          <div className="rounded-2xl border border-white/[0.09] bg-white/5 p-4 space-y-2">
+            <h2 className="text-sm font-semibold">Rechazos por categoría</h2>
+            <ResponsiveContainer width="100%" height={rows.length * 32 + 12}>
+              <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 32, bottom: 0, left: 0 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ fontSize: 12 }} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                <Bar dataKey="count" name="Rechazos" fill="hsl(var(--brand))" radius={[0, 4, 4, 0]} barSize={14} label={{ position: "right", fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
+
       <div className="space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-xs text-muted-foreground">{total.toLocaleString("es-AR")} logs</span>
-          <select className="text-xs bg-card border border-border rounded-md px-2 py-1.5 text-foreground"
+          <select className="h-9 rounded-[12px] border border-white/[0.08] bg-white/5 px-3 text-xs text-[#C3CAD5] focus:outline-none focus-visible:border-[rgba(91,147,255,0.45)] focus-visible:ring-[3px] focus-visible:ring-[rgba(91,147,255,0.12)] [color-scheme:dark]"
             value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setPage(0); }}>
             <option value="">Todos</option>
             <option value="approved">Aprobados</option>
@@ -1687,7 +1685,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
                 <TableBody>
                   {logs.map((l) => (
                     <React.Fragment key={l.id}>
-                      <TableRow className={expandedLog === l.id ? "bg-muted/50" : ""}>
+                      <TableRow className={expandedLog === l.id ? "bg-white/[0.04]" : ""}>
                         <TableCell className="text-xs">
                           {new Date(l.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </TableCell>
@@ -1696,7 +1694,7 @@ function SupervisorPanel({ pin }: { pin: string }) {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {verdictBadge(l.verdict)}
                             {l.category && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border whitespace-nowrap">
+                              <span className="text-[10px] px-1.5 py-0.5 whitespace-nowrap rounded-md border border-white/[0.08] bg-white/[0.05] text-muted-foreground">
                                 {CATEGORY_LABEL[l.category] ?? l.category}
                               </span>
                             )}
@@ -1706,9 +1704,10 @@ function SupervisorPanel({ pin }: { pin: string }) {
                         <TableCell className="text-xs">{l.retry_count}</TableCell>
                         <TableCell className="text-xs">{l.latency_ms ? `${l.latency_ms}ms` : "—"}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon-xs" className="h-7 w-7"
+                          <Button variant="ghost" size="icon-xs"
+                            aria-label={expandedLog === l.id ? "Ocultar detalle" : "Ver detalle"} aria-expanded={expandedLog === l.id}
                             onClick={() => setExpandedLog(expandedLog === l.id ? null : l.id)}>
-                            <Eye className="h-3.5 w-3.5" />
+                            <ChevronRight className="h-3.5 w-3.5" />
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1718,16 +1717,16 @@ function SupervisorPanel({ pin }: { pin: string }) {
                             <div className="space-y-3 text-xs">
                               <div>
                                 <p className="font-semibold mb-1">Mensaje del usuario:</p>
-                                <p className="whitespace-pre-wrap bg-card rounded p-2 border border-border">{l.user_message.slice(0, 500)}</p>
+                                <p className="whitespace-pre-wrap rounded-[10px] border border-white/[0.08] bg-white/[0.04] p-2">{l.user_message.slice(0, 500)}</p>
                               </div>
                               <div>
                                 <p className="font-semibold mb-1">Respuesta de Alan:</p>
-                                <p className="whitespace-pre-wrap bg-card rounded p-2 border border-border max-h-40 overflow-y-auto">{l.alan_response.slice(0, 1000)}</p>
+                                <p className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-[10px] border border-white/[0.08] bg-white/[0.04] p-2">{l.alan_response.slice(0, 1000)}</p>
                               </div>
                               {l.rejection_reason && (
                                 <div>
-                                  <p className="font-semibold mb-1 text-rose-600">Motivo de rechazo:</p>
-                                  <p className="bg-rose-500/10 rounded p-2 border border-rose-500/20">{l.rejection_reason}</p>
+                                  <p className="mb-1 font-semibold text-[hsl(var(--hot))]">Motivo de rechazo:</p>
+                                  <p className="rounded-[10px] border border-[rgba(255,90,77,0.26)] bg-[rgba(255,90,77,0.10)] p-2">{l.rejection_reason}</p>
                                 </div>
                               )}
                             </div>
@@ -1760,7 +1759,9 @@ interface EngagementData {
   totalMessages: number; totalConversations: number;
 }
 
-const PIE_COLORS = ["hsl(0, 84%, 60%)", "hsl(38, 92%, 50%)", "hsl(210, 70%, 55%)"];
+
+// Colores del pie por estado de cliente (no por índice: jsonb_object_agg ordena las claves por largo).
+const PIE_COLOR_BY_STATUS: Record<string, string> = { hot: "hsl(var(--accent))", warm: "hsl(var(--warm))", cold: "hsl(var(--cold))" };
 
 function ReportsPanel({ pin }: { pin: string }) {
   const [userReports, setUserReports] = useState<UserReport[]>([]);
@@ -1870,10 +1871,10 @@ function ReportsPanel({ pin }: { pin: string }) {
     ? Math.round((supervisorStats!.approved / supEvaluated) * 100) : 0;
 
   const statusLabel: Record<string, string> = { hot: "Caliente", warm: "Tibio", cold: "Frío" };
-  const statusColor: Record<string, string> = { hot: "text-red-500", warm: "text-amber-500", cold: "text-blue-500" };
+  const statusColor: Record<string, string> = { hot: "text-[hsl(var(--hot))]", warm: "text-[hsl(var(--warm-soft-foreground))]", cold: "text-[hsl(var(--cold-soft-foreground))]" };
 
   const pieData = Object.entries(clientDistribution).map(([key, value]) => ({
-    name: statusLabel[key] ?? key, value,
+    key, name: statusLabel[key] ?? key, value,
   }));
 
   const csvUserData = userReports.map(u => ({
@@ -1895,33 +1896,33 @@ function ReportsPanel({ pin }: { pin: string }) {
       <div ref={reportRef} className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-          <span className="text-xs text-muted-foreground">Usuarios activos (30d)</span>
-          <p className="text-2xl font-bold">{engagement?.totalActiveUsers ?? 0}</p>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+          <p className="text-[11px] text-muted-foreground">Usuarios activos (30d)</p>
+          <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{engagement?.totalActiveUsers ?? 0}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-          <span className="text-xs text-muted-foreground">Mensajes (30d)</span>
-          <p className="text-2xl font-bold">{engagement?.totalMessages?.toLocaleString("es-AR") ?? 0}</p>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+          <p className="text-[11px] text-muted-foreground">Mensajes (30d)</p>
+          <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{engagement?.totalMessages?.toLocaleString("es-AR") ?? 0}</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-          <span className="text-xs text-muted-foreground">Tasa aprobación</span>
-          <p className="text-2xl font-bold text-emerald-600">{approvalRate}%</p>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+          <p className="text-[11px] text-muted-foreground">Tasa de aprobación</p>
+          <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums text-[hsl(var(--success))]">{approvalRate}%</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-          <span className="text-xs text-muted-foreground">Score promedio</span>
-          <p className="text-2xl font-bold">{supervisorStats?.avgScore ?? 0}/10</p>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+          <p className="text-[11px] text-muted-foreground">Score promedio</p>
+          <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{supervisorStats?.avgScore ?? 0}<span className="text-[15px] font-medium text-muted-foreground">/10</span></p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 space-y-1 shadow-sm">
-          <span className="text-xs text-muted-foreground">Prom. msg/conv</span>
-          <p className="text-2xl font-bold">{engagement?.avgConvLength ?? 0}</p>
+        <div className="rounded-2xl border border-white/[0.09] bg-white/5 px-4 py-3.5">
+          <p className="text-[11px] text-muted-foreground">Prom. msg/conv</p>
+          <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums">{engagement?.avgConvLength ?? 0}</p>
         </div>
       </div>
 
       {/* Engagement Chart */}
       {engagement && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+        <div className="space-y-3 rounded-2xl border border-white/[0.09] bg-white/5 p-4">
           <div className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
+            <BarChart3 className="h-4 w-4 text-[hsl(var(--brand))]" />
             <h2 className="text-sm font-semibold">Engagement (últimos 30 días)</h2>
           </div>
           {/* Una serie por panel (86ak3ke1f): antes mensajes y usuarios activos compartían gráfico con eje doble. */}
@@ -1951,13 +1952,13 @@ function ReportsPanel({ pin }: { pin: string }) {
       {/* Client Distribution + Supervisor Summary side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Client Distribution */}
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+        <div className="space-y-3 rounded-2xl border border-white/[0.09] bg-white/5 p-4">
           <h2 className="text-sm font-semibold">Distribución de clientes</h2>
           <div className="flex items-center gap-6">
             <ResponsiveContainer width={140} height={140}>
               <PieChart>
                 <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={35}>
-                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  {pieData.map((d) => <Cell key={d.key} fill={PIE_COLOR_BY_STATUS[d.key] ?? "hsl(var(--muted-foreground))"} />)}
                 </Pie>
                 <Tooltip contentStyle={{ fontSize: 12 }} />
               </PieChart>
@@ -1977,11 +1978,11 @@ function ReportsPanel({ pin }: { pin: string }) {
 
         {/* Supervisor Summary */}
         {supervisorStats && (
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
+          <div className="space-y-3 rounded-2xl border border-white/[0.09] bg-white/5 p-4">
             <h2 className="text-sm font-semibold">Calidad del Agente IA</h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="text-center">
-                <div className="text-2xl font-bold text-emerald-600">{approvalRate}%</div>
+                <div className="text-2xl font-bold tabular-nums text-[hsl(var(--success))]">{approvalRate}%</div>
                 <div className="text-xs text-muted-foreground">Aprobación</div>
               </div>
               <div className="text-center">
@@ -1993,7 +1994,7 @@ function ReportsPanel({ pin }: { pin: string }) {
                 <div className="text-xs text-muted-foreground">Evaluaciones</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-amber-600">{supervisorStats.errors}</div>
+                <div className="text-2xl font-bold text-[hsl(var(--warm-soft-foreground))]">{supervisorStats.errors}</div>
                 <div className="text-xs text-muted-foreground">Errores</div>
               </div>
             </div>
@@ -2028,9 +2029,9 @@ function ReportsPanel({ pin }: { pin: string }) {
                   <TableCell className="text-xs text-right">
                     <div className="flex items-center justify-end gap-1">
                       <span className="font-mono">{u.clients}</span>
-                      {u.clientsByStatus.hot ? <Flame className="h-3 w-3 text-red-500" /> : null}
-                      {u.clientsByStatus.warm ? <Thermometer className="h-3 w-3 text-amber-500" /> : null}
-                      {u.clientsByStatus.cold ? <Snowflake className="h-3 w-3 text-blue-500" /> : null}
+                      {u.clientsByStatus.hot ? <Flame className="h-3 w-3 text-[hsl(var(--hot))]" aria-label="Calientes" /> : null}
+                      {u.clientsByStatus.warm ? <Thermometer className="h-3 w-3 text-[hsl(var(--warm))]" aria-label="Tibios" /> : null}
+                      {u.clientsByStatus.cold ? <Snowflake className="h-3 w-3 text-[hsl(var(--cold))]" aria-label="Fríos" /> : null}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right font-mono">{u.favorites}</TableCell>
@@ -2053,12 +2054,12 @@ function ReportsPanel({ pin }: { pin: string }) {
 function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
   if (totalPages <= 1) return null;
   return (
-    <div className="flex items-center justify-center gap-2">
-      <Button variant="ghost" size="icon-xs" disabled={page === 0} onClick={() => onPageChange(page - 1)}>
+    <div className="flex items-center justify-end gap-2">
+      <span className="mr-1 text-xs text-muted-foreground tabular-nums">Página {page + 1} de {totalPages}</span>
+      <Button variant="outline" size="icon-xs" className="border-white/[0.08] bg-white/[0.04]" disabled={page === 0} onClick={() => onPageChange(page - 1)} aria-label="Página anterior">
         <ChevronLeft className="h-4 w-4" />
       </Button>
-      <span className="text-xs text-muted-foreground">{page + 1} / {totalPages}</span>
-      <Button variant="ghost" size="icon-xs" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>
+      <Button variant="outline" size="icon-xs" className="border-white/[0.08] bg-white/[0.04]" disabled={page >= totalPages - 1} onClick={() => onPageChange(page + 1)} aria-label="Página siguiente">
         <ChevronRight className="h-4 w-4" />
       </Button>
     </div>
