@@ -48,6 +48,17 @@ La mayor parte del valor está en **unit tests de funciones puras**. La regla pr
 3. **QA manual de lo runtime-only** (ver abajo) si se tocó streaming, push, multimodal o el modelo.
 4. **Verificar migraciones aplicadas en prod** antes de confiar en features con gate fail-open (ej. rate limiting).
 
+- **Retrocompat de contratos chat→front contra datos REALES (2026-08-21, QA 86ak3z0gn):** cuando cambia
+  el formato de una tarjeta server-side (propiedad/contacto), además de los fixtures del contract test, correr el
+  parser del front sobre los mensajes ya persistidos: `select id, length(content), content from messages where
+  role='assistant' and content like '%👤 **%'` vía MCP (el resultado va a archivo), normalizar el JSON por script
+  y ejecutar un test temporal en `src/lib/_tmp-*.test.ts` que cuente bloques parseados / huérfanos (imprimir solo
+  conteos, nunca contenido; borrar el test al terminar). Ronda 2: 43 mensajes, 826/826 bloques, 0 huérfanos.
+  Gotcha: no truncar `content` con `left()` — corta el último bloque y da falsos negativos.
+- **Auditoría "cerrados sin hacer":** al cerrar un sprint de UI, comparar `git show --stat <commit>` de cada ticket
+  contra el artboard: un ticket de rediseño de pantalla con <15 líneas cambiadas es sospechoso (sprint 1: Perfil,
+  Novedades/Tutorial, Panel). Hecho con 4 subagentes en paralelo, un lote de pantallas por agente.
+
 ## Comportamientos runtime-only (QA manual, no automatizado)
 
 No se pueden validar leyendo código; se prueban a mano en dispositivo/entorno real:
@@ -58,6 +69,10 @@ No se pueden validar leyendo código; se prueban a mano en dispositivo/entorno r
 - **Obediencia anti prompt-injection** (86aj0p5bw): que el LLM ignore instrucciones embebidas en una página scrapeada.
 
 ## Deuda de QA (priorizada)
+
+- **Lint baseline (2026-08-21):** `npm run lint` tiene 302 errores pre-existentes (272 `no-explicit-any` en
+  `supabase/functions/**`, 30 en `src/`). El AC "lint pasa" no se puede cumplir hasta que se saneen o se acuerde
+  un baseline; mientras tanto el gate es "los archivos tocados lintean limpio" (`npx eslint <archivos>`).
 
 Fixes que pasaron QA en código pero **sin cobertura automatizada**. Orden por valor/riesgo:
 

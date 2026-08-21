@@ -2,8 +2,17 @@
 
 **Proyecto:** doctabot — asistente IA "Alan" (RE/MAX Docta)
 **Dueño:** /ui-designer
-**Última actualización:** 2026-06-17
+**Última actualización:** 2026-08-19
 **Stack visual:** Tailwind **v3** + shadcn/ui · tokens en HSL CSS vars (`src/index.css`) · fuente **DM Sans**
+
+> 🟠 **SUPERADO POR EL REDISEÑO (2026-08-19).** Este documento describe el sistema **vigente en
+> producción** (claro + oscuro, DM Sans, azul `210 100% 45%`), y sigue siendo válido como referencia
+> de lo que hay hoy en el código. Pero la dirección aprobada para adelante es
+> **"Carbón & Vidrio"**: paleta única oscura y Schibsted Grotesk.
+> Para diseñar o implementar UI nueva usá
+> [`docs/design/redesign-premium/README.md`](./design/redesign-premium/README.md), no este doc.
+> El porqué del cambio está en
+> [ADR-004](./adrs/0004-tema-oscuro-fijo-sin-modo-claro.md).
 
 > ⚠️ Este proyecto usa Tailwind **v3** (config en `tailwind.config.ts`, vars HSL al estilo shadcn).
 > NO usar sintaxis v4 (`@theme`). La fuente de verdad de los tokens base es `src/index.css`; este doc
